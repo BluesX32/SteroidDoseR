@@ -1,0 +1,101 @@
+---
+title: "Evaluation vs Gold Standard"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Evaluation vs Gold Standard}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Overview
+
+`evaluate_against_gold()` matches computed episodes to a manually-reviewed
+gold standard using a date-overlap join, then returns coverage (% usable
+episodes), MAE, and MBE — the three primary metrics from the OHDSI 2025
+AgentDose poster — plus a richer stratified breakdown.
+
+This vignette uses the synthetic gold standard that ships with the package.
+
+---
+
+## Prepare computed episodes (using NLP method)
+
+```{r setup-computed}
+library(SteroidDoseR)
+library(dplyr)
+
+extdata  <- system.file("extdata", package = "SteroidDoseR")
+drug_exp <- readr::read_csv(file.path(extdata, "synthetic_drug_exposure.csv"),
+                            show_col_types = FALSE)
+gold_std <- readr::read_csv(file.path(extdata, "synthetic_gold_standard.csv"),
+                            show_col_types = FALSE)
+
+# Run NLP pipeline
+drug_nlp <- calc_daily_dose_nlp(drug_exp)
+drug_pe  <- convert_pred_equiv(drug_nlp, drug_col = "drug_name_std",
+                                          dose_col = "daily_dose_mg")
+
+computed_episodes <- drug_pe |>
+  dplyr::filter(!is.na(pred_equiv_mg)) |>
+  dplyr::rename(daily_dose_mg_imputed = pred_equiv_mg) |>
+  build_episodes(end_col = "drug_exposure_end_date", gap_days = 30L) |>
+  dplyr::rename(median_daily_dose = median_daily_dose)
+```
+
+---
+
+## Run evaluation
+
+```{r evaluate}
+results <- evaluate_against_gold(computed_episodes, gold_std)
+```
+
+---
+
+## Primary metrics (poster framing)
+
+```{r metrics}
+s <- results$summary
+cat(sprintf("Usable / computable episodes: %d / %d (%.1f%%)\n",
+            s$n_matched_periods, s$n_gold_periods, s$coverage_pct))
+cat(sprintf("MAE  = %.2f mg/day\n", s$MAE))
+cat(sprintf("MBE  = %.2f mg/day  (positive = over-estimation)\n", s$MBE))
+cat(sprintf("RMSE = %.2f mg/day\n", s$RMSE))
+cat(sprintf("Pearson r = %.3f  |  Spearman rho = %.3f\n",
+            s$pearson_corr, s$spearman_corr))
+```
+
+---
+
+## Agreement categories
+
+```{r agreement}
+results$comparison |>
+  dplyr::count(agreement_category) |>
+  dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
+  dplyr::arrange(match(agreement_category,
+    c("Exact (<=5%)", "Good (<=20%)", "Moderate (<=50%)", "Poor (>50%)")))
+```
+
+---
+
+## Stratified analysis by dose range
+
+```{r strat-dose}
+results$stratified$by_dose_range
+```
+
+---
+
+## Per-episode detail
+
+```{r detail}
+results$comparison |>
+  dplyr::select(patient_id, episode_start, episode_end,
+                gold_dose, computed_dose, absolute_error, agreement_category) |>
+  head(10)
+```

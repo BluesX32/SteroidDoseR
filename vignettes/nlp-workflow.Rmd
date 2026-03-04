@@ -1,0 +1,121 @@
+---
+title: "NLP Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{NLP Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Overview
+
+The **NLP method** uses rule-based parsing of free-text SIG (prescription
+instruction) strings to extract dose, frequency, and duration information.
+It handles common abbreviations (BID, TID, QID, QOD), explicit mg totals,
+and taper language. Records with unstructured SIGs are flagged via
+`parsed_status`.
+
+This vignette demonstrates the full NLP workflow on the same synthetic dataset
+used in the Baseline vignette.
+
+---
+
+## Load data
+
+```{r load}
+library(SteroidDoseR)
+library(dplyr)
+
+extdata  <- system.file("extdata", package = "SteroidDoseR")
+drug_exp <- readr::read_csv(
+  file.path(extdata, "synthetic_drug_exposure.csv"),
+  show_col_types = FALSE
+)
+```
+
+---
+
+## Step 1: Parse SIG strings (NLP)
+
+`calc_daily_dose_nlp()` filters to oral systemic steroids, standardises drug
+names, and parses each SIG. Records for non-steroid drugs (e.g. hydroxychloroquine)
+are dropped automatically.
+
+```{r nlp}
+drug_nlp <- calc_daily_dose_nlp(
+  drug_exp,
+  drug_name_col = "drug_concept_name",
+  sig_col       = "sig"
+)
+
+# Coverage report
+drug_nlp |>
+  dplyr::count(parsed_status) |>
+  dplyr::mutate(pct = round(100 * n / sum(n), 1))
+```
+
+---
+
+## Step 2: Inspect parsed components
+
+```{r inspect}
+drug_nlp |>
+  dplyr::filter(parsed_status == "ok") |>
+  dplyr::select(person_id, drug_name_std, sig, tablets,
+                freq_per_day, mg_per_admin, daily_dose_mg) |>
+  head(10)
+```
+
+---
+
+## Step 3: Convert to prednisone equivalents
+
+```{r convert}
+drug_nlp_pe <- convert_pred_equiv(
+  drug_nlp,
+  drug_col = "drug_name_std",
+  dose_col = "daily_dose_mg"
+)
+
+drug_nlp_pe |>
+  dplyr::filter(pred_equiv_status == "ok") |>
+  dplyr::select(person_id, drug_name_std, daily_dose_mg,
+                pred_equiv_mg, equiv_factor) |>
+  head(8)
+```
+
+---
+
+## Step 4: Build episodes
+
+```{r episodes}
+drug_for_ep <- drug_nlp_pe |>
+  dplyr::filter(pred_equiv_status == "ok", !is.na(pred_equiv_mg)) |>
+  dplyr::rename(daily_dose_mg_imputed = pred_equiv_mg)
+
+episodes <- build_episodes(
+  drug_for_ep,
+  end_col  = "drug_exposure_end_date",
+  gap_days = 30L
+)
+
+episodes
+```
+
+---
+
+## Step 5: Parseable coverage summary
+
+```{r coverage}
+total   <- nrow(drug_nlp)
+ok_rows <- sum(drug_nlp$parsed_status == "ok", na.rm = TRUE)
+
+cat(sprintf(
+  "Parseable records: %d / %d (%.1f%%)\n",
+  ok_rows, total, 100 * ok_rows / total
+))
+```

@@ -1,0 +1,109 @@
+---
+title: "Baseline Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Baseline Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Overview
+
+The **Baseline method** estimates a patient's daily corticosteroid dose from
+structured OMOP CDM fields — tablet strength, quantity dispensed, days supply,
+and pre-computed `daily_dose` when available — using a four-step cascading
+imputation strategy. No free-text SIG parsing is required.
+
+This vignette demonstrates the full Baseline workflow on a synthetic dataset.
+
+---
+
+## Load package and synthetic data
+
+```{r load}
+library(SteroidDoseR)
+library(dplyr)
+
+extdata <- system.file("extdata", package = "SteroidDoseR")
+
+drug_exp <- readr::read_csv(
+  file.path(extdata, "synthetic_drug_exposure.csv"),
+  show_col_types = FALSE
+)
+
+dplyr::glimpse(drug_exp)
+```
+
+---
+
+## Step 1: Compute daily dose (Baseline method)
+
+`calc_daily_dose_baseline()` tries four imputation methods in order and records
+which one succeeded via the `imputation_method` column.
+
+```{r baseline}
+drug_baseline <- calc_daily_dose_baseline(drug_exp)
+
+# Check imputation coverage
+drug_baseline |>
+  dplyr::count(imputation_method) |>
+  dplyr::mutate(pct = round(100 * n / sum(n), 1))
+```
+
+---
+
+## Step 2: Convert to prednisone equivalents
+
+```{r conversion}
+drug_baseline <- drug_baseline |>
+  dplyr::mutate(drug_name_std = SteroidDoseR:::standardize_drug_name(drug_concept_name)) |>
+  dplyr::rename(daily_dose_mg = daily_dose_mg_imputed)
+
+drug_pe <- convert_pred_equiv(
+  drug_baseline,
+  drug_col = "drug_name_std",
+  dose_col = "daily_dose_mg"
+)
+
+drug_pe |>
+  dplyr::filter(pred_equiv_status == "ok") |>
+  dplyr::select(person_id, drug_name_std, daily_dose_mg, pred_equiv_mg, equiv_factor) |>
+  head(10)
+```
+
+---
+
+## Step 3: Build episodes
+
+```{r episodes}
+# Keep only steroids with a computable dose
+drug_for_episodes <- drug_pe |>
+  dplyr::filter(pred_equiv_status == "ok", !is.na(pred_equiv_mg)) |>
+  dplyr::rename(daily_dose_mg_imputed = pred_equiv_mg)
+
+episodes <- build_episodes(
+  drug_for_episodes,
+  end_col  = "drug_exposure_end_date",
+  gap_days = 30L
+)
+
+episodes
+```
+
+---
+
+## Step 4: Summary statistics per episode
+
+```{r summary}
+episodes |>
+  dplyr::group_by(person_id) |>
+  dplyr::summarise(
+    n_episodes        = dplyr::n(),
+    total_days        = sum(n_days),
+    mean_median_dose  = mean(median_daily_dose, na.rm = TRUE)
+  )
+```
