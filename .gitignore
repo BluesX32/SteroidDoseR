@@ -1,0 +1,36 @@
+# R build artifacts
+*.Rcheck/
+*.tar.gz
+*.Rproj.user/
+.Rproj.user
+
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Data — never commit real patient data
+data/
+*.rds
+*.RData
+
+# Vignette build artifacts
+vignettes/*.html
+vignettes/*.R
+
+# knitr/rmarkdown
+**/*_cache/
+**/*_files/
+
+# pkgdown site output (built by CI)
+docs/
+
+# Environment files
+.env
+.Renviron
+Renviron
