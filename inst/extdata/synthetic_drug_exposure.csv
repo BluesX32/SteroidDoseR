@@ -1,0 +1,30 @@
+person_id,drug_concept_name,drug_source_value,drug_exposure_start_date,drug_exposure_end_date,quantity,days_supply,amount_value,amount_unit_concept_id,daily_dose,sig,route_concept_name,route_source_value
+101,prednisone 10 MG oral tablet,PREDNISONE 10 MG TABLET,2023-01-01,2023-03-31,90,90,10,8576,10,Take 1 tablet (10 mg) by mouth daily.,Oral,Oral
+101,prednisone 10 MG oral tablet,PREDNISONE 10 MG TABLET,2023-04-01,2023-06-30,90,90,10,8576,10,Take 1 tablet (10 mg) by mouth daily.,Oral,Oral
+101,prednisone 5 MG oral tablet,PREDNISONE 5 MG TABLET,2023-07-01,2023-09-30,90,90,5,8576,,Taper by 5 mg every 4 weeks to stop.,Oral,Oral
+102,methylprednisolone 4 MG oral tablet,METHYLPREDNISOLONE 4 MG TABLET,2023-02-01,2023-04-30,180,89,4,8576,,Take 3 tablets (12 mg total) twice daily.,Oral,Oral
+102,methylprednisolone 4 MG oral tablet,METHYLPREDNISOLONE 4 MG TABLET,2023-05-01,2023-07-31,90,91,4,8576,,Take 1 tablet (4 mg per dose) twice daily.,Oral,Oral
+102,methylprednisolone 4 MG oral tablet,METHYLPREDNISOLONE 4 MG TABLET,2023-08-01,2023-10-31,180,92,4,8576,,,Oral,Oral
+103,dexamethasone 4 MG oral tablet,DEXAMETHASONE 4 MG TABLET,2023-03-01,2023-05-31,92,92,4,8576,,Take 1 tablet (4 mg total) daily.,Oral,Oral
+103,dexamethasone 4 MG oral tablet,DEXAMETHASONE 4 MG TABLET,2023-06-01,2023-08-31,46,91,4,8576,,Take 0.5 tablet (2 mg total) daily.,Oral,Oral
+103,dexamethasone 4 MG oral tablet,DEXAMETHASONE 4 MG TABLET,2023-09-01,2023-11-30,45,90,4,8576,,,Oral,Oral
+104,hydrocortisone 20 MG oral tablet,HYDROCORTISONE 20 MG TABLET,2023-01-15,2023-04-14,270,90,20,8576,60,Take 1 tablet (20 mg) three times daily.,Oral,Oral
+104,hydrocortisone 20 MG oral tablet,HYDROCORTISONE 20 MG TABLET,2023-04-15,2023-07-14,180,90,20,8576,40,Take 1 tablet (20 mg) twice daily.,Oral,Oral
+104,hydrocortisone 20 MG oral tablet,HYDROCORTISONE 20 MG TABLET,2023-07-15,2023-10-13,90,90,20,8576,,Use as directed.,Oral,Oral
+105,prednisolone 5 MG oral tablet,PREDNISOLONE 5 MG TABLET,2023-02-01,2023-04-30,45,89,5,8576,,Take 2 tablets (10 mg per dose) every other day.,Oral,Oral
+105,prednisolone 5 MG oral tablet,PREDNISOLONE 5 MG TABLET,2023-04-15,2023-06-30,77,77,5,8576,,Take 1 tablet (5 mg per dose) daily.,Oral,Oral
+105,prednisolone 5 MG oral tablet,PREDNISOLONE 5 MG TABLET,2023-09-01,2023-11-30,90,91,5,8576,5,Take 1 tablet (5 mg) daily.,Oral,Oral
+101,prednisone 1 MG oral tablet,PREDNISONE 1 MG TABLET,2024-01-01,2024-06-30,180,181,1,8576,,Take 5 tablets (5 mg total) daily.,Oral,Oral
+101,prednisone 20 MG oral tablet,PREDNISONE 20 MG TABLET,2024-07-01,2024-09-30,90,91,20,8576,,Take 1 tab (20 mg per dose) QD for 3 months.,Oral,Oral
+103,dexamethasone 2 MG oral tablet,DEXAMETHASONE 2 MG TABLET,2024-01-01,2024-01-30,30,,2,8576,,,Oral,Oral
+102,prednisone 5 MG oral tablet,PREDNISONE 5 MG TABLET,2024-01-01,2024-01-30,30,30,5,8576,,Take 1 tablet as needed for flare.,Oral,Oral
+104,hydrocortisone 10 MG oral tablet,HYDROCORTISONE 10 MG TABLET,2024-01-01,2024-01-31,124,31,10,8576,,Take 1 tablet (10 mg) four times daily.,Oral,Oral
+105,prednisolone 5 MG oral tablet,PREDNISOLONE 5 MG TABLET,2024-01-01,2024-02-14,42,45,5,8576,,Take 1 tab (5 mg) daily for 6 weeks.,Oral,Oral
+101,prednisone 5 MG oral tablet,PREDNISONE 5 MG TABLET,2024-02-01,2024-02-28,84,28,5,8576,,Take 2 tablets (10 mg per dose) TID.,Oral,Oral
+102,methylprednisolone 8 MG oral tablet,METHYLPREDNISOLONE 8 MG TABLET,2024-03-01,2024-04-30,120,61,8,8576,,Take 1 tablet (8 mg) every 12 hours.,Oral,Oral
+103,dexamethasone 4 MG oral tablet,DEXAMETHASONE 4 MG TABLET,2024-03-01,2024-03-31,31,31,4,8576,,Take 1 tab 4 mg qd.,Oral,Oral
+104,prednisone 5 MG oral tablet,PREDNISONE 5 MG TABLET,2024-04-01,2024-06-30,90,91,5,8576,,,Oral,Oral
+105,prednisone 10 MG oral tablet,PREDNISONE 10 MG TABLET,2024-05-01,2024-07-31,92,92,10,8576,10,Take 1 tablet daily.,Oral,Oral
+101,prednisone 5 MG oral tablet,PREDNISONE 5 MG TABLET,2024-06-30,2024-06-01,30,30,5,8576,,Take 1 tablet (5 mg) daily.,Oral,Oral
+102,prednisone 10 MG oral tablet,PREDNISONE 10 MG TABLET,2024-07-01,2024-09-30,92,92,,,"Take 1 tab (10 mg per dose) daily.",Oral,Oral
+103,hydroxychloroquine 200 MG oral tablet,HYDROXYCHLOROQUINE 200 MG TABLET,2023-01-01,2023-06-30,180,182,200,8576,,Take 1 tablet daily.,Oral,Oral
