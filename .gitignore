@@ -27,8 +27,12 @@ vignettes/*.R
 **/*_cache/
 **/*_files/
 
-# pkgdown site output (built by CI)
-docs/
+# pkgdown site output (built by CI) — exclude generated files, keep hand-written docs
+docs/index.html
+docs/pkgdown.yml
+docs/articles/
+docs/reference/
+docs/news/
 
 # Environment files
 .env
