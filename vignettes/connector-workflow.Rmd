@@ -1,0 +1,214 @@
+---
+title: "OMOP Connector Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{OMOP Connector Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Overview
+
+SteroidDoseR Phase 2 introduces a **Connector** abstraction layer that lets
+you point the package directly at an OMOP CDM database instead of manually
+constructing a `drug_df`. The package handles SQL extraction, date filtering,
+and field-availability detection automatically.
+
+Two connector types are available:
+
+| Connector | When to use |
+|-----------|-------------|
+| `create_omop_connector()` | Live OMOP CDM database (PostgreSQL, SQL Server, Snowflake, BigQuery, …) |
+| `create_df_connector()` | In-memory data frame — tests, vignettes, synthetic data |
+
+`convert_pred_equiv()` and `evaluate_against_gold()` remain data-frame–based
+pure transformations and do not need a connector.
+
+---
+
+## Connect to OMOP CDM
+
+### Real database (pseudocode — no credentials shown)
+
+```r
+library(SteroidDoseR)
+library(DatabaseConnector)
+
+# 1. Build connection details (DatabaseConnector standard)
+cd <- createConnectionDetails(
+  dbms     = "postgresql",        # or "sql server", "snowflake", "bigquery"
+  server   = "myserver/omop_db",
+  user     = "omop_reader",
+  password = Sys.getenv("DB_PASSWORD"),
+  port     = 5432
+)
+
+# 2. Wrap in a SteroidDoseR connector
+con <- create_omop_connector(
+  connectionDetails = cd,
+  cdm_schema        = "cdm_531",   # schema with drug_exposure, concept, …
+  vocab_schema      = "vocab",     # optional: separate vocabulary schema
+  cdm_version       = "5.4"
+)
+
+# 3. (Optional) probe which drug_exposure fields are available at your site
+con <- detect_capabilities(con)
+con$capabilities
+#> $has_sig        [1] TRUE
+#> $has_days_supply [1] TRUE
+#> $has_quantity    [1] TRUE
+#> $has_route       [1] TRUE
+```
+
+The actual database connection is opened **only during the query** and closed
+immediately after. There is no persistent connection to leak or time out.
+
+---
+
+## Demonstration with synthetic data (df_connector)
+
+The examples below use `create_df_connector()` so they run without a database.
+The code is identical to the real-database path — just swap
+`create_df_connector(df)` for `create_omop_connector(cd, cdm_schema = "...")`.
+
+```{r load-data}
+library(SteroidDoseR)
+
+extdata  <- system.file("extdata", package = "SteroidDoseR")
+drug_exp <- readr::read_csv(
+  file.path(extdata, "synthetic_drug_exposure.csv"),
+  show_col_types = FALSE
+)
+
+# Wrap the data frame in a df_connector
+con <- create_df_connector(drug_exp)
+con
+```
+
+---
+
+## One-call pipeline
+
+`run_pipeline()` chains fetch → impute → convert → episode in a single call:
+
+```{r run-pipeline}
+episodes <- run_pipeline(
+  con,
+  method       = "baseline",  # or "nlp"
+  return_level = "episode"    # or "exposure" for per-record output
+)
+
+episodes[, c("person_id", "drug_name_std", "episode_start",
+             "episode_end", "n_days", "median_daily_dose")]
+```
+
+---
+
+## Step-by-step connector workflow
+
+For more control, call each function individually:
+
+```{r step-by-step}
+# Step 1: Baseline daily dose imputation
+dose_df <- calc_daily_dose_baseline(con)
+
+head(dose_df[, c("person_id", "drug_source_value",
+                 "daily_dose_mg_imputed", "imputation_method")])
+
+# Step 2: Prednisone-equivalent conversion (always data-frame based).
+# Pass drug_concept_name directly — convert_pred_equiv() standardises names
+# internally and falls back automatically when drug_name_std is absent.
+equiv_df <- convert_pred_equiv(
+  dose_df,
+  drug_col = "drug_concept_name",
+  dose_col = "daily_dose_mg_imputed"
+)
+
+head(equiv_df[, c("person_id", "drug_concept_name",
+                  "daily_dose_mg_imputed", "pred_equiv_mg")])
+
+# Step 3: Episode building
+episodes2 <- build_episodes(
+  equiv_df |> dplyr::filter(!is.na(pred_equiv_mg)),
+  end_col  = "drug_exposure_end_date",
+  dose_col = "pred_equiv_mg",
+  gap_days = 30L
+)
+episodes2
+```
+
+---
+
+## Filtering by person or concept
+
+Both `run_pipeline()` and the individual functions accept filtering arguments
+when a connector is supplied:
+
+```r
+# Pull only specific patients
+doses <- calc_daily_dose_baseline(
+  con,
+  person_ids = c(1001L, 1002L, 1003L)
+)
+
+# Pull only specific drug concepts (OMOP concept IDs)
+doses <- calc_daily_dose_nlp(
+  con,
+  drug_concept_ids = c(1518254L, 40224131L)  # prednisone, methylprednisolone
+)
+```
+
+These arguments are silently ignored when `con` is a plain data frame, so
+the same calling code works in both paths.
+
+---
+
+## Handling sites without a `sig` column
+
+Some OMOP CDM instances do not populate `drug_exposure.sig`. Use
+`sig_source = "drug_source_value"` to fall back to `drug_source_value` as the
+SIG text source:
+
+```r
+doses <- calc_daily_dose_nlp(
+  con,
+  sig_source = "drug_source_value"
+)
+```
+
+The package detects whether `sig` is absent or all-`NA` and aliases
+`drug_source_value` automatically.
+
+---
+
+## Evaluate against a gold standard
+
+After computing episodes via either method, pass the result to
+`evaluate_against_gold()` as before:
+
+```{r eval-gold}
+gold_std <- readr::read_csv(
+  file.path(extdata, "synthetic_gold_standard.csv"),
+  show_col_types = FALSE
+)
+
+eval_result <- evaluate_against_gold(episodes, gold_std)
+eval_result$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")]
+```
+
+---
+
+## Summary
+
+| Step | Function | Connector-first? |
+|------|----------|-----------------|
+| Fetch + impute (structured) | `calc_daily_dose_baseline()` | Yes |
+| Fetch + impute (NLP) | `calc_daily_dose_nlp()` | Yes |
+| Convert to pred-equiv | `convert_pred_equiv()` | No (df only) |
+| Build episodes | `build_episodes()` | Yes |
+| Full pipeline | `run_pipeline()` | Yes |
+| Evaluate | `evaluate_against_gold()` | No (df only) |

@@ -5,18 +5,24 @@
 \title{Merge overlapping or adjacent drug-exposure records into continuous episodes}
 \usage{
 build_episodes(
-  drug_df,
+  connector_or_df,
   person_col = "person_id",
   drug_col = "drug_name_std",
   start_col = "drug_exposure_start_date",
   end_col = NA_character_,
   dose_col = NULL,
-  gap_days = 30L
+  gap_days = 30L,
+  drug_concept_ids = NULL,
+  person_ids = NULL,
+  start_date = NULL,
+  end_date = NULL
 )
 }
 \arguments{
-\item{drug_df}{A data frame. Must contain columns for patient ID, drug name,
-start date, and daily dose. End dates and additional metadata are optional.}
+\item{connector_or_df}{A \code{steroid_connector} (from \code{\link[=create_omop_connector]{create_omop_connector()}}
+or \code{\link[=create_df_connector]{create_df_connector()}}) \strong{or} a data frame. Must contain columns for
+patient ID, drug name, and start date. End dates and dose columns are
+optional.}
 
 \item{person_col}{\code{character(1)}. Patient identifier column. Default:
 \code{"person_id"}.}
@@ -28,15 +34,18 @@ Default: \code{"drug_name_std"}.}
 \code{"drug_exposure_start_date"}.}
 
 \item{end_col}{\code{character(1)}. Exposure-end date column. When \code{NA} (default),
-the function uses \code{start_col} as both start and end (one-day episode per
-record). Supply \code{"drug_exposure_end_date"} when available.}
+uses \code{start_col} as both start and end (one-day episode per record).
+Supply \code{"drug_exposure_end_date"} when available.}
 
 \item{dose_col}{\code{character(1)}. Daily-dose column. Default:
 \code{"daily_dose_mg_imputed"}. Accepts \code{"daily_dose_mg"} or \code{"pred_equiv_mg"}
-as alternatives — whichever is present in \code{drug_df}.}
+as alternatives — whichever is present in the data.}
 
 \item{gap_days}{\code{integer(1)}. Maximum gap (in days) between consecutive
 records that are still bridged into the same episode. Default: \code{30L}.}
+
+\item{drug_concept_ids, person_ids, start_date, end_date}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
+data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}
 }
 \value{
 A data frame with one row per patient–drug episode:
@@ -46,7 +55,7 @@ A data frame with one row per patient–drug episode:
 \item{episode_id}{Integer episode counter within patient–drug.}
 \item{episode_start}{First day of the episode (\code{Date}).}
 \item{episode_end}{Last day of the episode (\code{Date}).}
-\item{n_days}{Number of calendar days in the episode (\code{episode_end - episode_start + 1}).}
+\item{n_days}{Number of calendar days (\code{episode_end - episode_start + 1}).}
 \item{n_records}{Number of original records merged into this episode.}
 \item{median_daily_dose}{Median of \code{dose_col} across merged records.}
 \item{min_daily_dose}{Minimum daily dose across merged records.}
@@ -59,12 +68,21 @@ merges consecutive records whose gap is within \code{gap_days} into a single
 continuous episode. This reproduces the standard "era" logic used by OHDSI
 \code{DrugUtilisation} (gap-era = 30 days) and the legacy analysis pipeline.
 }
+\details{
+The first argument accepts either a \strong{connector} or a plain \strong{data frame}.
+When a connector is supplied, raw \code{drug_exposure} records are fetched first;
+the returned episodes will have \code{NA} dose statistics unless dose imputation
+was performed upstream (use \code{\link[=run_pipeline]{run_pipeline()}} to chain fetch + impute +
+episode in one call).
+}
 \examples{
 df <- tibble::tibble(
   person_id                = c(1L, 1L, 1L, 2L),
   drug_name_std            = "prednisone",
-  drug_exposure_start_date = as.Date(c("2023-01-01","2023-02-10","2023-03-01","2023-01-01")),
-  drug_exposure_end_date   = as.Date(c("2023-02-01","2023-02-28","2023-04-01","2023-06-01")),
+  drug_exposure_start_date = as.Date(
+    c("2023-01-01","2023-02-10","2023-03-01","2023-01-01")),
+  drug_exposure_end_date   = as.Date(
+    c("2023-02-01","2023-02-28","2023-04-01","2023-06-01")),
   daily_dose_mg_imputed    = c(20, 15, 10, 5)
 )
 build_episodes(df, end_col = "drug_exposure_end_date")

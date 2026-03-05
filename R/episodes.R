@@ -8,8 +8,16 @@
 #' continuous episode. This reproduces the standard "era" logic used by OHDSI
 #' `DrugUtilisation` (gap-era = 30 days) and the legacy analysis pipeline.
 #'
-#' @param drug_df A data frame. Must contain columns for patient ID, drug name,
-#'   start date, and daily dose. End dates and additional metadata are optional.
+#' The first argument accepts either a **connector** or a plain **data frame**.
+#' When a connector is supplied, raw `drug_exposure` records are fetched first;
+#' the returned episodes will have `NA` dose statistics unless dose imputation
+#' was performed upstream (use [run_pipeline()] to chain fetch + impute +
+#' episode in one call).
+#'
+#' @param connector_or_df A `steroid_connector` (from [create_omop_connector()]
+#'   or [create_df_connector()]) **or** a data frame. Must contain columns for
+#'   patient ID, drug name, and start date. End dates and dose columns are
+#'   optional.
 #' @param person_col `character(1)`. Patient identifier column. Default:
 #'   `"person_id"`.
 #' @param drug_col `character(1)`. Drug-name column (standardised or raw).
@@ -17,13 +25,16 @@
 #' @param start_col `character(1)`. Exposure-start date column. Default:
 #'   `"drug_exposure_start_date"`.
 #' @param end_col `character(1)`. Exposure-end date column. When `NA` (default),
-#'   the function uses `start_col` as both start and end (one-day episode per
-#'   record). Supply `"drug_exposure_end_date"` when available.
+#'   uses `start_col` as both start and end (one-day episode per record).
+#'   Supply `"drug_exposure_end_date"` when available.
 #' @param dose_col `character(1)`. Daily-dose column. Default:
 #'   `"daily_dose_mg_imputed"`. Accepts `"daily_dose_mg"` or `"pred_equiv_mg"`
-#'   as alternatives — whichever is present in `drug_df`.
+#'   as alternatives — whichever is present in the data.
 #' @param gap_days `integer(1)`. Maximum gap (in days) between consecutive
 #'   records that are still bridged into the same episode. Default: `30L`.
+#' @param drug_concept_ids,person_ids,start_date,end_date
+#'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
+#'   data frame. See [calc_daily_dose_baseline()] for full descriptions.
 #'
 #' @return A data frame with one row per patient–drug episode:
 #' \describe{
@@ -32,7 +43,7 @@
 #'   \item{episode_id}{Integer episode counter within patient–drug.}
 #'   \item{episode_start}{First day of the episode (`Date`).}
 #'   \item{episode_end}{Last day of the episode (`Date`).}
-#'   \item{n_days}{Number of calendar days in the episode (`episode_end - episode_start + 1`).}
+#'   \item{n_days}{Number of calendar days (`episode_end - episode_start + 1`).}
 #'   \item{n_records}{Number of original records merged into this episode.}
 #'   \item{median_daily_dose}{Median of `dose_col` across merged records.}
 #'   \item{min_daily_dose}{Minimum daily dose across merged records.}
@@ -45,18 +56,38 @@
 #' df <- tibble::tibble(
 #'   person_id                = c(1L, 1L, 1L, 2L),
 #'   drug_name_std            = "prednisone",
-#'   drug_exposure_start_date = as.Date(c("2023-01-01","2023-02-10","2023-03-01","2023-01-01")),
-#'   drug_exposure_end_date   = as.Date(c("2023-02-01","2023-02-28","2023-04-01","2023-06-01")),
+#'   drug_exposure_start_date = as.Date(
+#'     c("2023-01-01","2023-02-10","2023-03-01","2023-01-01")),
+#'   drug_exposure_end_date   = as.Date(
+#'     c("2023-02-01","2023-02-28","2023-04-01","2023-06-01")),
 #'   daily_dose_mg_imputed    = c(20, 15, 10, 5)
 #' )
 #' build_episodes(df, end_col = "drug_exposure_end_date")
-build_episodes <- function(drug_df,
-                           person_col = "person_id",
-                           drug_col   = "drug_name_std",
-                           start_col  = "drug_exposure_start_date",
-                           end_col    = NA_character_,
-                           dose_col   = NULL,
-                           gap_days   = 30L) {
+build_episodes <- function(connector_or_df,
+                           person_col       = "person_id",
+                           drug_col         = "drug_name_std",
+                           start_col        = "drug_exposure_start_date",
+                           end_col          = NA_character_,
+                           dose_col         = NULL,
+                           gap_days         = 30L,
+                           drug_concept_ids = NULL,
+                           person_ids       = NULL,
+                           start_date       = NULL,
+                           end_date         = NULL) {
+
+  drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
+                               start_date, end_date)
+
+  # When fetched via connector, drug_name_std may not exist yet; derive it.
+  if (!drug_col %in% names(drug_df)) {
+    name_src <- intersect(c("drug_concept_name", "drug_source_value"),
+                          names(drug_df))
+    if (length(name_src) > 0L) {
+      drug_df[["drug_name_std"]] <- standardize_drug_name(
+        drug_df[[name_src[[1L]]]]
+      )
+    }
+  }
 
   # --- resolve columns -------------------------------------------------------
   assert_required_cols(drug_df, c(person_col, drug_col, start_col), "drug_df")

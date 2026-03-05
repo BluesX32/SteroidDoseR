@@ -5,21 +5,28 @@
 \title{Compute daily steroid doses using rule-based SIG parsing (NLP method)}
 \usage{
 calc_daily_dose_nlp(
-  drug_df,
+  connector_or_df,
   drug_name_col = "drug_concept_name",
   sig_col = "sig",
   filter_oral = TRUE,
-  baseline_fallback = FALSE
+  baseline_fallback = FALSE,
+  drug_concept_ids = NULL,
+  person_ids = NULL,
+  start_date = NULL,
+  end_date = NULL,
+  sig_source = "sig"
 )
 }
 \arguments{
-\item{drug_df}{A data frame. Must contain \code{sig_col}, date columns, and
-either \code{route_concept_name} or \code{route_source_value} (for oral filtering).}
+\item{connector_or_df}{A \code{steroid_connector} or a data frame. See
+\code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for details on the connector path.}
 
 \item{drug_name_col}{\code{character(1)}. Column with the drug name.
 Default: \code{"drug_concept_name"}.}
 
-\item{sig_col}{\code{character(1)}. Column with the SIG text. Default: \code{"sig"}.}
+\item{sig_col}{\code{character(1)}. Column with the SIG text. Default: \code{"sig"}.
+When \code{sig} is absent and \code{sig_source = "drug_source_value"}, the
+\code{drug_source_value} column is aliased to \code{sig} automatically.}
 
 \item{filter_oral}{\code{logical(1)}. If \code{TRUE} (default), only oral-route
 records are kept. Set to \code{FALSE} if route filtering was done upstream.}
@@ -27,9 +34,12 @@ records are kept. Set to \code{FALSE} if route filtering was done upstream.}
 \item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, the function tries to
 carry through an existing \code{daily_dose_mg} column (e.g. from the Baseline
 method) for records where NLP parsing fails. Default: \code{FALSE}.}
+
+\item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
+data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}
 }
 \value{
-A data frame with the same rows as \code{drug_df} (after optional oral
+A data frame with the same rows as the input (after optional oral
 filter) plus columns from \code{\link[=parse_sig_one]{parse_sig_one()}}, \code{drug_name_std}, and the
 final \code{daily_dose_mg}.
 }
@@ -37,6 +47,11 @@ final \code{daily_dose_mg}.
 Filters an OMOP drug-exposure data frame to oral systemic corticosteroids,
 standardises drug names, parses each SIG string, and returns a data frame
 with a computed \code{daily_dose_mg} column.
+}
+\details{
+The first argument accepts either a \strong{connector} (created by
+\code{\link[=create_omop_connector]{create_omop_connector()}} or \code{\link[=create_df_connector]{create_df_connector()}}) or a plain
+\strong{data frame} for backward compatibility.
 }
 \examples{
 df <- tibble::tibble(

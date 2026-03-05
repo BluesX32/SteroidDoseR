@@ -9,6 +9,10 @@
 #' (default) the cascade order and tie-breaking rules exactly match the
 #' `Baseline.qmd` analysis that was used in the Phase 1 paper.
 #'
+#' The first argument accepts either a **connector** (created by
+#' [create_omop_connector()] or [create_df_connector()]) or a plain
+#' **data frame** for backward compatibility.
+#'
 #' ## Cascade order
 #' | Method | Label | Logic |
 #' |--------|-------|-------|
@@ -17,9 +21,10 @@
 #' | M3 | `"supply_based"` | `(quantity × strength_mg) / days_supply`. |
 #' | M4 | `"actual_duration"` | `(quantity × strength_mg) / actual_duration_days`, where `actual_duration_days` is derived from the date columns. |
 #'
-#' @param drug_df A data frame. Must contain at minimum `drug_exposure_start_date`
-#'   and `drug_exposure_end_date`. Additional columns are used depending on
-#'   which methods are enabled (see Details).
+#' @param connector_or_df A `steroid_connector` (from [create_omop_connector()]
+#'   or [create_df_connector()]) **or** a data frame. When a connector is
+#'   supplied the function fetches data from the source; when a data frame is
+#'   supplied the legacy in-memory path is used unchanged.
 #' @param methods `character` vector. Ordered list of methods to attempt.
 #'   Defaults to `c("original", "tablets_freq", "supply_based", "actual_duration")`.
 #'   Each method is only tried if the required columns are present; missing
@@ -27,8 +32,20 @@
 #' @param strict_legacy `logical(1)`. When `TRUE` (default), the method
 #'   priority and column selection match the Baseline.qmd implementation
 #'   exactly. Set to `FALSE` to allow experimental extensions.
+#' @param drug_concept_ids Integer vector of OMOP `drug_concept_id` values to
+#'   restrict the extraction. Ignored when `connector_or_df` is a data frame.
+#' @param person_ids Vector of `person_id` values to restrict the extraction.
+#'   Ignored when `connector_or_df` is a data frame.
+#' @param start_date Character or Date. Lower bound on
+#'   `drug_exposure_start_date`. Ignored when `connector_or_df` is a data frame.
+#' @param end_date Character or Date. Upper bound on
+#'   `drug_exposure_start_date`. Ignored when `connector_or_df` is a data frame.
+#' @param sig_source `character(1)`. Which column to use as SIG text when the
+#'   native `sig` field is absent. One of `"sig"` (default) or
+#'   `"drug_source_value"`. Ignored when `connector_or_df` is a data frame.
 #'
-#' @return `drug_df` with three additional columns:
+#' @return The input data frame (or the fetched data frame) with three
+#' additional columns:
 #' \describe{
 #'   \item{strength_mg}{Extracted tablet/capsule strength in mg.}
 #'   \item{daily_dose_mg_imputed}{Best-estimate daily dose in mg.}
@@ -50,10 +67,22 @@
 #'   daily_dose               = NA_real_
 #' )
 #' calc_daily_dose_baseline(df)
-calc_daily_dose_baseline <- function(drug_df,
-                                     methods      = c("original", "tablets_freq",
-                                                      "supply_based", "actual_duration"),
-                                     strict_legacy = TRUE) {
+#'
+#' # Connector path (synthetic example via df_connector):
+#' con <- create_df_connector(df)
+#' calc_daily_dose_baseline(con)
+calc_daily_dose_baseline <- function(connector_or_df,
+                                     methods       = c("original", "tablets_freq",
+                                                       "supply_based", "actual_duration"),
+                                     strict_legacy  = TRUE,
+                                     drug_concept_ids = NULL,
+                                     person_ids       = NULL,
+                                     start_date       = NULL,
+                                     end_date         = NULL,
+                                     sig_source       = "sig") {
+
+  drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
+                               start_date, end_date, sig_source)
 
   assert_required_cols(
     drug_df,
@@ -97,7 +126,11 @@ calc_daily_dose_baseline <- function(drug_df,
       .quantity    = if (has_qty)  safe_as_numeric(.data$quantity)     else NA_real_,
       .days_supply = if (has_sup)  safe_as_numeric(.data$days_supply)  else NA_real_,
       .tablets     = if (has_tab)  safe_as_numeric(.data$tablets)      else NA_real_,
-      .freq        = if (has_freq) safe_as_numeric(.data$freq_per_day) else NA_real_
+      .freq        = if (has_freq) safe_as_numeric(.data$freq_per_day) else NA_real_,
+      # daily_dose must also be pre-computed: dplyr::case_when evaluates ALL
+      # branches regardless of the LHS condition, so .data$daily_dose would
+      # error when the column is absent even if has_dd == FALSE.
+      .dd          = if (has_dd)   safe_as_numeric(.data$daily_dose)   else NA_real_
     )
 
   # --- 4. candidate estimates -----------------------------------------------
@@ -105,9 +138,7 @@ calc_daily_dose_baseline <- function(drug_df,
     dplyr::mutate(
       # M1: original
       .m1 = dplyr::case_when(
-        "original" %in% methods & has_dd &
-          !is.na(safe_as_numeric(.data$daily_dose)) &
-          safe_as_numeric(.data$daily_dose) > 0 ~ safe_as_numeric(.data$daily_dose),
+        "original" %in% methods & !is.na(.data$.dd) & .data$.dd > 0 ~ .data$.dd,
         TRUE ~ NA_real_
       ),
 
@@ -161,6 +192,6 @@ calc_daily_dose_baseline <- function(drug_df,
   drug_df |>
     dplyr::select(-dplyr::any_of(c(".start", ".end", ".actual_dur",
                                     ".quantity", ".days_supply",
-                                    ".tablets", ".freq",
+                                    ".tablets", ".freq", ".dd",
                                     ".m1", ".m2", ".m3", ".m4")))
 }

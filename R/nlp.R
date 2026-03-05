@@ -224,18 +224,27 @@ parse_sig <- function(drug_df, sig_col = "sig") {
 #' standardises drug names, parses each SIG string, and returns a data frame
 #' with a computed `daily_dose_mg` column.
 #'
-#' @param drug_df A data frame. Must contain `sig_col`, date columns, and
-#'   either `route_concept_name` or `route_source_value` (for oral filtering).
+#' The first argument accepts either a **connector** (created by
+#' [create_omop_connector()] or [create_df_connector()]) or a plain
+#' **data frame** for backward compatibility.
+#'
+#' @param connector_or_df A `steroid_connector` or a data frame. See
+#'   [calc_daily_dose_baseline()] for details on the connector path.
 #' @param drug_name_col `character(1)`. Column with the drug name.
 #'   Default: `"drug_concept_name"`.
 #' @param sig_col `character(1)`. Column with the SIG text. Default: `"sig"`.
+#'   When `sig` is absent and `sig_source = "drug_source_value"`, the
+#'   `drug_source_value` column is aliased to `sig` automatically.
 #' @param filter_oral `logical(1)`. If `TRUE` (default), only oral-route
 #'   records are kept. Set to `FALSE` if route filtering was done upstream.
 #' @param baseline_fallback `logical(1)`. If `TRUE`, the function tries to
 #'   carry through an existing `daily_dose_mg` column (e.g. from the Baseline
 #'   method) for records where NLP parsing fails. Default: `FALSE`.
+#' @param drug_concept_ids,person_ids,start_date,end_date,sig_source
+#'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
+#'   data frame. See [calc_daily_dose_baseline()] for full descriptions.
 #'
-#' @return A data frame with the same rows as `drug_df` (after optional oral
+#' @return A data frame with the same rows as the input (after optional oral
 #'   filter) plus columns from [parse_sig_one()], `drug_name_std`, and the
 #'   final `daily_dose_mg`.
 #'
@@ -251,13 +260,27 @@ parse_sig <- function(drug_df, sig_col = "sig") {
 #'   drug_exposure_end_date   = as.Date("2023-03-01")
 #' )
 #' calc_daily_dose_nlp(df)
-calc_daily_dose_nlp <- function(drug_df,
-                                drug_name_col    = "drug_concept_name",
-                                sig_col          = "sig",
-                                filter_oral      = TRUE,
-                                baseline_fallback = FALSE) {
+calc_daily_dose_nlp <- function(connector_or_df,
+                                drug_name_col     = "drug_concept_name",
+                                sig_col           = "sig",
+                                filter_oral       = TRUE,
+                                baseline_fallback  = FALSE,
+                                drug_concept_ids  = NULL,
+                                person_ids        = NULL,
+                                start_date        = NULL,
+                                end_date          = NULL,
+                                sig_source        = "sig") {
 
-  assert_required_cols(drug_df, c(drug_name_col, sig_col), "drug_df")
+  drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
+                               start_date, end_date, sig_source)
+
+  assert_required_cols(drug_df, drug_name_col, "drug_df")
+
+  # If sig column is absent (site didn't populate it), insert NA column so
+  # parse_sig() can still run and return parsed_status = "empty" for all rows.
+  if (!sig_col %in% names(drug_df)) {
+    drug_df[[sig_col]] <- NA_character_
+  }
 
   # --- standardise drug names -----------------------------------------------
   drug_df <- drug_df |>

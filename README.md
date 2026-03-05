@@ -52,27 +52,76 @@ eval$summary[, c("coverage_pct", "MAE", "MBE")]
 
 ---
 
+## Connect to OMOP CDM
+
+Supply a connector object instead of constructing `drug_df` manually.
+The package handles SQL extraction, date filtering, and field-availability
+detection automatically — across PostgreSQL, SQL Server, Snowflake, BigQuery,
+and other DBMS supported by [DatabaseConnector](https://ohdsi.github.io/DatabaseConnector/).
+
+```r
+library(DatabaseConnector)
+
+# Build connection details (no credentials stored in code)
+cd <- createConnectionDetails(
+  dbms     = "postgresql",
+  server   = "myserver/omop_db",
+  user     = Sys.getenv("DB_USER"),
+  password = Sys.getenv("DB_PASSWORD"),
+  port     = 5432
+)
+
+con <- create_omop_connector(cd, cdm_schema = "cdm_531")
+
+# One-call pipeline: fetch → impute → convert → episodes
+episodes <- run_pipeline(con, method = "baseline")
+```
+
+For sites without a `sig` column use `sig_source = "drug_source_value"`.
+See `vignette("connector-workflow")` for the complete walkthrough.
+
+### Synthetic / test connector
+
+No database? Use `create_df_connector()` to wrap any data frame with the
+same interface — identical calling code, no extra dependencies:
+
+```r
+extdata  <- system.file("extdata", package = "SteroidDoseR")
+drug_exp <- readr::read_csv(file.path(extdata, "synthetic_drug_exposure.csv"))
+
+con      <- create_df_connector(drug_exp)
+episodes <- run_pipeline(con, method = "baseline")
+```
+
+---
+
 ## Public API
 
-| Function | Description |
-|----------|-------------|
-| `calc_daily_dose_baseline()` | Structured-field cascading imputation (M1–M4). |
-| `calc_daily_dose_nlp()` | Rule-based SIG text parsing. |
-| `convert_pred_equiv()` | Multiply by prednisone-equivalency factors. |
-| `build_episodes()` | Gap-bridge prescriptions into continuous episodes. |
-| `evaluate_against_gold()` | Coverage, MAE, MBE vs. manual gold standard. |
+| Function | Connector-first? | Description |
+|----------|-----------------|-------------|
+| `create_omop_connector()` | — | Build a live OMOP CDM connector. |
+| `create_df_connector()` | — | Wrap a data frame as a connector (tests/vignettes). |
+| `detect_capabilities()` | — | Probe which `drug_exposure` fields are available. |
+| `run_pipeline()` | Yes | One-call fetch → impute → convert → episodes. |
+| `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). |
+| `calc_daily_dose_nlp()` | Yes | Rule-based SIG text parsing. |
+| `convert_pred_equiv()` | No | Multiply by prednisone-equivalency factors. |
+| `build_episodes()` | Yes | Gap-bridge prescriptions into continuous episodes. |
+| `evaluate_against_gold()` | No | Coverage, MAE, MBE vs. manual gold standard. |
 
-See `vignette("baseline-workflow")`, `vignette("nlp-workflow")`, and
-`vignette("evaluation-workflow")` for detailed examples.
+See `vignette("connector-workflow")`, `vignette("baseline-workflow")`,
+`vignette("nlp-workflow")`, and `vignette("evaluation-workflow")`.
 
 ---
 
 ## Data requirements
 
-The package expects data frames whose columns mirror those produced by the
-OMOP CDM SQL extraction. See `?calc_daily_dose_baseline` and
-`?calc_daily_dose_nlp` for the required column lists. No real patient data
-is shipped — only fully synthetic examples.
+When using connectors, the package extracts data directly — no manual
+`drug_df` construction needed. When supplying a plain data frame, columns
+must mirror the OMOP `drug_exposure` domain. See `?drug_df_contract`,
+`?calc_daily_dose_baseline`, and `?calc_daily_dose_nlp` for the full
+column specification. No real patient data is shipped — only fully
+synthetic examples.
 
 ---
 
@@ -80,8 +129,9 @@ is shipped — only fully synthetic examples.
 
 | Phase | Status | Content |
 |-------|--------|---------|
-| **1** | ✅ This release | Baseline + NLP + conversion + evaluation |
-| 2     | Planned | LLM agent (Claude) for complex SIG interpretation |
+| **1** | ✅ Complete | Baseline + NLP + conversion + evaluation |
+| **1.5** | ✅ This release | Connector abstraction (DatabaseConnector / df_connector) |
+| 3 | Planned | LLM agent (Claude) for complex SIG interpretation |
 
 ---
 

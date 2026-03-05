@@ -5,15 +5,21 @@
 \title{Compute daily steroid doses using structured OMOP fields (Baseline method)}
 \usage{
 calc_daily_dose_baseline(
-  drug_df,
+  connector_or_df,
   methods = c("original", "tablets_freq", "supply_based", "actual_duration"),
-  strict_legacy = TRUE
+  strict_legacy = TRUE,
+  drug_concept_ids = NULL,
+  person_ids = NULL,
+  start_date = NULL,
+  end_date = NULL,
+  sig_source = "sig"
 )
 }
 \arguments{
-\item{drug_df}{A data frame. Must contain at minimum \code{drug_exposure_start_date}
-and \code{drug_exposure_end_date}. Additional columns are used depending on
-which methods are enabled (see Details).}
+\item{connector_or_df}{A \code{steroid_connector} (from \code{\link[=create_omop_connector]{create_omop_connector()}}
+or \code{\link[=create_df_connector]{create_df_connector()}}) \strong{or} a data frame. When a connector is
+supplied the function fetches data from the source; when a data frame is
+supplied the legacy in-memory path is used unchanged.}
 
 \item{methods}{\code{character} vector. Ordered list of methods to attempt.
 Defaults to \code{c("original", "tablets_freq", "supply_based", "actual_duration")}.
@@ -23,9 +29,26 @@ columns cause a graceful skip (not an error).}
 \item{strict_legacy}{\code{logical(1)}. When \code{TRUE} (default), the method
 priority and column selection match the Baseline.qmd implementation
 exactly. Set to \code{FALSE} to allow experimental extensions.}
+
+\item{drug_concept_ids}{Integer vector of OMOP \code{drug_concept_id} values to
+restrict the extraction. Ignored when \code{connector_or_df} is a data frame.}
+
+\item{person_ids}{Vector of \code{person_id} values to restrict the extraction.
+Ignored when \code{connector_or_df} is a data frame.}
+
+\item{start_date}{Character or Date. Lower bound on
+\code{drug_exposure_start_date}. Ignored when \code{connector_or_df} is a data frame.}
+
+\item{end_date}{Character or Date. Upper bound on
+\code{drug_exposure_start_date}. Ignored when \code{connector_or_df} is a data frame.}
+
+\item{sig_source}{\code{character(1)}. Which column to use as SIG text when the
+native \code{sig} field is absent. One of \code{"sig"} (default) or
+\code{"drug_source_value"}. Ignored when \code{connector_or_df} is a data frame.}
 }
 \value{
-\code{drug_df} with three additional columns:
+The input data frame (or the fetched data frame) with three
+additional columns:
 \describe{
 \item{strength_mg}{Extracted tablet/capsule strength in mg.}
 \item{daily_dose_mg_imputed}{Best-estimate daily dose in mg.}
@@ -40,6 +63,9 @@ dose in mg for each drug-exposure record. When \code{strict_legacy = TRUE}
 \code{Baseline.qmd} analysis that was used in the Phase 1 paper.
 }
 \details{
+The first argument accepts either a \strong{connector} (created by
+\code{\link[=create_omop_connector]{create_omop_connector()}} or \code{\link[=create_df_connector]{create_df_connector()}}) or a plain
+\strong{data frame} for backward compatibility.
 \subsection{Cascade order}{\tabular{lll}{
    Method \tab Label \tab Logic \cr
    M1 \tab \code{"original"} \tab Use pre-computed \code{daily_dose} column if numeric and > 0. \cr
@@ -62,4 +88,8 @@ df <- tibble::tibble(
   daily_dose               = NA_real_
 )
 calc_daily_dose_baseline(df)
+
+# Connector path (synthetic example via df_connector):
+con <- create_df_connector(df)
+calc_daily_dose_baseline(con)
 }
