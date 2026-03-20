@@ -75,7 +75,7 @@ safe_as_date <- function(x) {
 #'
 #' @param x Character vector of drug names.
 #' @return Character vector with standardised names.
-#' @noRd
+#' @export
 standardize_drug_name <- function(x) {
   s <- stringr::str_squish(stringr::str_to_lower(as.character(x)))
 

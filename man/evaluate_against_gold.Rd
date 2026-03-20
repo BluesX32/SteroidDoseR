@@ -4,18 +4,56 @@
 \alias{evaluate_against_gold}
 \title{Compare computed dose episodes against a gold standard}
 \usage{
-evaluate_against_gold(computed_df, gold_df, min_overlap_days = 1L)
+evaluate_against_gold(
+  computed_df,
+  gold_df,
+  min_overlap_days = 1L,
+  computed_id_col = "person_id",
+  computed_start_col = "episode_start",
+  computed_end_col = "episode_end",
+  computed_dose_col = "median_daily_dose",
+  gold_id_col = "patient_id",
+  gold_start_col = "episode_start",
+  gold_end_col = "episode_end",
+  gold_dose_col = "median_daily_dose"
+)
 }
 \arguments{
 \item{computed_df}{A data frame of computed episode summaries. Must contain
-\code{person_id}, \code{episode_start}, \code{episode_end}, and \code{median_daily_dose}.
+the columns named by \code{computed_id_col}, \code{computed_start_col},
+\code{computed_end_col}, and \code{computed_dose_col}.
 Typically the output of \code{\link[=build_episodes]{build_episodes()}} after \code{\link[=convert_pred_equiv]{convert_pred_equiv()}}.}
 
-\item{gold_df}{A data frame of gold-standard episodes. Must contain
-\code{patient_id}, \code{episode_start}, \code{episode_end}, and \code{median_daily_dose}.}
+\item{gold_df}{A data frame of gold-standard episodes. Must contain the
+columns named by \code{gold_id_col}, \code{gold_start_col}, \code{gold_end_col}, and
+\code{gold_dose_col}.}
 
 \item{min_overlap_days}{\code{integer(1)}. Minimum calendar-day overlap required
 to consider a computed episode as matching a gold episode. Default: \code{1L}.}
+
+\item{computed_id_col}{\code{character(1)}. Patient ID column in \code{computed_df}.
+Default: \code{"person_id"}.}
+
+\item{computed_start_col}{\code{character(1)}. Episode start column in
+\code{computed_df}. Default: \code{"episode_start"}.}
+
+\item{computed_end_col}{\code{character(1)}. Episode end column in \code{computed_df}.
+Default: \code{"episode_end"}.}
+
+\item{computed_dose_col}{\code{character(1)}. Dose column in \code{computed_df}.
+Default: \code{"median_daily_dose"}.}
+
+\item{gold_id_col}{\code{character(1)}. Patient ID column in \code{gold_df}.
+Default: \code{"patient_id"}.}
+
+\item{gold_start_col}{\code{character(1)}. Episode start column in \code{gold_df}.
+Default: \code{"episode_start"}.}
+
+\item{gold_end_col}{\code{character(1)}. Episode end column in \code{gold_df}.
+Default: \code{"episode_end"}.}
+
+\item{gold_dose_col}{\code{character(1)}. Dose column in \code{gold_df}.
+Default: \code{"median_daily_dose"}.}
 }
 \value{
 A named list with three elements:
