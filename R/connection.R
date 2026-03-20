@@ -327,21 +327,27 @@ create_omop_connection <- function(
   # per-query, preventing connection leaks.
   # ------------------------------------------------------------------
   if (dbms == "spark") {
-    # Apply Spark session options now (does not require a live connection)
     .configure_spark_connection(NULL, results_schema)
   }
+
+  # Open the connection now so it is available immediately and reused by
+  # every subsequent pipeline call without re-connecting each time.
+  conn <- DatabaseConnector::connect(connectionDetails)
 
   message(sprintf(
     "\u2713 omop_connector ready  |  dbms: %s  |  server: %s  |  cdm_schema: %s",
     dbms, server %||% "<unset>", cdm_schema
   ))
 
-  create_omop_connector(
+  con <- create_omop_connector(
     connectionDetails = connectionDetails,
     cdm_schema        = cdm_schema,
     vocab_schema      = vocabulary_schema,
     results_schema    = results_schema
   )
+  con$conn  <- conn
+  con$dbms  <- DatabaseConnector::dbms(conn)
+  con
 }
 
 #' Create connection from environment variables or a .env file

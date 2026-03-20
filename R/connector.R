@@ -275,6 +275,25 @@ print.df_connector <- function(x, ...) {
 # Connection lifecycle
 # ---------------------------------------------------------------------------
 
+#' Close a persistent omop_connector connection
+#'
+#' Disconnects the live database connection held in an `omop_connector` that
+#' was created by [create_omop_connection()] or [create_connection_from_env()].
+#' Safe to call even if the connector has no open connection (no-op).
+#'
+#' @param connector An `omop_connector` object.
+#'
+#' @return `connector` invisibly, with `$conn` set to `NULL`.
+#' @export
+disconnect_connector <- function(connector) {
+  if (inherits(connector, "omop_connector") && !is.null(connector$conn)) {
+    DatabaseConnector::disconnect(connector$conn)
+    connector$conn <- NULL
+    message("\u2713 Disconnected.")
+  }
+  invisible(connector)
+}
+
 #' Execute a function within a managed database connection
 #'
 #' For `omop_connector`: opens a connection, runs `fn(connector)`, then
@@ -297,14 +316,22 @@ with_connector <- function(connector, fn, ...) {
 #' @export
 with_connector.omop_connector <- function(connector, fn, ...) {
   .check_db_packages()
+
+  if (!is.null(connector$conn)) {
+    # Persistent connection already open (set by create_omop_connection).
+    # Use it directly and do NOT disconnect when done.
+    active <- connector
+    if (is.null(active$dbms))
+      active$dbms <- DatabaseConnector::dbms(active$conn)
+    return(fn(active, ...))
+  }
+
+  # Lazy path: open, run, close.
   conn <- DatabaseConnector::connect(connector$connectionDetails)
   on.exit(DatabaseConnector::disconnect(conn), add = TRUE)
-
-  # Attach the active connection + dialect to a local copy of the connector
-  active <- connector
-  active$conn <- conn
-  active$dbms <- DatabaseConnector::dbms(conn)
-
+  active       <- connector
+  active$conn  <- conn
+  active$dbms  <- DatabaseConnector::dbms(conn)
   fn(active, ...)
 }
 

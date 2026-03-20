@@ -56,11 +56,10 @@ auto-build).}
 Default \code{TRUE}.}
 }
 \value{
-A \code{DatabaseConnectorConnection} object (from
-\code{DatabaseConnector::connect()}) with the following attributes set:
-\code{dbms}, \code{cdm_schema}, \code{vocabulary_schema}, \code{results_schema}, \code{server},
-\code{database}. Pass this directly to \code{calc_daily_dose_baseline()},
-\code{run_pipeline()}, etc.
+An \code{omop_connector} object (\code{c("omop_connector", "steroid_connector")}).
+The database connection is lazy — opened per-query and closed immediately
+after. No manual \code{disconnect()} call is needed. Pass directly to
+\code{calc_daily_dose_baseline()}, \code{run_pipeline()}, etc.
 }
 \description{
 Supports multiple database platforms with appropriate configurations:

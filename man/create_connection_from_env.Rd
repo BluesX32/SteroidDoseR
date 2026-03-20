@@ -10,7 +10,7 @@ create_connection_from_env(env_file = ".env")
 \item{env_file}{Path to the \code{.env} file. Default \code{".env"} (project root).}
 }
 \value{
-A \code{DatabaseConnectorConnection} object (see \code{\link[=create_omop_connection]{create_omop_connection()}}).
+An \code{omop_connector} object (see \code{\link[=create_omop_connection]{create_omop_connection()}}).
 }
 \description{
 Loads settings from a \code{.env} file (if it exists) then calls
