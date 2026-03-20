@@ -43,15 +43,15 @@ episodes[, c("person_id", "drug_name_std", "episode_start",
 
 ## Connection
 
-```{r omop-connection}
-# Create connectionDetails using DatabaseConnector (OHDSI standard approach).
-# Adjust dbms / server / pathToDriver for your site.
+```{r omop-connection, eval=FALSE}
+# Not executed automatically — requires a live database and JDBC drivers.
+# Set JDBC_DRIVER_PATH before running this chunk manually.
+#
 # SQL Server with Windows integrated security (JHU example):
 connectionDetails <- DatabaseConnector::createConnectionDetails(
   dbms         = "sql server",
   server       = "esmpmdbpr4.esm.johnshopkins.edu",
-  pathToDriver = Sys.getenv("JDBC_DRIVER_PATH",
-                             unset = "C:/Users/mxiong5/Documents/Myositis")
+  pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
 )
 
 omop_con <- create_omop_connector(
