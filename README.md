@@ -139,164 +139,153 @@ To use the NLP method instead, change `method = "baseline"` to `method = "nlp"`.
 
 ## Input data and connector setup
 
-### Two connector types
+### Three ways to supply data
 
-| Connector | Constructor function | When to use |
-|-----------|----------------------|-------------|
-| Data-frame connector | `create_df_connector(drug_exp)` | Testing, synthetic data, no database available |
-| OMOP CDM connector | `create_omop_connector(cd, cdm_schema = "...")` | Live OMOP CDM database |
+| Approach | Entry point | When to use |
+|---|---|---|
+| Data-frame connector | `create_df_connector(df)` | Tests, synthetic data, no database |
+| Direct connection | `create_omop_connection(...)` | Live database; all settings via env vars |
+| Env-file connection | `create_connection_from_env(".env")` | Simplest setup; all config in a `.env` file |
 
-The two connector types share the same interface. Functions like `run_pipeline()`, `calc_daily_dose_baseline()`, and `calc_daily_dose_nlp()` accept either type without modification.
+All three share the same interface. `run_pipeline()`, `calc_daily_dose_baseline()`,
+and `calc_daily_dose_nlp()` accept any of them without modification.
+
+---
 
 ### Connecting to a live OMOP CDM database
 
-Before using the OMOP CDM connector you need:
+Before connecting you need:
 
 - `DatabaseConnector` and `SqlRender` installed (see Installation above).
-- Read-only access to a schema containing the `drug_exposure` and `concept` tables.
-- JDBC driver files for your database platform (see JDBC drivers below).
+- Read-only access to a schema containing `drug_exposure` and `concept` tables.
+- JDBC driver files for your platform (see JDBC drivers below).
 
 #### JDBC drivers
 
-`DatabaseConnector` relies on JDBC drivers that must be downloaded separately.
-Download them once and point `pathToDriver` to the folder:
+Download drivers once to a local folder:
 
 ```r
-DatabaseConnector::downloadJdbcDrivers("sql server",  pathToDriver = "~/jdbc")
-DatabaseConnector::downloadJdbcDrivers("postgresql",  pathToDriver = "~/jdbc")
+DatabaseConnector::downloadJdbcDrivers("sql server", pathToDriver = "~/jdbc")
+DatabaseConnector::downloadJdbcDrivers("postgresql", pathToDriver = "~/jdbc")
 # other options: "redshift", "oracle", "bigquery", "spark", "snowflake"
 ```
 
-Set `JDBC_DRIVER_PATH` in your `~/.Renviron` so you never hard-code the path in scripts:
+Add `JDBC_DRIVER_PATH` to `~/.Renviron` (`usethis::edit_r_environ()`) so the path
+is never hard-coded in scripts:
 
 ```
-# ~/.Renviron  (open with usethis::edit_r_environ())
 JDBC_DRIVER_PATH=/path/to/jdbc
 ```
 
-Then reference it in every script:
-
-```r
-pathToDriver <- Sys.getenv("JDBC_DRIVER_PATH")
-if (!nzchar(pathToDriver) || !dir.exists(pathToDriver))
-  stop("JDBC_DRIVER_PATH is not set or does not exist.")
-```
-
 `DatabaseConnector` also honours `DATABASECONNECTOR_JAR_FOLDER`, which lets you
-omit `pathToDriver` from `createConnectionDetails()` entirely.
-See the [DatabaseConnector documentation](https://ohdsi.github.io/DatabaseConnector/)
-for the full platform list and driver installation details.
+omit `pathToDriver` entirely. See the
+[DatabaseConnector documentation](https://ohdsi.github.io/DatabaseConnector/)
+for the full platform list.
 
-#### Creating a connection
+---
 
-`SteroidDoseR` follows the OHDSI-standard pattern used by packages such as
-`CohortGenerator` and `FeatureExtraction`: you create a `connectionDetails`
-object with `DatabaseConnector::createConnectionDetails()` and pass it to the
-package. `SqlRender` then translates the package's SQL templates to the target
-dialect automatically, so the same package code works across all supported
-platforms without any site-specific changes.
+### `create_omop_connection()` — recommended for most sites
 
-Store credentials in environment variables or a secrets manager, not in scripts.
+`create_omop_connection()` handles platform-specific JDBC URL construction,
+Windows AD / NTLM authentication, and Databricks Arrow configuration. All
+parameters fall back to environment variables when omitted, so a `.env` file
+(or `~/.Renviron`) is the only site-specific configuration needed.
 
-**SQL Server — Windows integrated security** (typical at academic medical centres)
+**Simplest: load everything from a `.env` file**
 
 ```r
 library(SteroidDoseR)
-library(DatabaseConnector)
 
-cd <- DatabaseConnector::createConnectionDetails(
-  dbms   = "sql server",
-  server = "myserver.institution.edu"
-  # No user/password needed — uses the current Windows login
-)
+# .env contains SQL_SERVER, SQL_DATABASE, SQL_CDM_SCHEMA, JDBC_DRIVER_PATH, …
+con      <- create_connection_from_env(".env")
+episodes <- run_pipeline(con, method = "baseline")
+DatabaseConnector::disconnect(con)
+```
 
-con <- create_omop_connector(
-  connectionDetails = cd,
-  cdm_schema        = "MyDatabase.dbo"   # database.schema (three-part notation)
+**SQL Server — Windows AD / integrated security**
+
+```r
+con <- create_omop_connection(
+  dbms             = "sql server",
+  server           = "myserver.institution.edu",
+  database         = "OMOP_CDM",
+  use_windows_auth = TRUE,           # uses current Windows login; no password needed
+  cdm_schema       = "MyDatabase.dbo"
 )
 ```
 
 **SQL Server — username / password**
 
 ```r
-cd <- DatabaseConnector::createConnectionDetails(
-  dbms     = "sql server",
-  server   = "myserver.institution.edu",
-  user     = Sys.getenv("DB_USER"),
-  password = Sys.getenv("DB_PASSWORD")
+con <- create_omop_connection(
+  dbms       = "sql server",
+  server     = Sys.getenv("SQL_SERVER"),
+  database   = Sys.getenv("SQL_DATABASE"),
+  user       = Sys.getenv("SQL_USER"),
+  password   = Sys.getenv("SQL_PASSWORD"),
+  cdm_schema = Sys.getenv("SQL_CDM_SCHEMA")
 )
 ```
 
 **PostgreSQL**
 
 ```r
-cd <- DatabaseConnector::createConnectionDetails(
-  dbms     = "postgresql",
-  server   = "localhost/omop_cdm",   # host/database
-  user     = Sys.getenv("DB_USER"),
-  password = Sys.getenv("DB_PASSWORD"),
-  port     = 5432
-)
-
-con <- create_omop_connector(cd, cdm_schema = "cdm_54")
-```
-
-**Amazon Redshift**
-
-```r
-cd <- DatabaseConnector::createConnectionDetails(
-  dbms     = "redshift",
-  server   = "myworkgroup.123456789.us-east-1.redshift-serverless.amazonaws.com/omop",
-  user     = Sys.getenv("RS_USER"),
-  password = Sys.getenv("RS_PASSWORD"),
-  port     = 5439
-)
-```
-
-**Google BigQuery** (e.g., *All of Us* Researcher Workbench)
-
-```r
-cd <- DatabaseConnector::createConnectionDetails(
-  dbms             = "bigquery",
-  connectionString = Sys.getenv("BIGQUERY_CONNECTION_STRING"),
-  user             = "",
-  password         = ""
+con <- create_omop_connection(
+  dbms       = "postgresql",
+  server     = "localhost",
+  database   = "omop_cdm",
+  user       = Sys.getenv("DB_USER"),
+  password   = Sys.getenv("DB_PASSWORD"),
+  port       = 5432,
+  cdm_schema = "cdm_54"
 )
 ```
 
 **Databricks / Spark**
 
 ```r
-cd <- DatabaseConnector::createConnectionDetails(
-  dbms             = "spark",
-  connectionString = paste0(
-    "jdbc:databricks://workspace.cloud.databricks.com:443;",
-    "httpPath=/sql/1.0/warehouses/<warehouse-id>;",
-    "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
-  )
+con <- create_omop_connection(
+  dbms          = "databricks",
+  server        = "workspace.cloud.databricks.com",
+  database      = "default",
+  user          = "token",
+  password      = Sys.getenv("DATABRICKS_TOKEN"),
+  cdm_schema    = "omop.data",
+  extraSettings = "httpPath=/sql/1.0/warehouses/<warehouse-id>"
 )
 ```
 
-#### Wrapping in a connector
-
-Once you have a `connectionDetails` object, wrap it for use with `SteroidDoseR`:
+**Amazon Redshift / BigQuery**
 
 ```r
-con <- create_omop_connector(
-  connectionDetails = cd,
-  cdm_schema        = "omop_cdm",   # schema containing drug_exposure, concept, …
-  vocab_schema      = "vocab",      # optional: separate vocabulary schema
-  cdm_version       = "5.4"
+# Redshift
+con <- create_omop_connection(
+  dbms       = "redshift",
+  server     = "myworkgroup.123456789.us-east-1.redshift-serverless.amazonaws.com",
+  database   = "omop",
+  user       = Sys.getenv("RS_USER"),
+  password   = Sys.getenv("RS_PASSWORD"),
+  port       = 5439,
+  cdm_schema = "cdm"
 )
-print(con)
-#> <omop_connector>
-#>   CDM schema    : omop_cdm
-#>   CDM version   : 5.4
-#>   Connected     : no
 ```
 
-The package opens a database connection only when running a query and closes it
-immediately after — there is no persistent connection to manage.
+#### Environment variables recognised by `create_omop_connection()`
+
+| Variable | Description |
+|---|---|
+| `SQL_SERVER` / `DB_SERVER` | Server address |
+| `SQL_DATABASE` / `DB_DATABASE` | Database name |
+| `SQL_DBMS` / `DB_TYPE` / `OMOP_ENV` | DBMS type (default: `"sql server"`) |
+| `SQL_USER` / `DB_USER` | Username |
+| `SQL_PASSWORD` / `DB_PASSWORD` | Password |
+| `SQL_JDBC_PATH` / `JDBC_DRIVER_PATH` | JDBC driver folder |
+| `SQL_CDM_SCHEMA` / `CDM_SCHEMA` | CDM schema (default: `"dbo"`) |
+| `SQL_CDM_DATABASE` | Prepended as `database.schema` |
+| `SQL_RESULTS_SCHEMA` / `RESULTS_SCHEMA` | Results schema |
+| `USE_WINDOWS_AUTH` | `"true"` to enable Windows AD auth |
+| `DB_EXTRA_SETTINGS` | Extra JDBC settings (e.g. Databricks `HTTPPath`) |
+| `ENABLE_ARROW` | `"TRUE"` to enable Databricks Arrow optimisation |
 
 ### Detecting available fields
 
