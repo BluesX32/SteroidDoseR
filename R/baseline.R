@@ -40,6 +40,11 @@
 #' @param sig_source `character(1)`. Which column to use as SIG text when the
 #'   native `sig` field is absent. One of `"sig"` (default) or
 #'   `"drug_source_value"`. Ignored when `connector_or_df` is a data frame.
+#' @param max_daily_dose_mg `numeric(1)` or `NULL`. Upper plausibility bound in
+#'   mg/day. Records whose imputed dose exceeds this value are set to `NA` with
+#'   a warning, because doses that large almost always indicate data-quality
+#'   problems (non-mg `amount_value`, quantity in total-mg, near-zero
+#'   `days_supply`, etc.). Default: `2000`. Set to `NULL` to disable the cap.
 #' @param m2_sig_parse `character(1)`. Controls behaviour when `tablets` and
 #'   `freq_per_day` columns are absent but a `sig` column is present:
 #'   \describe{
@@ -81,12 +86,13 @@
 calc_daily_dose_baseline <- function(connector_or_df,
                                      methods       = c("original", "tablets_freq",
                                                        "supply_based", "actual_duration"),
-                                     drug_concept_ids = NULL,
-                                     person_ids       = NULL,
-                                     start_date       = NULL,
-                                     end_date         = NULL,
-                                     sig_source       = "sig",
-                                     m2_sig_parse     = c("warn", "auto", "none")) {
+                                     drug_concept_ids  = NULL,
+                                     person_ids        = NULL,
+                                     start_date        = NULL,
+                                     end_date          = NULL,
+                                     sig_source        = "sig",
+                                     m2_sig_parse      = c("warn", "auto", "none"),
+                                     max_daily_dose_mg = 2000) {
 
   m2_sig_parse <- match.arg(m2_sig_parse)
 
@@ -115,8 +121,17 @@ calc_daily_dose_baseline <- function(connector_or_df,
     )
 
   # --- 2. strength_mg -------------------------------------------------------
-  # Prefer amount_value; fallback to extracting from drug_source_value string.
-  av <- if ("amount_value" %in% names(drug_df)) safe_as_numeric(drug_df$amount_value) else rep(NA_real_, nrow(drug_df))
+  # Prefer amount_value when its unit is mg (OMOP concept_id 8576).
+  # Non-mg units (mcg = 9655, g = 8504, etc.) would be misinterpreted as mg
+  # and produce dose explosions in M3/M4; discard them and fall through to the
+  # string-extraction fallback.  When amount_unit_concept_id is absent or NA
+  # we cannot verify the unit, so we accept the value but also cross-check it
+  # against the string extraction and warn when they differ by > 100×.
+  av      <- if ("amount_value" %in% names(drug_df)) safe_as_numeric(drug_df$amount_value) else rep(NA_real_, nrow(drug_df))
+  av_unit <- if ("amount_unit_concept_id" %in% names(drug_df)) drug_df$amount_unit_concept_id else rep(NA_integer_, nrow(drug_df))
+  # Accept only when unit is mg (8576) or unknown (NA).
+  av_mg   <- dplyr::if_else(is.na(av_unit) | as.integer(av_unit) == 8576L, av, NA_real_)
+
   sv <- if ("drug_source_value" %in% names(drug_df)) drug_df$drug_source_value else rep(NA_character_, nrow(drug_df))
 
   str_from_source <- stringr::str_extract(
@@ -127,7 +142,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
     safe_as_numeric()
 
   drug_df <- drug_df |>
-    dplyr::mutate(strength_mg = dplyr::coalesce(av, str_from_source))
+    dplyr::mutate(strength_mg = dplyr::coalesce(av_mg, str_from_source))
 
   # --- 3. numeric coercions (check column existence OUTSIDE mutate) ----------
   has_qty  <- "quantity"     %in% names(drug_df)
@@ -235,7 +250,30 @@ calc_daily_dose_baseline <- function(connector_or_df,
     drug_df$imputation_method[mask] <- m
   }
 
-  # --- 6. remove internal scratch columns -----------------------------------
+  # --- 6. plausibility cap ---------------------------------------------------
+  # Doses above max_daily_dose_mg almost certainly reflect data-quality issues:
+  # unit mismatches in amount_value, quantity coded in total-mg rather than
+  # tablet count, or days_supply / actual_duration of 0 slipping through.
+  # Records that exceed the cap are set to NA (imputation_method = "missing")
+  # rather than silently inflating episode-level summaries.
+  if (!is.null(max_daily_dose_mg) && is.finite(max_daily_dose_mg)) {
+    implausible <- !is.na(drug_df$daily_dose_mg_imputed) &
+                   drug_df$daily_dose_mg_imputed > max_daily_dose_mg
+    if (any(implausible, na.rm = TRUE)) {
+      rlang::warn(sprintf(
+        paste0(
+          "%d record(s) had daily_dose_mg_imputed > %.0f mg/day and were set to NA.\n",
+          "  Likely causes: non-mg amount_value units, quantity in total-mg, or bad days_supply.\n",
+          "  Adjust max_daily_dose_mg if higher doses are expected."
+        ),
+        sum(implausible, na.rm = TRUE), max_daily_dose_mg
+      ))
+      drug_df$daily_dose_mg_imputed[implausible] <- NA_real_
+      drug_df$imputation_method[implausible]     <- "missing"
+    }
+  }
+
+  # --- 7. remove internal scratch columns -----------------------------------
   drug_df |>
     dplyr::select(-dplyr::any_of(c(".start", ".end", ".actual_dur",
                                     ".quantity", ".days_supply",

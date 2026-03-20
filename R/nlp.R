@@ -311,6 +311,51 @@ calc_daily_dose_nlp <- function(connector_or_df,
   # --- parse SIG strings --------------------------------------------------------
   result <- parse_sig(drug_df, sig_col = sig_col)
 
+  # --- strength fallback: use amount_value / drug concept name when the SIG
+  #     string has no mg (e.g. "take 1 tablet daily" without a dose amount).
+  #     This is the common case in live OMOP data where the drug strength is
+  #     stored in drug_strength.amount_value and drug_concept_name, not in sig.
+  has_no_mg <- result$parsed_status == "no_parse" & is.na(result$mg_per_admin)
+  if (any(has_no_mg, na.rm = TRUE)) {
+    av <- if ("amount_value" %in% names(result))
+      safe_as_numeric(result$amount_value)
+    else
+      rep(NA_real_, nrow(result))
+
+    name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(result))
+    sn <- if (length(name_col) > 0L) {
+      stringr::str_match(
+        stringr::str_to_lower(as.character(result[[name_col[[1L]]]])),
+        "(\\d+(?:\\.\\d+)?)\\s*mg"
+      )[, 2L] |> safe_as_numeric()
+    } else {
+      rep(NA_real_, nrow(result))
+    }
+
+    strength_fb <- dplyr::coalesce(av, sn)
+
+    result <- result |>
+      dplyr::mutate(
+        needs_mg_fb   = has_no_mg & !is.na(strength_fb),
+        mg_per_admin  = dplyr::if_else(
+          .data$needs_mg_fb,
+          strength_fb * dplyr::coalesce(.data$tablets, 1),
+          .data$mg_per_admin
+        ),
+        daily_dose_mg = dplyr::if_else(
+          .data$needs_mg_fb & !is.na(.data$freq_per_day),
+          .data$mg_per_admin * .data$freq_per_day,
+          .data$daily_dose_mg
+        ),
+        parsed_status = dplyr::if_else(
+          .data$needs_mg_fb & !is.na(.data$daily_dose_mg),
+          "ok",
+          .data$parsed_status
+        )
+      ) |>
+      dplyr::select(-"needs_mg_fb")
+  }
+
   # --- optional baseline fallback -----------------------------------------------
   if (baseline_fallback && "daily_dose_mg_orig" %in% names(drug_df)) {
     result <- result |>
