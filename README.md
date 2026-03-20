@@ -336,8 +336,10 @@ Recommended additional columns:
 
 | Method | Columns that improve imputation |
 |--------|---------------------------------|
-| Baseline | `amount_value`, `quantity`, `days_supply`, `drug_exposure_end_date`, `drug_source_value` |
-| NLP | `sig`, `drug_concept_name` |
+| Baseline | `amount_value`, `quantity`, `days_supply`, `drug_source_value` |
+| NLP | `sig`, `drug_concept_name`, `route_concept_name` |
+
+`drug_exposure_end_date` is **optional** for Baseline. When absent, today's date is substituted for all rows so that M4 (actual-duration estimate) can still run. A one-time warning is issued. M1–M3 are unaffected.
 
 See `?drug_df_contract` for the full column specification.
 
@@ -391,6 +393,28 @@ episodes <- build_episodes(
   dose_col = "pred_equiv_mg",
   gap_days = 30L
 )
+```
+
+**3c. Baseline M2 — using SIG text for tablet and frequency data.**
+
+M2 (`tablets_freq`) requires `tablets` and `freq_per_day` columns, which are only produced by the NLP SIG parser. Three strategies are available via `m2_sig_parse`:
+
+| Value | Behaviour |
+|---|---|
+| `"warn"` (default) | Warn once and skip M2 when columns are absent |
+| `"auto"` | Call `parse_sig()` inside `calc_daily_dose_baseline()` automatically |
+| `"nlp_first"` | Run the full NLP pass *before* baseline in `run_pipeline()`; NLP parse columns are kept in the output |
+| `"none"` | Silently skip M2 |
+
+```r
+# Warn and skip M2 (default — safe, no surprises)
+episodes <- run_pipeline(con, method = "baseline")
+
+# Auto-parse sig inside baseline (lightweight)
+episodes <- run_pipeline(con, method = "baseline", m2_sig_parse = "auto")
+
+# Full NLP first, then baseline (NLP parse columns retained in exposure output)
+episodes <- run_pipeline(con, method = "baseline", m2_sig_parse = "nlp_first")
 ```
 
 **4. (Optional) Evaluate against a gold standard.**
@@ -447,13 +471,17 @@ eval_result$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")]
 
 | Function | Connector-first? | Description |
 |----------|-----------------|-------------|
-| `create_omop_connector()` | — | Build a live OMOP CDM connector. |
+| `create_omop_connection()` | — | High-level connection builder; reads all config from env vars. |
+| `create_connection_from_env()` | — | Load a `.env` file and open a connection in one call. |
+| `create_omop_connector()` | — | Low-level connector from a pre-built `connectionDetails` object. |
 | `create_df_connector()` | — | Wrap a data frame as a connector (tests, synthetic data). |
+| `disconnect_connector()` | — | Close the database connection held by a connector. |
 | `detect_capabilities()` | — | Probe which `drug_exposure` fields are available at your site. |
-| `run_pipeline()` | Yes | One-call fetch → impute → convert → episodes. |
-| `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). |
+| `run_pipeline()` | Yes | One-call fetch → impute → convert → episodes. `m2_sig_parse` controls M2 SIG-parse strategy. |
+| `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). `m2_sig_parse` controls M2 SIG-parse strategy. |
 | `calc_daily_dose_nlp()` | Yes | Rule-based SIG text parsing. |
 | `parse_sig()` | No | Vectorized SIG string parser (low-level). |
+| `parse_sig_one()` | No | Parse a single SIG string; returns all parsed components. |
 | `convert_pred_equiv()` | No | Multiply daily doses by prednisone-equivalency factors. |
 | `build_episodes()` | Yes | Gap-bridge prescriptions into continuous episodes. |
 | `evaluate_against_gold()` | No | Coverage, MAE, MBE, RMSE vs. manual gold standard. |

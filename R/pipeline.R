@@ -54,6 +54,17 @@ NULL
 #'   selected dose method.
 #' @param method `character(1)`. Imputation method: `"baseline"` (default) or
 #'   `"nlp"`.
+#' @param m2_sig_parse `character(1)`. Only used when `method = "baseline"`.
+#'   Controls how M2 (`tablets_freq`) is handled when `tablets` and
+#'   `freq_per_day` are absent:
+#'   \describe{
+#'     \item{`"warn"` (default)}{Warn and skip M2.}
+#'     \item{`"auto"`}{Parse the `sig` column inside [calc_daily_dose_baseline()].}
+#'     \item{`"nlp_first"`}{Run [parse_sig()] on the full data frame *before*
+#'       calling [calc_daily_dose_baseline()], so NLP-derived `tablets` and
+#'       `freq_per_day` are available for M2.}
+#'     \item{`"none"`}{Silently skip M2.}
+#'   }
 #' @param drug_concept_ids,person_ids,start_date,end_date,sig_source
 #'   Passed to the dose function. Ignored when `connector_or_df` is a data
 #'   frame.
@@ -85,6 +96,7 @@ NULL
 #'              "episode_end", "median_daily_dose")]
 run_pipeline <- function(connector_or_df,
                          method           = c("baseline", "nlp"),
+                         m2_sig_parse     = c("warn", "auto", "nlp_first", "none"),
                          drug_concept_ids = NULL,
                          person_ids       = NULL,
                          start_date       = NULL,
@@ -95,6 +107,7 @@ run_pipeline <- function(connector_or_df,
                          return_level     = c("episode", "exposure")) {
 
   method       <- match.arg(method)
+  m2_sig_parse <- match.arg(m2_sig_parse)
   return_level <- match.arg(return_level)
 
   # ------------------------------------------------------------------
@@ -107,7 +120,18 @@ run_pipeline <- function(connector_or_df,
   # Step 2: Daily dose imputation
   # ------------------------------------------------------------------
   if (method == "baseline") {
-    drug_df  <- calc_daily_dose_baseline(drug_df)
+    if (m2_sig_parse == "nlp_first") {
+      # Option C: run NLP SIG parser first so tablets/freq_per_day are
+      # available for M2, then hand the enriched data frame to baseline.
+      sig_col <- if ("sig" %in% names(drug_df)) "sig" else sig_source
+      if (sig_col %in% names(drug_df)) {
+        message("m2_sig_parse = 'nlp_first': running parse_sig() before baseline.")
+        drug_df <- parse_sig(drug_df, sig_col = sig_col)
+      }
+      drug_df  <- calc_daily_dose_baseline(drug_df, m2_sig_parse = "none")
+    } else {
+      drug_df  <- calc_daily_dose_baseline(drug_df, m2_sig_parse = m2_sig_parse)
+    }
     dose_col <- "daily_dose_mg_imputed"
   } else {
     drug_df  <- calc_daily_dose_nlp(drug_df, sig_source = sig_source)

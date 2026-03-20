@@ -24,6 +24,7 @@ SELECT
     de.days_supply,
     de.sig,
     de.route_concept_id,
+    rc.concept_name AS route_concept_name,
     de.dose_unit_source_value,
     de.drug_source_value,
     c.concept_name  AS drug_concept_name,
@@ -34,6 +35,9 @@ FROM @cdm_schema.drug_exposure de
 
 LEFT JOIN @cdm_schema.concept c
     ON de.drug_concept_id = c.concept_id
+
+LEFT JOIN @cdm_schema.concept rc
+    ON de.route_concept_id = rc.concept_id
 
 -- drug_strength is aggregated per drug_concept_id before joining so that
 -- combination drugs (multiple ingredient rows) do not produce duplicate

@@ -40,6 +40,16 @@
 #' @param sig_source `character(1)`. Which column to use as SIG text when the
 #'   native `sig` field is absent. One of `"sig"` (default) or
 #'   `"drug_source_value"`. Ignored when `connector_or_df` is a data frame.
+#' @param m2_sig_parse `character(1)`. Controls behaviour when `tablets` and
+#'   `freq_per_day` columns are absent but a `sig` column is present:
+#'   \describe{
+#'     \item{`"warn"` (default)}{Emit a warning and skip M2.}
+#'     \item{`"auto"`}{Call [parse_sig()] internally to populate `tablets` and
+#'       `freq_per_day` before running M2.}
+#'     \item{`"none"`}{Silently skip M2 without any message.}
+#'   }
+#'   Ignored when `tablets` and `freq_per_day` are already present, or when
+#'   `"tablets_freq"` is not in `methods`.
 #'
 #' @return The input data frame (or the fetched data frame) with three
 #' additional columns:
@@ -75,18 +85,27 @@ calc_daily_dose_baseline <- function(connector_or_df,
                                      person_ids       = NULL,
                                      start_date       = NULL,
                                      end_date         = NULL,
-                                     sig_source       = "sig") {
+                                     sig_source       = "sig",
+                                     m2_sig_parse     = c("warn", "auto", "none")) {
+
+  m2_sig_parse <- match.arg(m2_sig_parse)
 
   drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
                                start_date, end_date, sig_source)
 
-  assert_required_cols(
-    drug_df,
-    c("drug_exposure_start_date", "drug_exposure_end_date"),
-    "drug_df"
-  )
+  assert_required_cols(drug_df, "drug_exposure_start_date", "drug_df")
 
   # --- 1. actual duration (always compute; needed for M4) -------------------
+  # drug_exposure_end_date is optional. When absent, substitute today so that
+  # M4 can still produce a finite (though rough) duration estimate.
+  if (!"drug_exposure_end_date" %in% names(drug_df)) {
+    rlang::warn(paste0(
+      "`drug_exposure_end_date` is absent; substituting today's date (",
+      Sys.Date(), ") for M4 duration calculation."
+    ))
+    drug_df[["drug_exposure_end_date"]] <- Sys.Date()
+  }
+
   drug_df <- drug_df |>
     dplyr::mutate(
       .start = safe_as_date(.data$drug_exposure_start_date),
@@ -115,6 +134,31 @@ calc_daily_dose_baseline <- function(connector_or_df,
   has_sup  <- "days_supply"  %in% names(drug_df)
   has_tab  <- "tablets"      %in% names(drug_df)
   has_freq <- "freq_per_day" %in% names(drug_df)
+
+  # --- M2 SIG-parse guard -------------------------------------------------------
+  # When tablets/freq_per_day are absent but a sig column is present, apply
+  # the strategy chosen by m2_sig_parse before the imputation block runs.
+  if ("tablets_freq" %in% methods && !has_tab && !has_freq) {
+    sig_present <- "sig" %in% names(drug_df) &&
+      any(!is.na(drug_df[["sig"]]) & nzchar(trimws(drug_df[["sig"]])))
+
+    if (sig_present) {
+      if (m2_sig_parse == "auto") {
+        message("M2: `tablets`/`freq_per_day` absent — parsing `sig` column automatically.")
+        drug_df  <- parse_sig(drug_df, sig_col = "sig")
+        has_tab  <- "tablets"      %in% names(drug_df)
+        has_freq <- "freq_per_day" %in% names(drug_df)
+      } else if (m2_sig_parse == "warn") {
+        rlang::warn(paste0(
+          "M2 (tablets_freq) skipped: `tablets` and `freq_per_day` are absent ",
+          "but a `sig` column is present.\n",
+          "  Use m2_sig_parse = 'auto' to parse it automatically, or\n",
+          "  use m2_sig_parse = 'nlp_first' in run_pipeline() to run NLP before baseline."
+        ))
+      }
+      # "none" → silent skip; no action needed
+    }
+  }
   # Accept both daily_dose (package convention) and daily_dose_mg (Version2).
   dd_col <- intersect(c("daily_dose", "daily_dose_mg"), names(drug_df))
   dd_col <- if (length(dd_col) > 0L) dd_col[[1L]] else NA_character_

@@ -22,20 +22,33 @@ from combination drugs. `amount_value` and `amount_unit_concept_id` are now
 selected. `baseline.R` already uses `coalesce(amount_value, str_from_source)`,
 so the string fallback remains active when `drug_strength` has no match.
 
-### DECISION-5 M2 requires NLP output that baseline never produces ⏳ AWAITING DECISION
+### DECISION-5 M2 requires NLP output that baseline never produces ✅ FIXED
 M2 needs `tablets` and `freq_per_day`, which only exist after `parse_sig()`.
-`calc_daily_dose_baseline()` never calls the NLP parser, so M2 is effectively
+`calc_daily_dose_baseline()` never calls the NLP parser, so M2 was effectively
 dead in the standard workflow.
 
-Options:
-- A: Call `parse_sig()` internally when `sig` is present and columns are absent
-- B: Keep separate; warn user when `sig` present but `tablets`/`freq_per_day` missing
-- C: In `run_pipeline(method="baseline")`, run NLP first to populate those columns
+Fixed: added `m2_sig_parse` parameter to both `calc_daily_dose_baseline()` and
+`run_pipeline()`. All three options are available:
+- `"warn"` (default) — warn and skip M2 when columns are absent
+- `"auto"` — call `parse_sig()` internally when `sig` is present (Option A)
+- `"nlp_first"` in `run_pipeline()` — run full NLP pass before baseline (Option C)
+- `"none"` — silently skip M2
 
-### DECISION-6 `drug_exposure_end_date` is a hard requirement ⏳ AWAITING DECISION
-`assert_required_cols` errors if `drug_exposure_end_date` is absent entirely,
-even though only M4 needs it. Many minimal data frames won't have it.
+### DECISION-6 `drug_exposure_end_date` is a hard requirement ✅ FIXED (Option A)
+`assert_required_cols` errored if `drug_exposure_end_date` was absent, even
+though only M4 needs it. Many minimal data frames don't have it.
 
-Options:
-- A: Make optional — treat as all-NA if absent, only M4 affected
-- B: Keep as required — acceptable if all target sites populate the column
+Fixed: column is now optional. When absent, `Sys.Date()` is substituted for
+every row and a one-time warning is issued. M1–M3 are unaffected; M4 produces
+a rough upper-bound duration estimate (today − start_date + 1).
+
+## connector / SQL
+
+### route_concept_name missing from SQL extraction ✅ FIXED
+`extract_drug_exposure.sql` fetched `route_concept_id` but not
+`route_concept_name`. `calc_daily_dose_nlp()` checks for `route_concept_name`
+and `route_source_value`; neither was present, so the oral-route filter was
+silently skipped with a warning.
+
+Fixed: added `LEFT JOIN concept rc ON de.route_concept_id = rc.concept_id`
+and selected `rc.concept_name AS route_concept_name`.

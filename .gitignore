@@ -41,3 +41,6 @@ jdbc_drivers/
 .env
 .Renviron
 Renviron
+
+
+test_package.R
