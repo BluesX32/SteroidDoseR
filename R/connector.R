@@ -528,31 +528,9 @@ fetch_drug_exposure <- function(connector,
     return(tibble::as_tibble(connector_or_df))
   }
 
-  # Live DatabaseConnector connection from create_omop_connection()
-  # Schema metadata is stored as attributes by that function.
-  if (inherits(connector_or_df, "DatabaseConnectorConnection")) {
-    con <- connector_or_df
-    active <- structure(
-      list(
-        conn       = con,
-        cdm_schema = attr(con, "cdm_schema") %||% "",
-        dbms       = attr(con, "dbms")       %||%
-          tryCatch(DatabaseConnector::dbms(con), error = function(e) "unknown")
-      ),
-      class = c("omop_connector", "steroid_connector")
-    )
-    return(fetch_drug_exposure(active,
-                               drug_concept_ids = drug_concept_ids,
-                               person_ids       = person_ids,
-                               start_date       = start_date,
-                               end_date         = end_date,
-                               sig_source       = sig_source))
-  }
-
   if (!inherits(connector_or_df, "steroid_connector")) {
     rlang::abort(paste0(
-      "First argument must be a data.frame, df_connector, omop_connector, ",
-      "or a DatabaseConnectorConnection from create_omop_connection(). ",
+      "First argument must be a data.frame, df_connector, or omop_connector. ",
       "Got: ", class(connector_or_df)[[1L]]
     ))
   }

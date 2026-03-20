@@ -76,11 +76,10 @@ NULL
 #' @param use_env Logical. Load unset parameters from environment variables.
 #'   Default `TRUE`.
 #'
-#' @return A `DatabaseConnectorConnection` object (from
-#'   `DatabaseConnector::connect()`) with the following attributes set:
-#'   `dbms`, `cdm_schema`, `vocabulary_schema`, `results_schema`, `server`,
-#'   `database`. Pass this directly to `calc_daily_dose_baseline()`,
-#'   `run_pipeline()`, etc.
+#' @return An `omop_connector` object (`c("omop_connector", "steroid_connector")`).
+#'   The database connection is lazy — opened per-query and closed immediately
+#'   after. No manual `disconnect()` call is needed. Pass directly to
+#'   `calc_daily_dose_baseline()`, `run_pipeline()`, etc.
 #'
 #' @export
 #'
@@ -304,24 +303,31 @@ create_omop_connection <- function(
   }
 
   # ------------------------------------------------------------------
-  # Open connection and attach metadata
+  # Return an omop_connector (lazy connection managed by with_connector)
+  #
+  # We intentionally do NOT open a live connection here and store metadata
+  # as attributes on the DatabaseConnectorConnection object.  S4 connection
+  # objects from DatabaseConnector 7.x do not reliably round-trip arbitrary
+  # attributes set via attr<-, which corrupts cdm_schema when SqlRender
+  # reads it back.  The omop_connector S3 list stores all metadata in plain
+  # named slots, and with_connector() opens/closes the JDBC connection
+  # per-query, preventing connection leaks.
   # ------------------------------------------------------------------
-  message(sprintf("Connecting to %s database...", dbms))
-  connection <- DatabaseConnector::connect(connectionDetails)
-
-  attr(connection, "dbms")               <- dbms
-  attr(connection, "cdm_schema")         <- cdm_schema
-  attr(connection, "vocabulary_schema")  <- vocabulary_schema
-  attr(connection, "results_schema")     <- results_schema
-  attr(connection, "server")             <- server
-  attr(connection, "database")           <- database
-
   if (dbms == "spark") {
-    .configure_spark_connection(connection, results_schema)
+    # Apply Spark session options now (does not require a live connection)
+    .configure_spark_connection(NULL, results_schema)
   }
 
-  message("\u2713 Connection successful")
-  connection
+  message(sprintf(
+    "\u2713 omop_connector built: dbms=%s  cdm_schema=%s", dbms, cdm_schema
+  ))
+
+  create_omop_connector(
+    connectionDetails = connectionDetails,
+    cdm_schema        = cdm_schema,
+    vocab_schema      = vocabulary_schema,
+    results_schema    = results_schema
+  )
 }
 
 #' Create connection from environment variables or a .env file
@@ -332,7 +338,7 @@ create_omop_connection <- function(
 #'
 #' @param env_file Path to the `.env` file. Default `".env"` (project root).
 #'
-#' @return A `DatabaseConnectorConnection` object (see [create_omop_connection()]).
+#' @return An `omop_connector` object (see [create_omop_connection()]).
 #' @export
 create_connection_from_env <- function(env_file = ".env") {
   if (file.exists(env_file)) {
@@ -470,7 +476,8 @@ create_connection_from_env <- function(env_file = ".env") {
   )
 }
 
-#' Apply Spark/Databricks session options after connecting
+#' Apply Spark/Databricks session options (connection argument is unused but kept
+#' for API consistency; options are session-level and don't require a live conn).
 #' @noRd
 .configure_spark_connection <- function(connection, results_schema) {
   options(dbplyr.compute.defaults = list(temporary = FALSE))
