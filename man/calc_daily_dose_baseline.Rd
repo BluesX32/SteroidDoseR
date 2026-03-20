@@ -7,7 +7,6 @@
 calc_daily_dose_baseline(
   connector_or_df,
   methods = c("original", "tablets_freq", "supply_based", "actual_duration"),
-  strict_legacy = TRUE,
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -25,10 +24,6 @@ supplied the legacy in-memory path is used unchanged.}
 Defaults to \code{c("original", "tablets_freq", "supply_based", "actual_duration")}.
 Each method is only tried if the required columns are present; missing
 columns cause a graceful skip (not an error).}
-
-\item{strict_legacy}{\code{logical(1)}. When \code{TRUE} (default), the method
-priority and column selection match the Baseline.qmd implementation
-exactly. Set to \code{FALSE} to allow experimental extensions.}
 
 \item{drug_concept_ids}{Integer vector of OMOP \code{drug_concept_id} values to
 restrict the extraction. Ignored when \code{connector_or_df} is a data frame.}
@@ -58,9 +53,9 @@ additional columns:
 }
 \description{
 Applies a four-step cascading imputation strategy to estimate the daily
-dose in mg for each drug-exposure record. When \code{strict_legacy = TRUE}
-(default) the cascade order and tie-breaking rules exactly match the
-\code{Baseline.qmd} analysis that was used in the Phase 1 paper.
+dose in mg for each drug-exposure record. The cascade order and
+tie-breaking rules match the \code{Baseline.qmd} analysis used in the
+Phase 1 paper.
 }
 \details{
 The first argument accepts either a \strong{connector} (created by
@@ -68,7 +63,7 @@ The first argument accepts either a \strong{connector} (created by
 \strong{data frame} for backward compatibility.
 \subsection{Cascade order}{\tabular{lll}{
    Method \tab Label \tab Logic \cr
-   M1 \tab \code{"original"} \tab Use pre-computed \code{daily_dose} column if numeric and > 0. \cr
+   M1 \tab \code{"original"} \tab Use \code{daily_dose} or \code{daily_dose_mg} column if numeric and > 0. \cr
    M2 \tab \code{"tablets_freq"} \tab \verb{tablets × freq_per_day × strength_mg}. Requires \code{sig} column to be parsed first, or pre-parsed \code{tablets} and \code{freq_per_day} columns. \cr
    M3 \tab \code{"supply_based"} \tab \verb{(quantity × strength_mg) / days_supply}. \cr
    M4 \tab \code{"actual_duration"} \tab \verb{(quantity × strength_mg) / actual_duration_days}, where \code{actual_duration_days} is derived from the date columns. \cr

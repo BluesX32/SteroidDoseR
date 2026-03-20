@@ -18,7 +18,9 @@ create_omop_connector(
 \code{DatabaseConnector::createConnectionDetails()}.}
 
 \item{cdm_schema}{\code{character(1)}. Schema containing the OMOP CDM tables
-(\code{drug_exposure}, \code{concept}, etc.).}
+(\code{drug_exposure}, \code{concept}, etc.). On SQL Server this is typically
+\code{"database_name.dbo"}; on PostgreSQL / Redshift just \code{"cdm"} or
+\code{"omop_cdm"}.}
 
 \item{vocab_schema}{\code{character(1)} or \code{NULL}. Schema containing OMOP
 vocabulary tables. Defaults to \code{cdm_schema}.}
@@ -26,10 +28,12 @@ vocabulary tables. Defaults to \code{cdm_schema}.}
 \item{results_schema}{\code{character(1)} or \code{NULL}. Schema for cohort/results
 tables. Only needed if cohort-based filtering is used.}
 
-\item{temp_schema}{\code{character(1)} or \code{NULL}. Schema for temp tables.
-Required on some DBMS (e.g. SQL Server) for \verb{#temp} table creation.}
+\item{temp_schema}{\code{character(1)} or \code{NULL}. Schema for temp-table
+emulation. Required on some DBMS (e.g. SQL Server) when \code{SqlRender}
+temp-table emulation is active.}
 
-\item{cdm_version}{\code{character(1)}. OMOP CDM version. Default \code{"5.4"}.}
+\item{cdm_version}{\code{character(1)}. OMOP CDM version string. Default
+\code{"5.4"}.}
 }
 \value{
 An object of class \code{c("omop_connector", "steroid_connector")}.
@@ -41,20 +45,100 @@ is opened lazily — only when a query is executed — and closed immediately
 after via \code{\link[=with_connector]{with_connector()}}.
 }
 \details{
-Requires the \strong{DatabaseConnector} and \strong{SqlRender} packages (both on
-CRAN). Connection details are created with
-\code{DatabaseConnector::createConnectionDetails()}.
-}
-\examples{
-\dontrun{
+Connection details are created with
+\code{DatabaseConnector::createConnectionDetails()}, which supports every major
+DBMS used in OHDSI networks (SQL Server, PostgreSQL, Oracle, Redshift,
+BigQuery, Spark/Databricks, Snowflake, and more). SteroidDoseR uses
+\code{SqlRender} to translate its SQL templates to the target dialect, so the
+package works across all supported platforms without any site-specific
+configuration.
+\subsection{Supported platforms}{
+
+Pass any \code{connectionDetails} object created by
+\code{DatabaseConnector::createConnectionDetails()}. Common examples:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Recommended: store the driver folder path in an environment variable so you
+# never hard-code a path.  Add to ~/.Renviron (usethis::edit_r_environ()):
+#   JDBC_DRIVER_PATH=/path/to/jdbc
+#
+# Then retrieve and validate at the top of any script:
+jdbc_path <- Sys.getenv("JDBC_DRIVER_PATH")
+if (!nzchar(jdbc_path) || !dir.exists(jdbc_path))
+  stop("JDBC_DRIVER_PATH is not set or does not exist. ",
+       "Download drivers with DatabaseConnector::downloadJdbcDrivers() ",
+       "and set JDBC_DRIVER_PATH in ~/.Renviron.")
+
+# SQL Server — Windows integrated security (typical at academic medical centres)
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms         = "sql server",
+  server       = "myserver.institution.edu",
+  pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
+)
+
+# SQL Server — username / password
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms         = "sql server",
+  server       = "myserver.institution.edu",
+  user         = "omop_user",
+  password     = keyring::key_get("omop_db"),
+  pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
+)
+
+# PostgreSQL
 cd <- DatabaseConnector::createConnectionDetails(
   dbms     = "postgresql",
-  server   = "myserver/omop",
+  server   = "localhost/omop_cdm",
   user     = "omop_user",
   password = Sys.getenv("DB_PASSWORD"),
   port     = 5432
 )
-con <- create_omop_connector(cd, cdm_schema = "cdm_531")
+
+# Google BigQuery (e.g., All of Us)
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms               = "bigquery",
+  connectionString   = "jdbc:bigquery://...",
+  user               = "",
+  password           = "",
+  pathToDriver       = Sys.getenv("JDBC_DRIVER_PATH")
+)
+
+# Databricks / Spark
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms             = "spark",
+  connectionString = paste0(
+    "jdbc:databricks://workspace.cloud.databricks.com:443;",
+    "httpPath=/sql/1.0/warehouses/<id>;",
+    "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
+  ),
+  pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
+)
+
+# Amazon Redshift
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms     = "redshift",
+  server   = "myworkgroup.123456789.us-east-1.redshift-serverless.amazonaws.com/omop",
+  user     = Sys.getenv("RS_USER"),
+  password = Sys.getenv("RS_PASSWORD"),
+  port     = 5439
+)
+}\if{html}{\out{</div>}}
+
+See \code{?DatabaseConnector::createConnectionDetails} and
+\url{https://ohdsi.github.io/DatabaseConnector/} for the full list of supported
+platforms and driver installation instructions.
+}
+}
+\examples{
+\dontrun{
+# PostgreSQL (minimal example)
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms     = "postgresql",
+  server   = "localhost/omop",
+  user     = "omop_user",
+  password = Sys.getenv("DB_PASSWORD"),
+  port     = 5432
+)
+con <- create_omop_connector(cd, cdm_schema = "cdm_54")
 doses <- calc_daily_dose_baseline(con, start_date = "2020-01-01")
 }
 }
