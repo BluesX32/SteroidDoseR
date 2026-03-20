@@ -1,3 +1,33 @@
+# SteroidDoseR 0.1.1
+
+## Bug fixes
+
+* **Baseline — unit-safe `amount_value`** (`calc_daily_dose_baseline()`):
+  `drug_strength.amount_value` is now only accepted as mg when
+  `amount_unit_concept_id` is the OMOP mg concept (8576) or absent/unknown.
+  Records whose unit concept indicates mcg, g, or any other non-mg unit are
+  discarded and the string-extraction fallback (`drug_source_value`) is used
+  instead. Previously these records were treated as mg, producing doses in the
+  billions of mg/day. (#BUG-6)
+
+* **Baseline — dose plausibility cap** (`calc_daily_dose_baseline()`):
+  New `max_daily_dose_mg` parameter (default 2000 mg/day). Records whose
+  imputed dose exceeds this value are set to NA and labeled `"missing"`, with
+  a warning that counts the affected rows and names the likely data-quality
+  causes. Pass `NULL` to disable. (#BUG-6)
+
+* **NLP — strength fallback from `amount_value` / drug name**
+  (`calc_daily_dose_nlp()`):
+  When a SIG string contains administration instructions but no mg amount (the
+  common OMOP pattern, e.g. "take 1 tablet daily"), the parser now uses
+  `amount_value` (from the `drug_strength` JOIN) as the per-tablet strength,
+  falling back to mg extracted from `drug_concept_name` or
+  `drug_source_value`. Records where `freq_per_day` was successfully parsed
+  are promoted from `"no_parse"` to `"ok"`. Previously all such records
+  returned `daily_dose_mg = NA`. (#BUG-5)
+
+---
+
 # SteroidDoseR 0.1.0
 
 ## New features

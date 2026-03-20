@@ -83,7 +83,9 @@ message("\n=== Baseline method ===")
 
 baseline_df <- calc_daily_dose_baseline(
   drug_df,
-  m2_sig_parse = "auto"   # parse sig automatically to enable M2
+  m2_sig_parse     = "auto",  # parse sig automatically to enable M2
+  max_daily_dose_mg = 2000    # cap implausible doses (unit mismatch, bad days_supply, etc.)
+                              # raise or set NULL if you expect high-dose pulse therapy > 2000 mg
 )
 
 cat("\nImputation method breakdown:\n")
@@ -124,11 +126,25 @@ print(table(nlp_df$parsed_status, useNA = "ifany"))
 cat("\nDose summary (parsed_status == 'ok'):\n")
 print(summary(nlp_df$daily_dose_mg[nlp_df$parsed_status == "ok"]))
 
-cat("\nTop 20 unparsed SIG strings:\n")
+cat("\nTop 20 unparsed SIG strings (no_parse — freq missing or no mg anywhere):\n")
 nlp_df |>
   filter(parsed_status == "no_parse") |>
   count(sig, sort = TRUE) |>
   head(20) |>
+  print()
+
+cat("\nno_parse breakdown — which field was missing?\n")
+nlp_df |>
+  filter(parsed_status == "no_parse") |>
+  mutate(
+    missing_field = case_when(
+      is.na(freq_per_day) & is.na(mg_per_admin) ~ "freq + mg",
+      is.na(freq_per_day)                        ~ "freq only",
+      is.na(mg_per_admin)                        ~ "mg only",
+      TRUE                                       ~ "other"
+    )
+  ) |>
+  count(missing_field, sort = TRUE) |>
   print()
 
 cat("\nSample taper SIGs:\n")

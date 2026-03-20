@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteroidDoseR — Package Manual</title>
+<style>
+  /* ── reset & base ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #1a1a2e;
+    background: #f8f9fb;
+  }
+
+  /* ── layout ───────────────────────────────────────────────── */
+  .wrapper { display: flex; min-height: 100vh; }
+  nav {
+    width: 260px;
+    flex-shrink: 0;
+    background: #16213e;
+    color: #c8d6e5;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 0 0 2rem 0;
+  }
+  main {
+    flex: 1;
+    padding: 2.5rem 3rem;
+    max-width: 920px;
+  }
+
+  /* ── nav ─────────────────────────────────────────────────── */
+  .nav-header {
+    background: #0f3460;
+    padding: 1.4rem 1.2rem 1rem;
+    border-bottom: 1px solid #1a3a5c;
+  }
+  .nav-header h2 { font-size: 1rem; font-weight: 700; color: #e0ecff; letter-spacing: 0.02em; }
+  .nav-header p  { font-size: 0.72rem; color: #7ea8c4; margin-top: 0.2rem; }
+  nav ul { list-style: none; padding: 0.5rem 0; }
+  nav li a {
+    display: block;
+    padding: 0.38rem 1.2rem;
+    color: #a8bfd4;
+    text-decoration: none;
+    font-size: 0.82rem;
+    border-left: 3px solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  nav li a:hover, nav li a.active {
+    background: #1a3a5c;
+    color: #e0ecff;
+    border-left-color: #4a9eca;
+  }
+  nav .nav-section-label {
+    padding: 0.9rem 1.2rem 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #4a7a9b;
+    text-transform: uppercase;
+  }
+
+  /* ── headings ─────────────────────────────────────────────── */
+  h1 { font-size: 2rem;   color: #0f3460; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; color: #0f3460; margin: 2.8rem 0 0.7rem; border-bottom: 2px solid #d0ddf0; padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; color: #16527a; margin: 1.8rem 0 0.4rem; }
+  h4 { font-size: 0.92rem; color: #2d6a94; margin: 1.2rem 0 0.25rem; font-weight: 600; }
+
+  /* ── prose ────────────────────────────────────────────────── */
+  p  { margin: 0.55rem 0; }
+  ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  a  { color: #1a6bbd; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── code ─────────────────────────────────────────────────── */
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.84em;
+    background: #e8edf5;
+    border: 1px solid #c8d4e8;
+    border-radius: 3px;
+    padding: 0.1em 0.38em;
+  }
+  pre {
+    background: #1e2a3a;
+    color: #cdd9e5;
+    border-radius: 6px;
+    padding: 1.1rem 1.3rem;
+    overflow-x: auto;
+    margin: 0.9rem 0 1.1rem;
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .kw  { color: #79b8ff; }   /* keywords */
+  .fn  { color: #b392f0; }   /* function names */
+  .st  { color: #9ecbff; }   /* strings */
+  .cm  { color: #6a737d; font-style: italic; } /* comments */
+  .nm  { color: #f8c555; }   /* numbers */
+  .op  { color: #e1e4e8; }   /* operators */
+
+  /* ── callouts ─────────────────────────────────────────────── */
+  .callout {
+    border-left: 4px solid;
+    border-radius: 0 6px 6px 0;
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  .callout-note    { background: #e8f4fd; border-color: #2196f3; }
+  .callout-warn    { background: #fff8e1; border-color: #ff9800; }
+  .callout-tip     { background: #e8f5e9; border-color: #4caf50; }
+  .callout-danger  { background: #fdecea; border-color: #f44336; }
+  .callout strong  { display: block; margin-bottom: 0.2rem; }
+
+  /* ── tables ───────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+  }
+  th {
+    background: #1a4a7a;
+    color: #e0ecff;
+    padding: 0.55rem 0.9rem;
+    text-align: left;
+    font-weight: 600;
+  }
+  td { padding: 0.45rem 0.9rem; border-bottom: 1px solid #d8e4f0; }
+  tr:hover td { background: #eef3fb; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── badges ───────────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    font-size: 0.72em;
+    font-weight: 700;
+    padding: 0.15em 0.55em;
+    border-radius: 3px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge-new   { background: #4caf50; color: #fff; }
+  .badge-fix   { background: #ff9800; color: #fff; }
+  .badge-param { background: #2196f3; color: #fff; }
+
+  /* ── hero ─────────────────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, #0f3460 0%, #16527a 100%);
+    border-radius: 8px;
+    padding: 2rem 2.2rem;
+    margin-bottom: 2rem;
+    color: #e0ecff;
+  }
+  .hero h1 { color: #fff; margin-bottom: 0.3rem; }
+  .hero p  { color: #a8cce0; margin: 0; font-size: 1rem; }
+  .hero .meta { margin-top: 0.8rem; font-size: 0.82rem; color: #7ea8c4; }
+  .hero .meta span { margin-right: 1.2rem; }
+
+  /* ── function sig ─────────────────────────────────────────── */
+  .fn-sig {
+    background: #f0f4fb;
+    border: 1px solid #c8d4e8;
+    border-left: 4px solid #0f3460;
+    border-radius: 0 6px 6px 0;
+    padding: 0.8rem 1.1rem;
+    font-family: monospace;
+    font-size: 0.88rem;
+    margin: 0.6rem 0 1rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* ── param table ──────────────────────────────────────────── */
+  .param-table td:first-child { font-family: monospace; color: #0f3460; font-size: 0.85rem; white-space: nowrap; }
+  .param-table td:nth-child(2) { color: #555; font-size: 0.82rem; white-space: nowrap; }
+
+  /* ── toc back to top ──────────────────────────────────────── */
+  .back-top { display: block; text-align: right; font-size: 0.78rem; color: #7ea8c4; margin-top: 2rem; }
+
+  /* ── responsive ───────────────────────────────────────────── */
+  @media (max-width: 800px) {
+    nav { display: none; }
+    main { padding: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<!-- ═══════════════════════════ SIDEBAR ════════════════════════════ -->
+<nav>
+  <div class="nav-header">
+    <h2>SteroidDoseR</h2>
+    <p>Package Manual v0.1.1</p>
+  </div>
+  <div class="nav-section-label">Getting started</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#installation">Installation</a></li>
+    <li><a href="#quickstart">Quick start</a></li>
+  </ul>
+  <div class="nav-section-label">Data &amp; connectors</div>
+  <ul>
+    <li><a href="#connectors">Connector types</a></li>
+    <li><a href="#live-db">Live OMOP database</a></li>
+    <li><a href="#capabilities">Capability detection</a></li>
+    <li><a href="#columns">Column contract</a></li>
+  </ul>
+  <div class="nav-section-label">Methods</div>
+  <ul>
+    <li><a href="#baseline">Baseline method</a></li>
+    <li><a href="#baseline-params">Baseline parameters</a></li>
+    <li><a href="#nlp">NLP method</a></li>
+    <li><a href="#nlp-params">NLP parameters</a></li>
+    <li><a href="#sig-parsing">SIG parsing details</a></li>
+  </ul>
+  <div class="nav-section-label">Pipeline</div>
+  <ul>
+    <li><a href="#equiv">Prednisone equivalency</a></li>
+    <li><a href="#episodes">Episode building</a></li>
+    <li><a href="#run-pipeline">run_pipeline()</a></li>
+    <li><a href="#evaluation">Evaluation</a></li>
+  </ul>
+  <div class="nav-section-label">Reference</div>
+  <ul>
+    <li><a href="#fn-ref">Function reference</a></li>
+    <li><a href="#dq">Data quality issues</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#changelog">Changelog</a></li>
+  </ul>
+</nav>
+
+<!-- ═══════════════════════════ MAIN ════════════════════════════════ -->
+<main>
+
+<!-- ── HERO ─────────────────────────────────────────────────────── -->
+<div class="hero">
+  <h1>SteroidDoseR</h1>
+  <p>Automated corticosteroid dose extraction from OMOP CDM electronic health records</p>
+  <div class="meta">
+    <span>Version 0.1.1</span>
+    <span>R package</span>
+    <span>JHU Myositis Research Group · OHDSI AgentDose 2025</span>
+  </div>
+</div>
+
+<!-- ── OVERVIEW ─────────────────────────────────────────────────── -->
+<h2 id="overview">Overview</h2>
+
+<p>
+  <strong>SteroidDoseR</strong> computes prednisone-equivalent daily doses from
+  OMOP CDM <code>drug_exposure</code> data and aggregates individual prescription
+  records into continuous treatment episodes. It was built to support rheumatologic
+  cohort studies — particularly myositis — where accurate steroid burden
+  quantification is a primary outcome variable.
+</p>
+
+<h3>Two complementary imputation methods</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Method</th><th>Approach</th><th>Best when</th></tr>
+  <tr>
+    <td><strong>Baseline</strong></td>
+    <td>Four-step cascade (M1–M4) using structured OMOP fields: pre-existing dose value, tablets×freq×strength, quantity/days_supply, quantity/actual_duration</td>
+    <td>OMOP fields are well-populated; SIG text is absent or unreliable</td>
+  </tr>
+  <tr>
+    <td><strong>NLP</strong></td>
+    <td>Rule-based regex parsing of free-text SIG prescription instructions; falls back to <code>amount_value</code> when SIG omits mg</td>
+    <td>SIG column is populated with structured abbreviations (QD, BID, TID, etc.)</td>
+  </tr>
+</table>
+</div>
+
+<h3>Pipeline stages</h3>
+<ol>
+  <li><strong>Fetch</strong> — query <code>drug_exposure</code>, <code>concept</code>, and <code>drug_strength</code> via a connector</li>
+  <li><strong>Impute</strong> — compute <code>daily_dose_mg</code> via Baseline or NLP</li>
+  <li><strong>Convert</strong> — multiply by prednisone-equivalency factor → <code>pred_equiv_mg</code></li>
+  <li><strong>Aggregate</strong> — gap-bridge consecutive prescriptions into episodes</li>
+  <li><strong>(Optional) Evaluate</strong> — compare episodes to a manually reviewed gold standard</li>
+</ol>
+
+<!-- ── INSTALLATION ──────────────────────────────────────────────── -->
+<h2 id="installation">Installation</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>R ≥ 4.1</li>
+  <li>Core dependencies (auto-installed): <code>dplyr</code>, <code>purrr</code>, <code>stringr</code>, <code>tibble</code>, <code>rlang</code>, <code>readr</code></li>
+  <li><em>For live OMOP CDM connectivity only</em>: <code>DatabaseConnector</code> (≥ 3.0.0) and <code>SqlRender</code> (≥ 1.11.0) — not auto-installed</li>
+  <li><em>Windows source build</em>: Rtools matching your R version</li>
+</ul>
+
+<h3>Install from local source</h3>
+<pre><code><span class="cm"># Using devtools</span>
+<span class="fn">devtools</span>::<span class="fn">install_local</span>(<span class="st">"path/to/SteroidDoseR/"</span>)
+
+<span class="cm"># Using pak (handles some Windows path issues better)</span>
+<span class="fn">pak</span>::<span class="fn">local_install</span>(<span class="st">"path/to/SteroidDoseR/"</span>)
+</code></pre>
+
+<h3>Database connectivity packages (optional)</h3>
+<pre><code><span class="fn">install.packages</span>(<span class="st">"DatabaseConnector"</span>)
+<span class="fn">install.packages</span>(<span class="st">"SqlRender"</span>)
+</code></pre>
+
+<h3>Verify installation</h3>
+<pre><code><span class="fn">library</span>(SteroidDoseR)
+<span class="fn">sessionInfo</span>()  <span class="cm"># should list SteroidDoseR under "other attached packages"</span>
+</code></pre>
+
+<!-- ── QUICK START ───────────────────────────────────────────────── -->
+<h2 id="quickstart">Quick start</h2>
+
+<p>Run the full pipeline against the bundled synthetic data — no database required:</p>
+
+<pre><code><span class="fn">library</span>(SteroidDoseR)
+
+<span class="cm"># Load bundled 29-record synthetic dataset</span>
+extdata  <span class="op">&lt;-</span> <span class="fn">system.file</span>(<span class="st">"extdata"</span>, package <span class="op">=</span> <span class="st">"SteroidDoseR"</span>)
+drug_exp <span class="op">&lt;-</span> readr::<span class="fn">read_csv</span>(<span class="fn">file.path</span>(extdata, <span class="st">"synthetic_drug_exposure.csv"</span>),
+                             show_col_types <span class="op">=</span> <span class="kw">FALSE</span>)
+
+<span class="cm"># Wrap in a connector</span>
+con <span class="op">&lt;-</span> <span class="fn">create_df_connector</span>(drug_exp)
+
+<span class="cm"># One-call pipeline: fetch → impute → convert → episodes</span>
+episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"baseline"</span>)
+
+episodes[, c(<span class="st">"person_id"</span>, <span class="st">"drug_name_std"</span>, <span class="st">"episode_start"</span>,
+             <span class="st">"episode_end"</span>, <span class="st">"n_days"</span>, <span class="st">"median_daily_dose"</span>)]
+</code></pre>
+
+<p>Switch to the NLP method with one argument change:</p>
+<pre><code>episodes_nlp <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"nlp"</span>)
+</code></pre>
+
+<!-- ── CONNECTORS ────────────────────────────────────────────────── -->
+<h2 id="connectors">Connector types</h2>
+
+<p>
+  All SteroidDoseR functions accept a <strong>connector object</strong> as their
+  first argument. All connectors implement the same interface, so the same calling
+  code works unchanged against a live database or an in-memory data frame.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Constructor</th><th>Use case</th></tr>
+  <tr><td><code>create_df_connector(df)</code></td><td>In-memory data frame, synthetic data, unit tests</td></tr>
+  <tr><td><code>create_omop_connection(...)</code></td><td>Live OMOP CDM — high-level builder, reads config from env vars</td></tr>
+  <tr><td><code>create_connection_from_env(".env")</code></td><td>Load a <code>.env</code> file and open a connection in one call</td></tr>
+  <tr><td><code>create_omop_connector(connectionDetails, ...)</code></td><td>Low-level — supply a pre-built <code>connectionDetails</code> object</td></tr>
+</table>
+</div>
+
+<p>Functions also accept a <strong>plain data frame</strong> directly (legacy path). When a data frame is supplied, connector-path arguments (<code>drug_concept_ids</code>, <code>person_ids</code>, <code>start_date</code>, <code>end_date</code>, <code>sig_source</code>) are silently ignored.</p>
+
+<!-- ── LIVE DB ────────────────────────────────────────────────────── -->
+<h2 id="live-db">Live OMOP database</h2>
+
+<h3>JDBC driver setup</h3>
+<pre><code><span class="cm"># Download drivers once to a local folder</span>
+DatabaseConnector::<span class="fn">downloadJdbcDrivers</span>(<span class="st">"sql server"</span>, pathToDriver <span class="op">=</span> <span class="st">"~/jdbc"</span>)
+
+<span class="cm"># Add to ~/.Renviron so the path is never hard-coded</span>
+<span class="cm"># JDBC_DRIVER_PATH=/path/to/jdbc</span>
+</code></pre>
+
+<h3>SQL Server (Windows integrated auth)</h3>
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
+  dbms             <span class="op">=</span> <span class="st">"sql server"</span>,
+  server           <span class="op">=</span> <span class="st">"myserver.institution.edu"</span>,
+  database         <span class="op">=</span> <span class="st">"OMOP_CDM"</span>,
+  use_windows_auth <span class="op">=</span> <span class="kw">TRUE</span>,
+  cdm_schema       <span class="op">=</span> <span class="st">"MyDatabase.dbo"</span>
+)
+</code></pre>
+
+<h3>Using a .env file</h3>
+<pre><code>con      <span class="op">&lt;-</span> <span class="fn">create_connection_from_env</span>(<span class="st">".env"</span>)
+episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"baseline"</span>)
+<span class="fn">disconnect_connector</span>(con)
+</code></pre>
+
+<h3>Environment variables recognised</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Variable</th><th>Description</th></tr>
+  <tr><td><code>SQL_SERVER</code> / <code>DB_SERVER</code></td><td>Server hostname</td></tr>
+  <tr><td><code>SQL_DATABASE</code> / <code>DB_DATABASE</code></td><td>Database name</td></tr>
+  <tr><td><code>SQL_DBMS</code> / <code>DB_TYPE</code></td><td>DBMS type (default: <code>"sql server"</code>)</td></tr>
+  <tr><td><code>SQL_USER</code> / <code>DB_USER</code></td><td>Username</td></tr>
+  <tr><td><code>SQL_PASSWORD</code> / <code>DB_PASSWORD</code></td><td>Password</td></tr>
+  <tr><td><code>SQL_JDBC_PATH</code> / <code>JDBC_DRIVER_PATH</code></td><td>JDBC driver folder</td></tr>
+  <tr><td><code>SQL_CDM_SCHEMA</code> / <code>CDM_SCHEMA</code></td><td>CDM schema (default: <code>"dbo"</code>)</td></tr>
+  <tr><td><code>USE_WINDOWS_AUTH</code></td><td><code>"true"</code> to enable Windows AD auth</td></tr>
+</table>
+</div>
+
+<!-- ── CAPABILITIES ──────────────────────────────────────────────── -->
+<h2 id="capabilities">Capability detection</h2>
+
+<p>
+  OMOP implementations vary by site. <code>detect_capabilities()</code> probes
+  which <code>drug_exposure</code> columns are populated and stores the results
+  on the connector so imputation functions can adapt automatically.
+</p>
+
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">detect_capabilities</span>(con)
+con<span class="op">$</span>capabilities
+<span class="cm">#&gt; $has_sig         TRUE</span>
+<span class="cm">#&gt; $has_days_supply TRUE</span>
+<span class="cm">#&gt; $has_quantity    TRUE</span>
+<span class="cm">#&gt; $has_route       TRUE</span>
+</code></pre>
+
+<!-- ── COLUMN CONTRACT ────────────────────────────────────────────── -->
+<h2 id="columns">Column contract</h2>
+
+<p>When supplying a plain data frame, columns must follow the OMOP <code>drug_exposure</code> schema. See <code>?drug_df_contract</code> for the full specification.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Type</th><th>Required by</th><th>Notes</th></tr>
+  <tr><td><code>person_id</code></td><td>int/chr</td><td>All</td><td>Patient identifier</td></tr>
+  <tr><td><code>drug_exposure_start_date</code></td><td>Date</td><td>All</td><td>Exposure start</td></tr>
+  <tr><td><code>drug_exposure_end_date</code></td><td>Date</td><td>Baseline M4, episodes</td><td>Optional — today substituted if absent (with warning)</td></tr>
+  <tr><td><code>drug_concept_name</code></td><td>chr</td><td>NLP, Baseline fallback</td><td>Drug name for standardisation and mg extraction</td></tr>
+  <tr><td><code>drug_source_value</code></td><td>chr</td><td>Baseline strength fallback</td><td>Source drug string; mg extracted via regex</td></tr>
+  <tr><td><code>amount_value</code></td><td>num</td><td>Baseline M2–M4, NLP fallback</td><td>Per-tablet strength from <code>drug_strength</code> JOIN</td></tr>
+  <tr><td><code>amount_unit_concept_id</code></td><td>int</td><td>Baseline unit check</td><td>OMOP concept for unit; 8576 = mg. Non-mg units are discarded.</td></tr>
+  <tr><td><code>quantity</code></td><td>num</td><td>Baseline M3, M4</td><td>Tablets dispensed</td></tr>
+  <tr><td><code>days_supply</code></td><td>num</td><td>Baseline M3</td><td>Days of supply</td></tr>
+  <tr><td><code>sig</code></td><td>chr</td><td>NLP</td><td>Free-text SIG instruction</td></tr>
+  <tr><td><code>route_concept_name</code></td><td>chr</td><td>NLP oral filter</td><td>Route standardised name; used to restrict to oral records</td></tr>
+  <tr><td><code>route_concept_id</code></td><td>int</td><td>NLP oral filter fallback</td><td>Used when <code>route_concept_name</code> is absent</td></tr>
+</table>
+</div>
+
+<!-- ── BASELINE ──────────────────────────────────────────────────── -->
+<h2 id="baseline">Baseline method</h2>
+
+<p>
+  The Baseline method estimates daily dose from structured OMOP fields using a
+  four-step cascade. It tries each method in order and uses the first one that
+  produces a non-NA result.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Step</th><th>Label</th><th>Formula</th><th>Requires</th></tr>
+  <tr>
+    <td><strong>M1</strong></td><td><code>original</code></td>
+    <td>Pre-existing <code>daily_dose</code> or <code>daily_dose_mg</code> if numeric and &gt; 0</td>
+    <td><code>daily_dose</code> or <code>daily_dose_mg</code></td>
+  </tr>
+  <tr>
+    <td><strong>M2</strong></td><td><code>tablets_freq</code></td>
+    <td><code>tablets × freq_per_day × strength_mg</code></td>
+    <td><code>tablets</code>, <code>freq_per_day</code>, <code>strength_mg</code> — requires SIG parsing first</td>
+  </tr>
+  <tr>
+    <td><strong>M3</strong></td><td><code>supply_based</code></td>
+    <td><code>(quantity × strength_mg) / days_supply</code></td>
+    <td><code>quantity</code>, <code>days_supply</code> &gt; 0, <code>strength_mg</code></td>
+  </tr>
+  <tr>
+    <td><strong>M4</strong></td><td><code>actual_duration</code></td>
+    <td><code>(quantity × strength_mg) / actual_duration_days</code></td>
+    <td><code>quantity</code>, date columns, <code>strength_mg</code></td>
+  </tr>
+</table>
+</div>
+
+<h3>strength_mg derivation</h3>
+<p>
+  <code>strength_mg</code> is computed from <code>amount_value</code> (joined
+  from <code>drug_strength</code>) with a critical unit check:
+</p>
+
+<div class="callout callout-warn">
+  <strong>Unit safety (v0.1.1)</strong>
+  <code>amount_value</code> is only accepted when <code>amount_unit_concept_id</code>
+  is the OMOP mg concept (8576) or is absent/unknown. If the unit is mcg (9655),
+  g (8504), or any other non-mg concept, the value is discarded and the function
+  falls back to extracting mg from the <code>drug_source_value</code> string
+  (e.g. "PREDNISONE 5 MG TABLET"). Before v0.1.1, non-mg <code>amount_value</code>
+  records were treated as mg, producing doses in the billions.
+</div>
+
+<h3>Plausibility cap</h3>
+<div class="callout callout-note">
+  <strong>max_daily_dose_mg (v0.1.1)</strong>
+  Records whose imputed dose exceeds <code>max_daily_dose_mg</code> (default 2000)
+  are set to NA with a warning that counts affected rows and names the likely
+  data-quality cause. Pass <code>NULL</code> to disable. Raise the threshold if
+  your cohort includes high-dose pulse therapy (&gt; 2000 mg/day IV
+  methylprednisolone).
+</div>
+
+<h3>Example</h3>
+<pre><code>baseline_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_baseline</span>(
+  drug_df,
+  m2_sig_parse      <span class="op">=</span> <span class="st">"auto"</span>,  <span class="cm"># parse SIG to enable M2</span>
+  max_daily_dose_mg <span class="op">=</span> <span class="nm">2000</span>    <span class="cm"># cap implausible doses</span>
+)
+
+<span class="cm"># Imputation coverage</span>
+<span class="fn">table</span>(baseline_df<span class="op">$</span>imputation_method, useNA <span class="op">=</span> <span class="st">"ifany"</span>)
+</code></pre>
+
+<!-- ── BASELINE PARAMS ───────────────────────────────────────────── -->
+<h2 id="baseline-params">Baseline parameters</h2>
+
+<div class="fn-sig">calc_daily_dose_baseline(
+  connector_or_df,
+  methods           = c("original", "tablets_freq", "supply_based", "actual_duration"),
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig",
+  m2_sig_parse      = c("warn", "auto", "none"),
+  max_daily_dose_mg = 2000
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>A connector or data frame. Required.</td></tr>
+  <tr><td>methods</td><td>all four</td><td>Ordered cascade. Remove methods you want to skip, e.g. <code>c("original","supply_based")</code>.</td></tr>
+  <tr><td>drug_concept_ids</td><td>NULL</td><td>Filter to specific OMOP drug concept IDs. Connector path only.</td></tr>
+  <tr><td>person_ids</td><td>NULL</td><td>Filter to specific patients. Connector path only.</td></tr>
+  <tr><td>start_date</td><td>NULL</td><td>Lower date bound on <code>drug_exposure_start_date</code>. Connector path only.</td></tr>
+  <tr><td>end_date</td><td>NULL</td><td>Upper date bound. Connector path only.</td></tr>
+  <tr><td>sig_source</td><td>"sig"</td><td>Column to use as SIG text when the native <code>sig</code> field is absent. Connector path only.</td></tr>
+  <tr><td>m2_sig_parse</td><td>"warn"</td><td>
+    How to handle M2 when <code>tablets</code>/<code>freq_per_day</code> are absent:<br>
+    <code>"warn"</code> — emit a warning and skip M2<br>
+    <code>"auto"</code> — call <code>parse_sig()</code> internally<br>
+    <code>"none"</code> — silently skip M2
+  </td></tr>
+  <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.1</span></td><td>2000</td><td>Records exceeding this threshold are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
+</table>
+</div>
+
+<h3>Output columns added</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>strength_mg</code></td><td>Per-tablet strength in mg (unit-checked from <code>amount_value</code>, then from <code>drug_source_value</code> string)</td></tr>
+  <tr><td><code>daily_dose_mg_imputed</code></td><td>Best-estimate daily dose in mg from the cascade</td></tr>
+  <tr><td><code>imputation_method</code></td><td>Which step succeeded: <code>"original"</code>, <code>"tablets_freq"</code>, <code>"supply_based"</code>, <code>"actual_duration"</code>, or <code>"missing"</code></td></tr>
+</table>
+</div>
+
+<!-- ── NLP ───────────────────────────────────────────────────────── -->
+<h2 id="nlp">NLP method</h2>
+
+<p>
+  The NLP method parses the free-text <code>sig</code> column using a hierarchy
+  of regex rules. Before parsing, it filters to oral systemic corticosteroids
+  by route and drug name.
+</p>
+
+<h3>Parsing hierarchy</h3>
+<ol>
+  <li><strong>Flag detection</strong> — free-text ("as directed"), taper language, PRN ("as needed")</li>
+  <li><strong>Tablet count</strong> — "2 tablets", "2 tabs", "2 caps", etc.</li>
+  <li><strong>Frequency</strong> — QD/daily/once daily (1×), BID/twice daily (2×), TID (3×), QID (4×), QOD/every other day (0.5×), q6h, q8h, q12h</li>
+  <li><strong>mg extraction</strong> (priority order):
+    <ol type="a">
+      <li><code>(X mg total)</code> — explicit daily total in parentheses</li>
+      <li><code>(X mg per dose)</code> — explicit per-administration total</li>
+      <li><code>(X mg)</code> — plain parenthetical; multiplied by tablet count if known</li>
+      <li><code>X mg</code> — bare mg anywhere in string (not in parentheses)</li>
+      <li><span class="badge badge-new">v0.1.1</span> <strong>Strength fallback</strong> — when no mg found in SIG: use <code>amount_value</code> (from <code>drug_strength</code> JOIN), then mg extracted from <code>drug_concept_name</code> or <code>drug_source_value</code></li>
+    </ol>
+  </li>
+  <li><strong>Daily dose</strong> = <code>mg_per_admin × freq_per_day</code></li>
+  <li><strong>Status assignment</strong>:
+    <ul>
+      <li><code>"free_text"</code> — "as directed" or similar</li>
+      <li><code>"taper"</code> — taper/decreasing dose language detected</li>
+      <li><code>"prn"</code> — "as needed" detected</li>
+      <li><code>"ok"</code> — daily dose successfully computed</li>
+      <li><code>"no_parse"</code> — could not compute dose</li>
+      <li><code>"empty"</code> — SIG was NA or blank</li>
+    </ul>
+  </li>
+</ol>
+
+<div class="callout callout-note">
+  <strong>Strength fallback (v0.1.1)</strong>
+  In live OMOP data the <code>sig</code> field typically contains administration
+  instructions without a dose amount (e.g. "take 1 tablet daily"). The drug
+  strength lives in <code>drug_strength.amount_value</code>, which is already
+  fetched by the SQL query. The NLP pipeline now uses this as a per-tablet
+  strength fallback, promoting records from <code>"no_parse"</code> to
+  <code>"ok"</code> when the frequency could be parsed from the SIG.
+</div>
+
+<h3>Sites without a SIG column</h3>
+<p>
+  If <code>drug_exposure.sig</code> is absent at your site, use
+  <code>sig_source = "drug_source_value"</code> to fall back to the source
+  string, or the package will insert a blank <code>sig</code> column (all rows
+  return <code>parsed_status = "empty"</code>) and rely entirely on the
+  strength fallback.
+</p>
+
+<h3>Example</h3>
+<pre><code>nlp_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp</span>(drug_df)
+
+<span class="cm"># Coverage report</span>
+<span class="fn">table</span>(nlp_df<span class="op">$</span>parsed_status, useNA <span class="op">=</span> <span class="st">"ifany"</span>)
+
+<span class="cm"># Inspect parsed fields for "ok" records</span>
+nlp_df |>
+  dplyr::<span class="fn">filter</span>(parsed_status <span class="op">==</span> <span class="st">"ok"</span>) |>
+  dplyr::<span class="fn">select</span>(drug_name_std, sig, tablets,
+                freq_per_day, mg_per_admin, daily_dose_mg)
+</code></pre>
+
+<!-- ── NLP PARAMS ─────────────────────────────────────────────────── -->
+<h2 id="nlp-params">NLP parameters</h2>
+
+<div class="fn-sig">calc_daily_dose_nlp(
+  connector_or_df,
+  drug_name_col    = "drug_concept_name",
+  sig_col          = "sig",
+  filter_oral      = TRUE,
+  baseline_fallback = FALSE,
+  drug_concept_ids = NULL,
+  person_ids       = NULL,
+  start_date       = NULL,
+  end_date         = NULL,
+  sig_source       = "sig"
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>Required.</td></tr>
+  <tr><td>drug_name_col</td><td>"drug_concept_name"</td><td>Column with the OMOP drug concept name.</td></tr>
+  <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records and known systemic steroids. Set <code>FALSE</code> if upstream filtering was applied.</td></tr>
+  <tr><td>baseline_fallback</td><td>FALSE</td><td>If <code>TRUE</code> and a <code>daily_dose_mg_orig</code> column exists, use it to fill NAs after SIG parsing.</td></tr>
+  <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
+</table>
+</div>
+
+<h3>Output columns added</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>drug_name_std</code></td><td>Standardised drug name (lowercase, generic)</td></tr>
+  <tr><td><code>tablets</code></td><td>Number of tablets per dose extracted from SIG</td></tr>
+  <tr><td><code>freq_per_day</code></td><td>Doses per day (0.5 = QOD, 1 = QD, 2 = BID, 3 = TID, 4 = QID)</td></tr>
+  <tr><td><code>mg_per_admin</code></td><td>mg per administration (from SIG or strength fallback)</td></tr>
+  <tr><td><code>mg_total_flag</code></td><td>TRUE when an explicit daily total was given in parentheses</td></tr>
+  <tr><td><code>duration_days</code></td><td>Prescribed duration in days (when stated in SIG)</td></tr>
+  <tr><td><code>taper_flag</code></td><td>TRUE when taper/decreasing language detected</td></tr>
+  <tr><td><code>prn_flag</code></td><td>TRUE when "as needed" detected</td></tr>
+  <tr><td><code>free_text_flag</code></td><td>TRUE when "as directed" or unstructured SIG</td></tr>
+  <tr><td><code>daily_dose_mg</code></td><td>Computed daily dose in mg</td></tr>
+  <tr><td><code>parsed_status</code></td><td>One of: <code>"ok"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"free_text"</code>, <code>"no_parse"</code>, <code>"empty"</code></td></tr>
+</table>
+</div>
+
+<!-- ── SIG PARSING ───────────────────────────────────────────────── -->
+<h2 id="sig-parsing">SIG parsing details</h2>
+
+<h3>parse_sig_one() — single record</h3>
+<div class="fn-sig">parse_sig_one(sig_text)  # returns a 1-row tibble</div>
+
+<p>Never throws an error. Malformed or empty input returns <code>parsed_status = "empty"</code>.</p>
+
+<h3>parse_sig() — vectorised</h3>
+<div class="fn-sig">parse_sig(drug_df, sig_col = "sig")</div>
+
+<p>Applies <code>parse_sig_one()</code> to every row and binds the results back onto <code>drug_df</code>.</p>
+
+<h3>Frequency patterns recognised</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>SIG text</th><th>freq_per_day</th></tr>
+  <tr><td>daily, QD, once daily, every day, every morning, QAM, every 24 hours</td><td>1</td></tr>
+  <tr><td>BID, twice daily, two times daily, Q12H, every 12 hours</td><td>2</td></tr>
+  <tr><td>TID, three times daily, Q8H, every 8 hours</td><td>3</td></tr>
+  <tr><td>QID, four times daily, Q6H, every 6 hours</td><td>4</td></tr>
+  <tr><td>every other day, QOD</td><td>0.5</td></tr>
+</table>
+</div>
+
+<h3>Diagnosing no_parse records</h3>
+<pre><code><span class="cm"># Which field caused the failure?</span>
+nlp_df |>
+  dplyr::<span class="fn">filter</span>(parsed_status <span class="op">==</span> <span class="st">"no_parse"</span>) |>
+  dplyr::<span class="fn">mutate</span>(
+    missing_field <span class="op">=</span> dplyr::<span class="fn">case_when</span>(
+      <span class="fn">is.na</span>(freq_per_day) <span class="op">&amp;</span> <span class="fn">is.na</span>(mg_per_admin) <span class="op">~</span> <span class="st">"freq + mg"</span>,
+      <span class="fn">is.na</span>(freq_per_day)                          <span class="op">~</span> <span class="st">"freq only"</span>,
+      <span class="fn">is.na</span>(mg_per_admin)                          <span class="op">~</span> <span class="st">"mg only"</span>,
+      <span class="kw">TRUE</span>                                          <span class="op">~</span> <span class="st">"other"</span>
+    )
+  ) |>
+  dplyr::<span class="fn">count</span>(missing_field, sort <span class="op">=</span> <span class="kw">TRUE</span>)
+</code></pre>
+
+<!-- ── EQUIVALENCY ───────────────────────────────────────────────── -->
+<h2 id="equiv">Prednisone equivalency</h2>
+
+<div class="fn-sig">convert_pred_equiv(
+  drug_df,
+  drug_col    = "drug_name_std",
+  dose_col    = "daily_dose_mg_imputed",
+  equiv_table = NULL
+)</div>
+
+<p>Multiplies each record's daily dose by the appropriate prednisone-equivalency factor:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Drug</th><th>Factor</th><th>Notes</th></tr>
+  <tr><td>Prednisone</td><td>1.0</td><td>Reference drug</td></tr>
+  <tr><td>Prednisolone</td><td>1.0</td><td>Equipotent</td></tr>
+  <tr><td>Methylprednisolone</td><td>1.25</td><td>1 mg methylpred = 1.25 mg pred</td></tr>
+  <tr><td>Triamcinolone</td><td>1.25</td><td></td></tr>
+  <tr><td>Dexamethasone</td><td>7.5</td><td>High potency</td></tr>
+  <tr><td>Hydrocortisone</td><td>0.25</td><td>Low potency</td></tr>
+  <tr><td>Budesonide</td><td>NA</td><td>Route-dependent; flagged for manual review</td></tr>
+</table>
+</div>
+
+<p>Pass a custom equivalency table via <code>equiv_table</code> to override or extend the built-in table.</p>
+
+<h3>Output columns added</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>pred_equiv_mg</code></td><td>Prednisone-equivalent daily dose in mg</td></tr>
+  <tr><td><code>equiv_factor</code></td><td>Multiplication factor applied</td></tr>
+  <tr><td><code>pred_equiv_status</code></td><td><code>"ok"</code>, <code>"no_equiv"</code> (drug not in table), <code>"na_dose"</code> (dose was NA), <code>"na_factor"</code> (budesonide etc.)</td></tr>
+</table>
+</div>
+
+<!-- ── EPISODES ──────────────────────────────────────────────────── -->
+<h2 id="episodes">Episode building</h2>
+
+<div class="fn-sig">build_episodes(
+  drug_df,
+  id_col   = "person_id",
+  drug_col = "drug_name_std",
+  start_col = "drug_exposure_start_date",
+  end_col  = "drug_exposure_end_date",
+  dose_col = "daily_dose_mg_imputed",
+  gap_days = 30L
+)</div>
+
+<p>
+  Merges overlapping or adjacent prescription records within a patient–drug
+  group into continuous treatment episodes using the OHDSI standard 30-day gap.
+  Records are sorted by start date; any two records whose gap is ≤
+  <code>gap_days</code> are merged into a single episode.
+</p>
+
+<h3>Output columns (one row per episode)</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>person_id</code></td><td>Patient identifier</td></tr>
+  <tr><td><code>drug_name_std</code></td><td>Standardised drug name</td></tr>
+  <tr><td><code>episode_id</code></td><td>Integer episode index within each patient–drug pair</td></tr>
+  <tr><td><code>episode_start</code></td><td>Start date of the episode</td></tr>
+  <tr><td><code>episode_end</code></td><td>End date of the episode</td></tr>
+  <tr><td><code>n_days</code></td><td>Duration of episode in days</td></tr>
+  <tr><td><code>n_records</code></td><td>Number of prescriptions merged</td></tr>
+  <tr><td><code>median_daily_dose</code></td><td>Median prednisone-equivalent daily dose across records</td></tr>
+  <tr><td><code>min_daily_dose</code></td><td>Minimum daily dose in episode</td></tr>
+  <tr><td><code>max_daily_dose</code></td><td>Maximum daily dose in episode</td></tr>
+</table>
+</div>
+
+<!-- ── RUN PIPELINE ──────────────────────────────────────────────── -->
+<h2 id="run-pipeline">run_pipeline()</h2>
+
+<p>Convenience wrapper that chains all steps in a single call.</p>
+
+<div class="fn-sig">run_pipeline(
+  connector_or_df,
+  method           = c("baseline", "nlp"),
+  m2_sig_parse     = c("warn", "auto", "nlp_first", "none"),
+  drug_concept_ids = NULL,
+  person_ids       = NULL,
+  start_date       = NULL,
+  end_date         = NULL,
+  sig_source       = "sig",
+  gap_days         = 30L,
+  equiv_table      = NULL,
+  return_level     = c("episode", "exposure")
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>method</td><td>"baseline"</td><td>Imputation method to use.</td></tr>
+  <tr><td>m2_sig_parse</td><td>"warn"</td><td>M2 SIG-parse strategy. <code>"nlp_first"</code> runs the full NLP pass before baseline so NLP columns are available for M2.</td></tr>
+  <tr><td>gap_days</td><td>30L</td><td>Gap threshold for episode building.</td></tr>
+  <tr><td>return_level</td><td>"episode"</td><td><code>"episode"</code> returns one row per episode; <code>"exposure"</code> returns one row per drug-exposure record.</td></tr>
+</table>
+</div>
+
+<h3>Step-by-step alternative</h3>
+<pre><code><span class="cm"># Equivalent to run_pipeline(con, method = "baseline", return_level = "episode")</span>
+dose_df  <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_baseline</span>(con, m2_sig_parse <span class="op">=</span> <span class="st">"auto"</span>)
+equiv_df <span class="op">&lt;-</span> <span class="fn">convert_pred_equiv</span>(dose_df,
+              drug_col <span class="op">=</span> <span class="st">"drug_name_std"</span>,
+              dose_col <span class="op">=</span> <span class="st">"daily_dose_mg_imputed"</span>)
+episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
+  equiv_df |> dplyr::<span class="fn">filter</span>(!<span class="fn">is.na</span>(pred_equiv_mg)),
+  end_col  <span class="op">=</span> <span class="st">"drug_exposure_end_date"</span>,
+  dose_col <span class="op">=</span> <span class="st">"pred_equiv_mg"</span>,
+  gap_days <span class="op">=</span> <span class="nm">30L</span>
+)
+</code></pre>
+
+<!-- ── EVALUATION ────────────────────────────────────────────────── -->
+<h2 id="evaluation">Evaluation against a gold standard</h2>
+
+<div class="fn-sig">evaluate_against_gold(
+  computed_df,
+  gold_df,
+  min_overlap_days   = 1L,
+  computed_id_col    = "person_id",
+  computed_start_col = "episode_start",
+  computed_end_col   = "episode_end",
+  computed_dose_col  = "median_daily_dose",
+  gold_id_col        = "patient_id",
+  gold_start_col     = "episode_start",
+  gold_end_col       = "episode_end",
+  gold_dose_col      = "median_daily_dose"
+)</div>
+
+<p>
+  Matches computed episodes to gold-standard episodes using a date-overlap join
+  (any overlap ≥ <code>min_overlap_days</code>). For each gold episode the
+  computed episode with the most overlap is selected.
+</p>
+
+<h3>Return value</h3>
+<p>A named list with three elements:</p>
+<ul>
+  <li><strong><code>$summary</code></strong> — One-row summary: <code>n_gold_periods</code>, <code>n_matched_periods</code>, <code>coverage_pct</code>, <code>MAE</code>, <code>MBE</code>, <code>RMSE</code>, <code>median_AE</code>, <code>MAPE</code>, <code>pearson_corr</code>, <code>spearman_corr</code></li>
+  <li><strong><code>$comparison</code></strong> — One row per gold episode: <code>gold_dose</code>, <code>computed_dose</code>, <code>overlap_days</code>, <code>absolute_error</code>, <code>bias_error</code>, <code>agreement_category</code>, <code>error_direction</code></li>
+  <li><strong><code>$stratified</code></strong> — Metrics by dose range and taper status</li>
+</ul>
+
+<h3>Agreement categories</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Category</th><th>Condition</th></tr>
+  <tr><td>Exact (≤5%)</td><td>|computed − gold| / gold ≤ 5%</td></tr>
+  <tr><td>Good (≤20%)</td><td>≤ 20%</td></tr>
+  <tr><td>Moderate (≤50%)</td><td>≤ 50%</td></tr>
+  <tr><td>Poor (&gt;50%)</td><td>&gt; 50%</td></tr>
+</table>
+</div>
+
+<h3>Example</h3>
+<pre><code>gold_std    <span class="op">&lt;-</span> readr::<span class="fn">read_csv</span>(<span class="fn">file.path</span>(extdata, <span class="st">"synthetic_gold_standard.csv"</span>),
+                             show_col_types <span class="op">=</span> <span class="kw">FALSE</span>)
+eval_result <span class="op">&lt;-</span> <span class="fn">evaluate_against_gold</span>(episodes, gold_std)
+
+s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
+<span class="fn">sprintf</span>(<span class="st">"Coverage: %.1f%%  MAE: %.2f  MBE: %.2f  RMSE: %.2f"</span>,
+        s<span class="op">$</span>coverage_pct, s<span class="op">$</span>MAE, s<span class="op">$</span>MBE, s<span class="op">$</span>RMSE)
+</code></pre>
+
+<!-- ── FUNCTION REFERENCE ─────────────────────────────────────────── -->
+<h2 id="fn-ref">Function reference</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Function</th><th>Connector?</th><th>Description</th></tr>
+  <tr><td><code>create_omop_connection()</code></td><td>—</td><td>High-level builder; reads config from env vars. Recommended for most sites.</td></tr>
+  <tr><td><code>create_connection_from_env()</code></td><td>—</td><td>Load a <code>.env</code> file and open a connection in one call.</td></tr>
+  <tr><td><code>create_omop_connector()</code></td><td>—</td><td>Low-level; supply a pre-built <code>connectionDetails</code> object.</td></tr>
+  <tr><td><code>create_df_connector()</code></td><td>—</td><td>Wrap an in-memory data frame. No database packages required.</td></tr>
+  <tr><td><code>disconnect_connector()</code></td><td>—</td><td>Close the database connection held by a connector.</td></tr>
+  <tr><td><code>detect_capabilities()</code></td><td>—</td><td>Probe which <code>drug_exposure</code> fields are populated at this site.</td></tr>
+  <tr><td><code>fetch_drug_exposure()</code></td><td>Yes</td><td>Fetch raw <code>drug_exposure</code> rows filtered by date / concept / person.</td></tr>
+  <tr><td><code>run_pipeline()</code></td><td>Yes</td><td>One-call fetch → impute → convert → episodes.</td></tr>
+  <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; <code>max_daily_dose_mg</code> cap.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback.</td></tr>
+  <tr><td><code>parse_sig()</code></td><td>No</td><td>Vectorised SIG parser (data-frame in, data-frame out).</td></tr>
+  <tr><td><code>parse_sig_one()</code></td><td>No</td><td>Parse a single SIG string; returns a 1-row tibble of all parsed components.</td></tr>
+  <tr><td><code>standardize_drug_name()</code></td><td>No</td><td>Normalise free-form drug names to canonical lowercase generic form.</td></tr>
+  <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors.</td></tr>
+  <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
+  <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard.</td></tr>
+</table>
+</div>
+
+<!-- ── DATA QUALITY ──────────────────────────────────────────────── -->
+<h2 id="dq">Data quality issues and how the package handles them</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Issue</th><th>How it manifests</th><th>Package response</th></tr>
+  <tr>
+    <td>Non-mg <code>amount_value</code></td>
+    <td>M3/M4 produces doses in billions (mcg treated as mg)</td>
+    <td><span class="badge badge-fix">v0.1.1</span> Unit concept ID checked; non-mg values discarded; string fallback used</td>
+  </tr>
+  <tr>
+    <td>SIG omits mg</td>
+    <td>All NLP records fall to <code>"no_parse"</code></td>
+    <td><span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> used as per-tablet strength fallback</td>
+  </tr>
+  <tr>
+    <td>Large quantity × small days_supply</td>
+    <td>M3 dose explosion (e.g. 90-day supply with days_supply = 1)</td>
+    <td><code>max_daily_dose_mg</code> cap (default 2000 mg/day) NAs out outliers with a warning</td>
+  </tr>
+  <tr>
+    <td>Same-day start and end date</td>
+    <td>M4 uses actual_duration = 1 day → high dose</td>
+    <td>Caught by <code>max_daily_dose_mg</code> cap</td>
+  </tr>
+  <tr>
+    <td>Missing <code>sig</code> column</td>
+    <td>NLP method finds nothing to parse</td>
+    <td>Empty <code>sig</code> column inserted automatically; <code>parsed_status = "empty"</code> for all; strength fallback still applies</td>
+  </tr>
+  <tr>
+    <td>Missing <code>drug_exposure_end_date</code></td>
+    <td>M4 and episode building fail</td>
+    <td>Today's date substituted with a one-time warning; M1–M3 unaffected</td>
+  </tr>
+  <tr>
+    <td>Budesonide</td>
+    <td>Equivalency factor is route-dependent (oral vs. inhaled differ by 10×)</td>
+    <td><code>equiv_factor = NA</code> for budesonide; <code>pred_equiv_status = "na_factor"</code>; requires manual review</td>
+  </tr>
+  <tr>
+    <td>Taper prescriptions</td>
+    <td>A single prescription record covers a decreasing-dose course</td>
+    <td><code>parsed_status = "taper"</code>; <code>taper_flag = TRUE</code>; dose computation skipped (no stable daily dose)</td>
+  </tr>
+</table>
+</div>
+
+<!-- ── TROUBLESHOOTING ───────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<h3>All NLP records are "no_parse" or "empty"</h3>
+<ol>
+  <li>Check whether <code>sig</code> is populated: <code>table(is.na(drug_df$sig))</code></li>
+  <li>If all NA, the SIG field is not populated at your site. Use <code>sig_source = "drug_source_value"</code> or rely on the strength fallback alone (which handles the case where freq is in the SIG but mg is not).</li>
+  <li>If SIG exists but records still fail, check <code>nlp_df |&gt; dplyr::filter(parsed_status == "no_parse") |&gt; dplyr::count(sig, sort = TRUE) |&gt; head(20)</code> to see which patterns are failing.</li>
+</ol>
+
+<h3>Baseline doses are implausibly high</h3>
+<ol>
+  <li>Check <code>table(baseline_df$imputation_method)</code> — which method is producing the high values?</li>
+  <li>For M3/M4: inspect <code>amount_unit_concept_id</code> — non-mg units are now discarded (v0.1.1), but verify via <code>table(drug_df$amount_unit_concept_id, useNA = "ifany")</code>.</li>
+  <li>Check <code>days_supply</code> distribution: <code>summary(drug_df$days_supply)</code> — very small values inflate M3.</li>
+  <li>The default <code>max_daily_dose_mg = 2000</code> cap will warn and NA out obvious outliers. The warning message will tell you how many records were affected.</li>
+</ol>
+
+<h3>No records after oral filter</h3>
+<div class="callout callout-warn">
+  <strong>Warning: "No oral corticosteroid records found after filtering"</strong>
+  <p>This means either <code>route_concept_name</code> is absent and/or drug names don't match the built-in steroid list. Use <code>filter_oral = FALSE</code> if your data is already pre-filtered to steroids, or check <code>drug_df$route_concept_name</code> and <code>drug_df$drug_name_std</code>.</p>
+</div>
+
+<h3>Database connection fails</h3>
+<ol>
+  <li>Verify JDBC drivers: <code>pkgbuild::has_build_tools(debug = TRUE)</code></li>
+  <li>Test connection independently: <code>DatabaseConnector::connect(connectionDetails)</code></li>
+  <li>Check schema: the SQL queries reference <code>@cdm_schema.drug_exposure</code> — confirm your schema name and account permissions.</li>
+  <li>Try <code>create_connection_from_env(".env")</code> to centralise all config in one file and eliminate copy-paste errors.</li>
+</ol>
+
+<!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
+<h2 id="changelog">Changelog</h2>
+
+<h3>v0.1.1 <span class="badge badge-fix">Bug fixes</span></h3>
+<ul>
+  <li><strong>Baseline — unit-safe <code>amount_value</code></strong>: non-mg <code>amount_unit_concept_id</code> values now discarded before <code>strength_mg</code> calculation. Eliminates dose values in the billions caused by mcg/g being treated as mg.</li>
+  <li><strong>Baseline — plausibility cap</strong>: new <code>max_daily_dose_mg</code> parameter (default 2000). Implausible doses set to NA with a diagnostic warning.</li>
+  <li><strong>NLP — strength fallback</strong>: when SIG contains no mg amount, <code>amount_value</code> (then <code>drug_concept_name</code>/<code>drug_source_value</code>) is used as per-tablet strength, promoting records from <code>"no_parse"</code> to <code>"ok"</code>.</li>
+</ul>
+
+<h3>v0.1.0 <span class="badge badge-new">Initial release</span></h3>
+<ul>
+  <li>Baseline method (M1–M4 cascade), NLP SIG parser, prednisone equivalency, episode building, evaluation against gold standard</li>
+  <li>Connector abstraction: <code>omop_connector</code> and <code>df_connector</code></li>
+  <li>Capability detection, concept-set and patient-level filters</li>
+  <li>112 unit tests, 29-record synthetic dataset, 4 vignettes</li>
+</ul>
+
+<a class="back-top" href="#overview">↑ Back to top</a>
+
+</main>
+</div>
+</body>
+</html>

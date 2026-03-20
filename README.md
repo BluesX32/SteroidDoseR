@@ -23,7 +23,7 @@ OMOP CDM is a standardized data format maintained by the OHDSI (Observational He
 
 ## Key features
 
-- **Two imputation methods** — Baseline (structured OMOP fields, M1–M4 cascade) and NLP (rule-based SIG text parsing).
+- **Two imputation methods** — Baseline (structured OMOP fields, M1–M4 cascade with unit-safe `amount_value` and plausibility cap) and NLP (rule-based SIG text parsing with `amount_value` strength fallback for SIGs that omit mg).
 - **Prednisone-equivalency conversion** — built-in table covering 8 corticosteroids (prednisone, prednisolone, methylprednisolone, dexamethasone, hydrocortisone, triamcinolone, budesonide, and others).
 - **Episode building** — gap-bridges overlapping and adjacent prescriptions into continuous treatment episodes using the OHDSI standard 30-day gap.
 - **Connector abstraction** — identical calling code works against a live OMOP CDM database or an in-memory data frame; no code changes needed when switching.
@@ -336,8 +336,8 @@ Recommended additional columns:
 
 | Method | Columns that improve imputation |
 |--------|---------------------------------|
-| Baseline | `amount_value`, `quantity`, `days_supply`, `drug_source_value` |
-| NLP | `sig`, `drug_concept_name`, `route_concept_name` |
+| Baseline | `amount_value` (+ `amount_unit_concept_id` for unit safety), `quantity`, `days_supply`, `drug_source_value` |
+| NLP | `sig`, `drug_concept_name`, `route_concept_name`, `amount_value` (strength fallback when SIG omits mg) |
 
 `drug_exposure_end_date` is **optional** for Baseline. When absent, today's date is substituted for all rows so that M4 (actual-duration estimate) can still run. A one-time warning is issued. M1–M3 are unaffected.
 
@@ -479,8 +479,8 @@ eval_result$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")]
 | `detect_capabilities()` | — | Probe which `drug_exposure` fields are available at your site. |
 | `fetch_drug_exposure()` | Yes | Fetch raw `drug_exposure` rows from a connector. |
 | `run_pipeline()` | Yes | One-call fetch → impute → convert → episodes. `m2_sig_parse` controls M2 SIG-parse strategy. |
-| `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). `m2_sig_parse` controls M2 SIG-parse strategy. |
-| `calc_daily_dose_nlp()` | Yes | Rule-based SIG text parsing. |
+| `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). `m2_sig_parse` controls M2 SIG-parse strategy. `max_daily_dose_mg` (default 2000) caps implausible doses; `amount_unit_concept_id` is checked so non-mg `amount_value` units don't explode M3/M4. |
+| `calc_daily_dose_nlp()` | Yes | Rule-based SIG text parsing. Falls back to `amount_value` / drug name strength when SIG omits mg amount. |
 | `parse_sig()` | No | Vectorized SIG string parser (low-level). |
 | `parse_sig_one()` | No | Parse a single SIG string; returns all parsed components. |
 | `convert_pred_equiv()` | No | Multiply daily doses by prednisone-equivalency factors. |
