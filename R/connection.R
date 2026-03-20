@@ -235,6 +235,22 @@ create_omop_connection <- function(
     sub("^=+", "", trimws(results_schema)) else NULL
 
   # ------------------------------------------------------------------
+  # Auto-prefix cdm_schema with the database name when no dot is present.
+  # This lets users set SQL_CDM_SCHEMA=dbo and SQL_DATABASE=Myositis_OMOP
+  # and get the correct three-part name "Myositis_OMOP.dbo" automatically.
+  # If cdm_schema already contains a dot (e.g. "Myositis_OMOP.dbo") or
+  # database is unknown, no change is made.
+  # ------------------------------------------------------------------
+  if (!grepl("\\.", cdm_schema) && !is.null(database) && nzchar(database)) {
+    cdm_schema <- paste0(database, ".", cdm_schema)
+  }
+  if (!is.null(vocabulary_schema) &&
+      !grepl("\\.", vocabulary_schema) &&
+      !is.null(database) && nzchar(database)) {
+    vocabulary_schema <- paste0(database, ".", vocabulary_schema)
+  }
+
+  # ------------------------------------------------------------------
   # Validate
   # ------------------------------------------------------------------
   if (is.null(server) || !nzchar(server)) {
