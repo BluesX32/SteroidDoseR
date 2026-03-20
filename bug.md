@@ -15,15 +15,12 @@ Version2 uses `daily_dose_mg`; package looks for `daily_dose`. M1 silently
 never fires when data comes from the V2 pipeline.
 Fixed: accepts both `daily_dose` and `daily_dose_mg` (prefers `daily_dose`).
 
-### DECISION-4 `amount_value` missing from SQL extraction ⏳ AWAITING DECISION
-`extract_drug_exposure.sql` does not join `drug_strength`, so `amount_value`
-is never populated via the OMOP connector path. `strength_mg` always falls back
-to regex-parsing `drug_source_value`.
-
-Options:
-- A: Add `LEFT JOIN drug_strength` to SQL → reliable, standard OMOP
-- B: Keep string fallback only → simpler, fragile for non-standard source values
-- C: Both — join first, fall back to string if NULL
+### DECISION-4 `amount_value` missing from SQL extraction ✅ FIXED (Option C)
+Added a `LEFT JOIN` to `drug_strength` via an aggregating subquery
+(`GROUP BY drug_concept_id`, `MAX(amount_value)`) that avoids duplicate rows
+from combination drugs. `amount_value` and `amount_unit_concept_id` are now
+selected. `baseline.R` already uses `coalesce(amount_value, str_from_source)`,
+so the string fallback remains active when `drug_strength` has no match.
 
 ### DECISION-5 M2 requires NLP output that baseline never produces ⏳ AWAITING DECISION
 M2 needs `tablets` and `freq_per_day`, which only exist after `parse_sig()`.

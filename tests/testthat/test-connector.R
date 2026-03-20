@@ -279,6 +279,28 @@ test_that("render_translate_sql omits concept filter when empty string", {
   expect_false(grepl("drug_concept_id IN", result, fixed = TRUE))
 })
 
+test_that("SQL includes amount_value from drug_strength join", {
+  skip_if_not_installed("SqlRender")
+  sql_path <- system.file("sql", "extract_drug_exposure.sql",
+                           package = "SteroidDoseR")
+  result <- SteroidDoseR:::render_translate_sql(
+    sql_path,
+    params = list(
+      cdm_schema     = "cdm",
+      start_date     = "2020-01-01",
+      end_date       = "2023-12-31",
+      concept_filter = "",
+      person_filter  = ""
+    ),
+    dbms = "postgresql"
+  )
+  expect_true(grepl("amount_value",           result, fixed = TRUE))
+  expect_true(grepl("drug_strength",          result, fixed = TRUE))
+  expect_true(grepl("amount_unit_concept_id", result, fixed = TRUE))
+  # Subquery groups by drug_concept_id to prevent duplicate rows
+  expect_true(grepl("GROUP BY", result, ignore.case = TRUE))
+})
+
 # ---------------------------------------------------------------------------
 # Public API connector dispatch: calc_daily_dose_baseline
 # ---------------------------------------------------------------------------

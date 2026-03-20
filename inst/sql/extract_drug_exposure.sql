@@ -26,12 +26,28 @@ SELECT
     de.route_concept_id,
     de.dose_unit_source_value,
     de.drug_source_value,
-    c.concept_name AS drug_concept_name
+    c.concept_name  AS drug_concept_name,
+    ds.amount_value,
+    ds.amount_unit_concept_id
 
 FROM @cdm_schema.drug_exposure de
 
 LEFT JOIN @cdm_schema.concept c
     ON de.drug_concept_id = c.concept_id
+
+-- drug_strength is aggregated per drug_concept_id before joining so that
+-- combination drugs (multiple ingredient rows) do not produce duplicate
+-- drug_exposure rows. For single-ingredient corticosteroids MAX() is
+-- equivalent to the actual value.
+LEFT JOIN (
+    SELECT
+        drug_concept_id,
+        MAX(amount_value)           AS amount_value,
+        MAX(amount_unit_concept_id) AS amount_unit_concept_id
+    FROM @cdm_schema.drug_strength
+    WHERE amount_value IS NOT NULL
+    GROUP BY drug_concept_id
+) ds ON de.drug_concept_id = ds.drug_concept_id
 
 WHERE de.drug_exposure_start_date >= CAST('@start_date' AS DATE)
   AND de.drug_exposure_start_date <= CAST('@end_date'   AS DATE)
