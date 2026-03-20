@@ -42,6 +42,19 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      # Download JDBC drivers so DatabaseConnector can connect in tests that
+      # require a live database.  Live-DB tests skip themselves when CI=true,
+      # but the drivers must be present for the package to load cleanly.
+      - name: Download JDBC drivers
+        shell: bash
+        run: |
+          mkdir -p "$HOME/jdbc"
+          Rscript -e "DatabaseConnector::downloadJdbcDrivers('sql server', pathToDriver = Sys.getenv('HOME') |> file.path('jdbc'), method = 'auto')" || true
+
+      - name: Set JDBC_DRIVER_PATH
+        shell: bash
+        run: echo "JDBC_DRIVER_PATH=$HOME/jdbc" >> "$GITHUB_ENV"
+
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true

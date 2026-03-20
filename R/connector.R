@@ -53,11 +53,22 @@
 #' `DatabaseConnector::createConnectionDetails()`. Common examples:
 #'
 #' ```r
+#' # Recommended: store the driver folder path in an environment variable so you
+#' # never hard-code a path.  Add to ~/.Renviron (usethis::edit_r_environ()):
+#' #   JDBC_DRIVER_PATH=/path/to/jdbc
+#' #
+#' # Then retrieve and validate at the top of any script:
+#' jdbc_path <- Sys.getenv("JDBC_DRIVER_PATH")
+#' if (!nzchar(jdbc_path) || !dir.exists(jdbc_path))
+#'   stop("JDBC_DRIVER_PATH is not set or does not exist. ",
+#'        "Download drivers with DatabaseConnector::downloadJdbcDrivers() ",
+#'        "and set JDBC_DRIVER_PATH in ~/.Renviron.")
+#'
 #' # SQL Server — Windows integrated security (typical at academic medical centres)
 #' cd <- DatabaseConnector::createConnectionDetails(
 #'   dbms         = "sql server",
 #'   server       = "myserver.institution.edu",
-#'   pathToDriver = "/path/to/jdbc"
+#'   pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
 #' )
 #'
 #' # SQL Server — username / password
@@ -66,7 +77,7 @@
 #'   server       = "myserver.institution.edu",
 #'   user         = "omop_user",
 #'   password     = keyring::key_get("omop_db"),
-#'   pathToDriver = "/path/to/jdbc"
+#'   pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
 #' )
 #'
 #' # PostgreSQL
@@ -84,7 +95,7 @@
 #'   connectionString   = "jdbc:bigquery://...",
 #'   user               = "",
 #'   password           = "",
-#'   pathToDriver       = "/path/to/jdbc"
+#'   pathToDriver       = Sys.getenv("JDBC_DRIVER_PATH")
 #' )
 #'
 #' # Databricks / Spark
@@ -95,7 +106,7 @@
 #'     "httpPath=/sql/1.0/warehouses/<id>;",
 #'     "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
 #'   ),
-#'   pathToDriver = "/path/to/jdbc"
+#'   pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
 #' )
 #'
 #' # Amazon Redshift

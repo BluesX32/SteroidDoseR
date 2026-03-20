@@ -162,19 +162,28 @@ Before using the OMOP CDM connector you need:
 Download them once and point `pathToDriver` to the folder:
 
 ```r
-DatabaseConnector::downloadJdbcDrivers("sql server",  pathToDriver = "/path/to/jdbc")
-DatabaseConnector::downloadJdbcDrivers("postgresql",  pathToDriver = "/path/to/jdbc")
+DatabaseConnector::downloadJdbcDrivers("sql server",  pathToDriver = "~/jdbc")
+DatabaseConnector::downloadJdbcDrivers("postgresql",  pathToDriver = "~/jdbc")
 # other options: "redshift", "oracle", "bigquery", "spark", "snowflake"
 ```
 
-Set an environment variable so you do not need to repeat the path in every script:
+Set `JDBC_DRIVER_PATH` in your `~/.Renviron` so you never hard-code the path in scripts:
 
-```r
-# Add to your ~/.Renviron (run usethis::edit_r_environ() to open it)
-DATABASECONNECTOR_JAR_FOLDER=/path/to/jdbc
+```
+# ~/.Renviron  (open with usethis::edit_r_environ())
+JDBC_DRIVER_PATH=/path/to/jdbc
 ```
 
-Once set, `pathToDriver` can be omitted from `createConnectionDetails()`.
+Then reference it in every script:
+
+```r
+pathToDriver <- Sys.getenv("JDBC_DRIVER_PATH")
+if (!nzchar(pathToDriver) || !dir.exists(pathToDriver))
+  stop("JDBC_DRIVER_PATH is not set or does not exist.")
+```
+
+`DatabaseConnector` also honours `DATABASECONNECTOR_JAR_FOLDER`, which lets you
+omit `pathToDriver` from `createConnectionDetails()` entirely.
 See the [DatabaseConnector documentation](https://ohdsi.github.io/DatabaseConnector/)
 for the full platform list and driver installation details.
 

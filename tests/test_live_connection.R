@@ -21,18 +21,27 @@ library(SteroidDoseR)
 #      OMOP_CDM_SCHEMA     default: "Myositis_OMOP.dbo"
 #      OMOP_RESULTS_SCHEMA default: "Myositis_OMOP.Results"
 # ---------------------------------------------------------------------------
+# Skip automatically on CI (no live database available) or when the driver path
+# is not configured. This script is not run by testthat; it is intended for
+# manual, interactive testing only.
+if (nzchar(Sys.getenv("CI"))) {
+  message("Skipping live DB test: running in CI environment.")
+  quit(save = "no", status = 0L)
+}
+
 jdbc_path    <- Sys.getenv("JDBC_DRIVER_PATH")
 server       <- Sys.getenv("OMOP_SERVER",
                             unset = "esmpmdbpr4.esm.johnshopkins.edu")
 cdm_schema   <- Sys.getenv("OMOP_CDM_SCHEMA",   unset = "Myositis_OMOP.dbo")
 write_schema <- Sys.getenv("OMOP_RESULTS_SCHEMA", unset = "Myositis_OMOP.Results")
 
-if (nchar(jdbc_path) == 0L) {
+if (!nzchar(jdbc_path) || !dir.exists(jdbc_path)) {
   stop(
-    "JDBC_DRIVER_PATH is not set. Set it before running this script:\n",
+    "JDBC_DRIVER_PATH is not set or the directory does not exist.\n",
+    "Set it before running this script:\n",
     "  Sys.setenv(JDBC_DRIVER_PATH = '/path/to/jdbc')\n",
-    "Download drivers with: ",
-    "DatabaseConnector::downloadJdbcDrivers('sql server', pathToDriver = ...)"
+    "Download drivers with:\n",
+    "  DatabaseConnector::downloadJdbcDrivers('sql server', pathToDriver = '/path/to/jdbc')"
   )
 }
 
