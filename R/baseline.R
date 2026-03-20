@@ -5,9 +5,9 @@
 #' Compute daily steroid doses using structured OMOP fields (Baseline method)
 #'
 #' Applies a four-step cascading imputation strategy to estimate the daily
-#' dose in mg for each drug-exposure record. When `strict_legacy = TRUE`
-#' (default) the cascade order and tie-breaking rules exactly match the
-#' `Baseline.qmd` analysis that was used in the Phase 1 paper.
+#' dose in mg for each drug-exposure record. The cascade order and
+#' tie-breaking rules match the `Baseline.qmd` analysis used in the
+#' Phase 1 paper.
 #'
 #' The first argument accepts either a **connector** (created by
 #' [create_omop_connector()] or [create_df_connector()]) or a plain
@@ -16,7 +16,7 @@
 #' ## Cascade order
 #' | Method | Label | Logic |
 #' |--------|-------|-------|
-#' | M1 | `"original"` | Use pre-computed `daily_dose` column if numeric and > 0. |
+#' | M1 | `"original"` | Use `daily_dose` or `daily_dose_mg` column if numeric and > 0. |
 #' | M2 | `"tablets_freq"` | `tablets × freq_per_day × strength_mg`. Requires `sig` column to be parsed first, or pre-parsed `tablets` and `freq_per_day` columns. |
 #' | M3 | `"supply_based"` | `(quantity × strength_mg) / days_supply`. |
 #' | M4 | `"actual_duration"` | `(quantity × strength_mg) / actual_duration_days`, where `actual_duration_days` is derived from the date columns. |
@@ -29,9 +29,6 @@
 #'   Defaults to `c("original", "tablets_freq", "supply_based", "actual_duration")`.
 #'   Each method is only tried if the required columns are present; missing
 #'   columns cause a graceful skip (not an error).
-#' @param strict_legacy `logical(1)`. When `TRUE` (default), the method
-#'   priority and column selection match the Baseline.qmd implementation
-#'   exactly. Set to `FALSE` to allow experimental extensions.
 #' @param drug_concept_ids Integer vector of OMOP `drug_concept_id` values to
 #'   restrict the extraction. Ignored when `connector_or_df` is a data frame.
 #' @param person_ids Vector of `person_id` values to restrict the extraction.
@@ -74,7 +71,6 @@
 calc_daily_dose_baseline <- function(connector_or_df,
                                      methods       = c("original", "tablets_freq",
                                                        "supply_based", "actual_duration"),
-                                     strict_legacy  = TRUE,
                                      drug_concept_ids = NULL,
                                      person_ids       = NULL,
                                      start_date       = NULL,
@@ -119,18 +115,19 @@ calc_daily_dose_baseline <- function(connector_or_df,
   has_sup  <- "days_supply"  %in% names(drug_df)
   has_tab  <- "tablets"      %in% names(drug_df)
   has_freq <- "freq_per_day" %in% names(drug_df)
-  has_dd   <- "daily_dose"   %in% names(drug_df)
+  # Accept both daily_dose (package convention) and daily_dose_mg (Version2).
+  dd_col <- intersect(c("daily_dose", "daily_dose_mg"), names(drug_df))
+  dd_col <- if (length(dd_col) > 0L) dd_col[[1L]] else NA_character_
+  has_dd <- !is.na(dd_col)
 
   drug_df <- drug_df |>
     dplyr::mutate(
-      .quantity    = if (has_qty)  safe_as_numeric(.data$quantity)     else NA_real_,
-      .days_supply = if (has_sup)  safe_as_numeric(.data$days_supply)  else NA_real_,
-      .tablets     = if (has_tab)  safe_as_numeric(.data$tablets)      else NA_real_,
-      .freq        = if (has_freq) safe_as_numeric(.data$freq_per_day) else NA_real_,
-      # daily_dose must also be pre-computed: dplyr::case_when evaluates ALL
-      # branches regardless of the LHS condition, so .data$daily_dose would
-      # error when the column is absent even if has_dd == FALSE.
-      .dd          = if (has_dd)   safe_as_numeric(.data$daily_dose)   else NA_real_
+      .quantity    = if (has_qty)  safe_as_numeric(.data$quantity)      else NA_real_,
+      .days_supply = if (has_sup)  safe_as_numeric(.data$days_supply)   else NA_real_,
+      .tablets     = if (has_tab)  safe_as_numeric(.data$tablets)       else NA_real_,
+      .freq        = if (has_freq) safe_as_numeric(.data$freq_per_day)  else NA_real_,
+      # Evaluate outside mutate to avoid reference to absent column.
+      .dd          = if (has_dd)   safe_as_numeric(.data[[dd_col]])     else NA_real_
     )
 
   # --- 4. candidate estimates -----------------------------------------------
@@ -169,24 +166,30 @@ calc_daily_dose_baseline <- function(connector_or_df,
       )
     )
 
-  # --- 5. cascade: take first non-NA in methods order ----------------------
-  drug_df <- drug_df |>
-    dplyr::mutate(
-      daily_dose_mg_imputed = dplyr::case_when(
-        !is.na(.data$.m1) ~ .data$.m1,
-        !is.na(.data$.m2) ~ .data$.m2,
-        !is.na(.data$.m3) ~ .data$.m3,
-        !is.na(.data$.m4) ~ .data$.m4,
-        TRUE ~ NA_real_
-      ),
-      imputation_method = dplyr::case_when(
-        !is.na(.data$.m1) ~ "original",
-        !is.na(.data$.m2) ~ "tablets_freq",
-        !is.na(.data$.m3) ~ "supply_based",
-        !is.na(.data$.m4) ~ "actual_duration",
-        TRUE ~ "missing"
-      )
-    )
+  # --- 5. cascade: first non-NA following the user-supplied methods order ----
+  method_map    <- c(
+    "original"        = ".m1",
+    "tablets_freq"    = ".m2",
+    "supply_based"    = ".m3",
+    "actual_duration" = ".m4"
+  )
+  valid_methods <- methods[methods %in% names(method_map)]
+  ordered_cols  <- method_map[valid_methods]
+
+  # daily_dose_mg_imputed: coalesce in the requested order
+  dose_vals <- lapply(ordered_cols, function(col) drug_df[[col]])
+  drug_df$daily_dose_mg_imputed <- if (length(dose_vals) > 0L)
+    do.call(dplyr::coalesce, dose_vals)
+  else
+    rep(NA_real_, nrow(drug_df))
+
+  # imputation_method: assign in reverse order so the first method wins
+  drug_df$imputation_method <- "missing"
+  for (m in rev(valid_methods)) {
+    col  <- method_map[[m]]
+    mask <- !is.na(drug_df[[col]])
+    drug_df$imputation_method[mask] <- m
+  }
 
   # --- 6. remove internal scratch columns -----------------------------------
   drug_df |>

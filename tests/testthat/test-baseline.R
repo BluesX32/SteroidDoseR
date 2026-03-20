@@ -95,3 +95,77 @@ test_that("imputation_method column always present in output", {
   expect_true("daily_dose_mg_imputed" %in% names(out))
   expect_true("strength_mg" %in% names(out))
 })
+
+# BUG-3: M1 accepts daily_dose_mg (Version2 column name)
+test_that("M1 fires on daily_dose_mg column (Version2 naming)", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_source_value        = "PREDNISONE 5 MG TABLET",
+    amount_value             = 5,
+    quantity                 = 90,
+    days_supply              = 90,
+    drug_exposure_start_date = "2023-01-01",
+    drug_exposure_end_date   = "2023-03-31",
+    daily_dose_mg            = 20
+  )
+  out <- calc_daily_dose_baseline(df)
+  expect_equal(out$daily_dose_mg_imputed, 20)
+  expect_equal(out$imputation_method, "original")
+})
+
+test_that("daily_dose takes precedence over daily_dose_mg when both present", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_source_value        = "PREDNISONE 5 MG TABLET",
+    amount_value             = 5,
+    quantity                 = 90,
+    days_supply              = 90,
+    drug_exposure_start_date = "2023-01-01",
+    drug_exposure_end_date   = "2023-03-31",
+    daily_dose               = 10,
+    daily_dose_mg            = 99
+  )
+  out <- calc_daily_dose_baseline(df)
+  expect_equal(out$daily_dose_mg_imputed, 10)
+})
+
+# BUG-2: methods order controls cascade priority
+test_that("methods order is respected: supply_based before tablets_freq", {
+  # Both M2 and M3 are computable; supply_based listed first -> should win
+  df <- make_row(
+    daily_dose = NA, tablets = 2, freq_per_day = 1, amount_value = 5,
+    quantity = 90, days_supply = 90
+  )
+  out <- calc_daily_dose_baseline(
+    df,
+    methods = c("supply_based", "tablets_freq")
+  )
+  # M3: 90 * 5 / 90 = 5  (not M2: 2 * 1 * 5 = 10)
+  expect_equal(out$daily_dose_mg_imputed, 5)
+  expect_equal(out$imputation_method, "supply_based")
+})
+
+test_that("methods = single element only runs that method", {
+  df <- make_row(daily_dose = NA, tablets = 2, freq_per_day = 1,
+                 amount_value = 5, quantity = 90, days_supply = 90)
+  out <- calc_daily_dose_baseline(df, methods = "supply_based")
+  expect_equal(out$imputation_method, "supply_based")   # tablets_freq excluded
+})
+
+test_that("methods order: actual_duration before supply_based", {
+  df <- make_row(
+    daily_dose = NA, quantity = 30, days_supply = 90, amount_value = 10,
+    tablets = NA, freq_per_day = NA,
+    start = "2023-01-01", end = "2023-01-30"
+  )
+  # M4: 30*10/30 = 10;  M3: 30*10/90 = 3.33
+  out_default <- calc_daily_dose_baseline(
+    df, methods = c("supply_based", "actual_duration")
+  )
+  expect_equal(out_default$imputation_method, "supply_based")
+
+  out_flipped <- calc_daily_dose_baseline(
+    df, methods = c("actual_duration", "supply_based")
+  )
+  expect_equal(out_flipped$imputation_method, "actual_duration")
+})
