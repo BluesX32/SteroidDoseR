@@ -221,21 +221,18 @@ create_omop_connection <- function(
         if (nzchar(win_pw)) password <- win_pw
       }
     }
-
-    # Combine separate database + schema env vars (e.g. "MyDB" + "dbo" → "MyDB.dbo")
-    cdm_database <- Sys.getenv("SQL_CDM_DATABASE")
-    results_database <- Sys.getenv("SQL_RESULTS_DATABASE")
-
-    if (nzchar(cdm_database) && !grepl("\\.", cdm_schema)) {
-      cdm_schema        <- paste0(cdm_database, ".", cdm_schema)
-      if (!is.null(vocabulary_schema) && !grepl("\\.", vocabulary_schema))
-        vocabulary_schema <- paste0(cdm_database, ".", vocabulary_schema)
-    }
-    if (nzchar(results_database) && !is.null(results_schema) &&
-        !grepl("\\.", results_schema)) {
-      results_schema <- paste0(results_database, ".", results_schema)
-    }
   }
+
+  # ------------------------------------------------------------------
+  # Sanitise schema values — strip any leading = signs that can arise
+  # from double-equals in .env files (KEY==value) or shell export
+  # contamination (export KEY=value parsed as value "=value").
+  # ------------------------------------------------------------------
+  cdm_schema        <- sub("^=+", "", trimws(cdm_schema        %||% ""))
+  vocabulary_schema <- if (!is.null(vocabulary_schema))
+    sub("^=+", "", trimws(vocabulary_schema)) else NULL
+  results_schema    <- if (!is.null(results_schema))
+    sub("^=+", "", trimws(results_schema)) else NULL
 
   # ------------------------------------------------------------------
   # Validate
@@ -319,7 +316,8 @@ create_omop_connection <- function(
   }
 
   message(sprintf(
-    "\u2713 omop_connector built: dbms=%s  cdm_schema=%s", dbms, cdm_schema
+    "\u2713 omop_connector ready  |  dbms: %s  |  server: %s  |  cdm_schema: %s",
+    dbms, server %||% "<unset>", cdm_schema
   ))
 
   create_omop_connector(
@@ -491,18 +489,25 @@ create_connection_from_env <- function(env_file = ".env") {
 # .env file loader
 # ---------------------------------------------------------------------------
 
-#' Parse a .env file and call Sys.setenv() for each key=value pair
+#' Parse a .env file and call Sys.setenv() for each key=value pair.
+#'
+#' Handles the common case where values contain = (e.g. connection strings).
+#' The key is everything before the FIRST =; the value is everything after.
+#' Surrounding quotes and leading/trailing whitespace are stripped from both.
+#' Lines starting with # or that contain no = are silently skipped.
 #' @noRd
 .load_env_file <- function(env_file) {
   lines <- readLines(env_file, warn = FALSE)
   for (line in lines) {
     line <- trimws(line)
     if (!nzchar(line) || startsWith(line, "#")) next
-    parts <- strsplit(line, "=", fixed = TRUE)[[1L]]
-    if (length(parts) < 2L) next
-    key   <- trimws(parts[[1L]])
-    value <- trimws(paste(parts[-1L], collapse = "="))
+    # Split on the FIRST = only so that values containing = are preserved.
+    eq_pos <- regexpr("=", line, fixed = TRUE)
+    if (eq_pos < 1L) next
+    key   <- trimws(substr(line, 1L, eq_pos - 1L))
+    value <- trimws(substr(line, eq_pos + 1L, nchar(line)))
     value <- gsub("^['\"]|['\"]$", "", value)   # strip surrounding quotes
+    if (!nzchar(key)) next
     do.call(Sys.setenv, stats::setNames(list(value), key))
   }
 }
