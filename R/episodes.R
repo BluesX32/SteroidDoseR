@@ -147,8 +147,8 @@ build_episodes <- function(connector_or_df,
       episode_end       = max(.data$.end),
       n_records         = dplyr::n(),
       median_daily_dose = stats::median(.data$.dose, na.rm = TRUE),
-      min_daily_dose    = min(.data$.dose, na.rm = TRUE),
-      max_daily_dose    = max(.data$.dose, na.rm = TRUE),
+      min_daily_dose    = suppressWarnings(min(.data$.dose, na.rm = TRUE)),
+      max_daily_dose    = suppressWarnings(max(.data$.dose, na.rm = TRUE)),
       .groups = "drop"
     ) |>
     dplyr::mutate(

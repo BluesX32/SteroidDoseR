@@ -39,21 +39,94 @@
 #' is opened lazily — only when a query is executed — and closed immediately
 #' after via [with_connector()].
 #'
-#' Requires the **DatabaseConnector** and **SqlRender** packages (both on
-#' CRAN). Connection details are created with
-#' `DatabaseConnector::createConnectionDetails()`.
+#' Connection details are created with
+#' `DatabaseConnector::createConnectionDetails()`, which supports every major
+#' DBMS used in OHDSI networks (SQL Server, PostgreSQL, Oracle, Redshift,
+#' BigQuery, Spark/Databricks, Snowflake, and more). SteroidDoseR uses
+#' `SqlRender` to translate its SQL templates to the target dialect, so the
+#' package works across all supported platforms without any site-specific
+#' configuration.
+#'
+#' ## Supported platforms
+#'
+#' Pass any `connectionDetails` object created by
+#' `DatabaseConnector::createConnectionDetails()`. Common examples:
+#'
+#' ```r
+#' # SQL Server — Windows integrated security (typical at academic medical centres)
+#' cd <- DatabaseConnector::createConnectionDetails(
+#'   dbms         = "sql server",
+#'   server       = "myserver.institution.edu",
+#'   pathToDriver = "/path/to/jdbc"
+#' )
+#'
+#' # SQL Server — username / password
+#' cd <- DatabaseConnector::createConnectionDetails(
+#'   dbms         = "sql server",
+#'   server       = "myserver.institution.edu",
+#'   user         = "omop_user",
+#'   password     = keyring::key_get("omop_db"),
+#'   pathToDriver = "/path/to/jdbc"
+#' )
+#'
+#' # PostgreSQL
+#' cd <- DatabaseConnector::createConnectionDetails(
+#'   dbms     = "postgresql",
+#'   server   = "localhost/omop_cdm",
+#'   user     = "omop_user",
+#'   password = Sys.getenv("DB_PASSWORD"),
+#'   port     = 5432
+#' )
+#'
+#' # Google BigQuery (e.g., All of Us)
+#' cd <- DatabaseConnector::createConnectionDetails(
+#'   dbms               = "bigquery",
+#'   connectionString   = "jdbc:bigquery://...",
+#'   user               = "",
+#'   password           = "",
+#'   pathToDriver       = "/path/to/jdbc"
+#' )
+#'
+#' # Databricks / Spark
+#' cd <- DatabaseConnector::createConnectionDetails(
+#'   dbms             = "spark",
+#'   connectionString = paste0(
+#'     "jdbc:databricks://workspace.cloud.databricks.com:443;",
+#'     "httpPath=/sql/1.0/warehouses/<id>;",
+#'     "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
+#'   ),
+#'   pathToDriver = "/path/to/jdbc"
+#' )
+#'
+#' # Amazon Redshift
+#' cd <- DatabaseConnector::createConnectionDetails(
+#'   dbms     = "redshift",
+#'   server   = "myworkgroup.123456789.us-east-1.redshift-serverless.amazonaws.com/omop",
+#'   user     = Sys.getenv("RS_USER"),
+#'   password = Sys.getenv("RS_PASSWORD"),
+#'   port     = 5439
+#' )
+#' ```
+#'
+#' See `?DatabaseConnector::createConnectionDetails` and
+#' <https://ohdsi.github.io/DatabaseConnector/> for the full list of supported
+#' platforms and driver installation instructions.
 #'
 #' @param connectionDetails A `connectionDetails` object created by
 #'   `DatabaseConnector::createConnectionDetails()`.
 #' @param cdm_schema `character(1)`. Schema containing the OMOP CDM tables
-#'   (`drug_exposure`, `concept`, etc.).
+#'   (`drug_exposure`, `concept`, etc.). On SQL Server this is typically
+#'   `"database_name.dbo"`; on PostgreSQL / Redshift just `"cdm"` or
+#'   `"omop_cdm"`.
 #' @param vocab_schema `character(1)` or `NULL`. Schema containing OMOP
 #'   vocabulary tables. Defaults to `cdm_schema`.
 #' @param results_schema `character(1)` or `NULL`. Schema for cohort/results
 #'   tables. Only needed if cohort-based filtering is used.
-#' @param temp_schema `character(1)` or `NULL`. Schema for temp tables.
-#'   Required on some DBMS (e.g. SQL Server) for `#temp` table creation.
-#' @param cdm_version `character(1)`. OMOP CDM version. Default `"5.4"`.
+#' @param temp_schema `character(1)` or `NULL`. Schema for temp-table
+#'   emulation. Required on some DBMS (e.g. SQL Server) when `SqlRender`
+#'   temp-table emulation is active.
+#' @param cdm_version `character(1)`. OMOP CDM version string. Default
+#'   `"5.4"`.
 #'
 #' @return An object of class `c("omop_connector", "steroid_connector")`.
 #'
@@ -61,14 +134,15 @@
 #'
 #' @examples
 #' \dontrun{
+#' # PostgreSQL (minimal example)
 #' cd <- DatabaseConnector::createConnectionDetails(
 #'   dbms     = "postgresql",
-#'   server   = "myserver/omop",
+#'   server   = "localhost/omop",
 #'   user     = "omop_user",
 #'   password = Sys.getenv("DB_PASSWORD"),
 #'   port     = 5432
 #' )
-#' con <- create_omop_connector(cd, cdm_schema = "cdm_531")
+#' con <- create_omop_connector(cd, cdm_schema = "cdm_54")
 #' doses <- calc_daily_dose_baseline(con, start_date = "2020-01-01")
 #' }
 create_omop_connector <- function(connectionDetails,

@@ -1,0 +1,69 @@
+---
+title: "Steroid Package Debugging"
+format: html
+editor: visual
+---
+
+# Setup
+
+```{r}
+devtools::install_local("H:/Myositis/DoseCalculation/SteroidDoseR")
+library(janitor)
+Sys.getenv("JAVA_HOME")
+library(rJava)
+library(dotenv)
+dotenv::load_dot_env()
+library(SteroidDoseR)
+library(DatabaseConnector)
+```
+
+# Start Test
+
+```{r toy-example}
+#| echo: false
+
+
+# 1. Load the bundled synthetic drug-exposure data
+extdata  <- system.file("extdata", package = "SteroidDoseR")
+drug_exp <- readr::read_csv(file.path(extdata, "synthetic_drug_exposure.csv"),
+                            show_col_types = FALSE)
+
+# 2. Wrap the data frame in a connector
+con <- create_df_connector(drug_exp)
+
+# 3. Run the full pipeline in one call
+episodes <- run_pipeline(con, method = "baseline")
+
+# 4. Inspect results
+episodes[, c("person_id", "drug_name_std", "episode_start",
+             "episode_end", "n_days", "median_daily_dose")]
+```
+
+# OMOP CDM Database
+
+## Connection
+
+```{r omop-connection}
+# Create connectionDetails using DatabaseConnector (OHDSI standard approach).
+# Adjust dbms / server / pathToDriver for your site.
+# SQL Server with Windows integrated security (JHU example):
+connectionDetails <- DatabaseConnector::createConnectionDetails(
+  dbms         = "sql server",
+  server       = "esmpmdbpr4.esm.johnshopkins.edu",
+  pathToDriver = Sys.getenv("JDBC_DRIVER_PATH",
+                             unset = "C:/Users/mxiong5/Documents/Myositis")
+)
+
+omop_con <- create_omop_connector(
+  connectionDetails = connectionDetails,
+  cdm_schema        = "Myositis_OMOP.dbo",
+  results_schema    = "Myositis_OMOP.Results"
+)
+print(omop_con)   # shows <omop_connector>, Connected: no (lazy connection)
+```
+
+## Check connected datbase
+
+```{r check-database}
+
+```

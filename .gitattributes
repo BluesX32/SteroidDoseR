@@ -1,0 +1,13 @@
+# Enforce LF line endings for all text files.
+# Overrides core.autocrlf so the package is consistent across Windows/macOS/Linux.
+* text=auto eol=lf
+
+# Treat binary files as binary (never mangle line endings)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.pdf  binary
+*.rda  binary
+*.rds  binary
+*.RData binary

@@ -34,6 +34,9 @@ docs/articles/
 docs/reference/
 docs/news/
 
+# JDBC driver binaries — download locally, never commit
+jdbc_drivers/
+
 # Environment files
 .env
 .Renviron

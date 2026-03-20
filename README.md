@@ -153,34 +153,141 @@ The two connector types share the same interface. Functions like `run_pipeline()
 Before using the OMOP CDM connector you need:
 
 - `DatabaseConnector` and `SqlRender` installed (see Installation above).
-- Read-only database access to a schema containing the `drug_exposure` and `concept` tables.
-- Valid connection credentials (server address, username, password or service account).
+- Read-only access to a schema containing the `drug_exposure` and `concept` tables.
+- JDBC driver files for your database platform (see JDBC drivers below).
 
-Store credentials in environment variables, not in your scripts. The example below reads them from the environment:
+#### JDBC drivers
+
+`DatabaseConnector` relies on JDBC drivers that must be downloaded separately.
+Download them once and point `pathToDriver` to the folder:
+
+```r
+DatabaseConnector::downloadJdbcDrivers("sql server",  pathToDriver = "/path/to/jdbc")
+DatabaseConnector::downloadJdbcDrivers("postgresql",  pathToDriver = "/path/to/jdbc")
+# other options: "redshift", "oracle", "bigquery", "spark", "snowflake"
+```
+
+Set an environment variable so you do not need to repeat the path in every script:
+
+```r
+# Add to your ~/.Renviron (run usethis::edit_r_environ() to open it)
+DATABASECONNECTOR_JAR_FOLDER=/path/to/jdbc
+```
+
+Once set, `pathToDriver` can be omitted from `createConnectionDetails()`.
+See the [DatabaseConnector documentation](https://ohdsi.github.io/DatabaseConnector/)
+for the full platform list and driver installation details.
+
+#### Creating a connection
+
+`SteroidDoseR` follows the OHDSI-standard pattern used by packages such as
+`CohortGenerator` and `FeatureExtraction`: you create a `connectionDetails`
+object with `DatabaseConnector::createConnectionDetails()` and pass it to the
+package. `SqlRender` then translates the package's SQL templates to the target
+dialect automatically, so the same package code works across all supported
+platforms without any site-specific changes.
+
+Store credentials in environment variables or a secrets manager, not in scripts.
+
+**SQL Server — Windows integrated security** (typical at academic medical centres)
 
 ```r
 library(SteroidDoseR)
 library(DatabaseConnector)
 
-# Build connection details (DatabaseConnector standard)
-cd <- createConnectionDetails(
-  dbms     = "postgresql",        # also: "sql server", "snowflake", "bigquery"
-  server   = "myserver/omop_db",
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms   = "sql server",
+  server = "myserver.institution.edu"
+  # No user/password needed — uses the current Windows login
+)
+
+con <- create_omop_connector(
+  connectionDetails = cd,
+  cdm_schema        = "MyDatabase.dbo"   # database.schema (three-part notation)
+)
+```
+
+**SQL Server — username / password**
+
+```r
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms     = "sql server",
+  server   = "myserver.institution.edu",
+  user     = Sys.getenv("DB_USER"),
+  password = Sys.getenv("DB_PASSWORD")
+)
+```
+
+**PostgreSQL**
+
+```r
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms     = "postgresql",
+  server   = "localhost/omop_cdm",   # host/database
   user     = Sys.getenv("DB_USER"),
   password = Sys.getenv("DB_PASSWORD"),
   port     = 5432
 )
 
-# Wrap in a SteroidDoseR OMOP connector
-con <- create_omop_connector(
-  connectionDetails = cd,
-  cdm_schema        = "cdm_531",   # schema containing drug_exposure, concept, ...
-  vocab_schema      = "vocab",     # optional: separate vocabulary schema
-  cdm_version       = "5.4"
+con <- create_omop_connector(cd, cdm_schema = "cdm_54")
+```
+
+**Amazon Redshift**
+
+```r
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms     = "redshift",
+  server   = "myworkgroup.123456789.us-east-1.redshift-serverless.amazonaws.com/omop",
+  user     = Sys.getenv("RS_USER"),
+  password = Sys.getenv("RS_PASSWORD"),
+  port     = 5439
 )
 ```
 
-The package opens a database connection only during the query and closes it immediately after. There is no persistent connection to manage.
+**Google BigQuery** (e.g., *All of Us* Researcher Workbench)
+
+```r
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms             = "bigquery",
+  connectionString = Sys.getenv("BIGQUERY_CONNECTION_STRING"),
+  user             = "",
+  password         = ""
+)
+```
+
+**Databricks / Spark**
+
+```r
+cd <- DatabaseConnector::createConnectionDetails(
+  dbms             = "spark",
+  connectionString = paste0(
+    "jdbc:databricks://workspace.cloud.databricks.com:443;",
+    "httpPath=/sql/1.0/warehouses/<warehouse-id>;",
+    "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
+  )
+)
+```
+
+#### Wrapping in a connector
+
+Once you have a `connectionDetails` object, wrap it for use with `SteroidDoseR`:
+
+```r
+con <- create_omop_connector(
+  connectionDetails = cd,
+  cdm_schema        = "omop_cdm",   # schema containing drug_exposure, concept, …
+  vocab_schema      = "vocab",      # optional: separate vocabulary schema
+  cdm_version       = "5.4"
+)
+print(con)
+#> <omop_connector>
+#>   CDM schema    : omop_cdm
+#>   CDM version   : 5.4
+#>   Connected     : no
+```
+
+The package opens a database connection only when running a query and closes it
+immediately after — there is no persistent connection to manage.
 
 ### Detecting available fields
 
