@@ -26,7 +26,7 @@ library(dplyr)
 USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
 ENV_FILE       <- ".env"  # path to .env file (relative to working directory)
 START_DATE     <- "2015-01-01"
-END_DATE       <- "2023-12-31"
+END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 30L
 
 # ---------------------------------------------------------------------------
@@ -65,6 +65,16 @@ message(sprintf(
   "Fetched %d rows | %d unique persons",
   nrow(drug_df), length(unique(drug_df$person_id))
 ))
+
+# Standardise drug names once so the column flows through to both methods.
+# calc_daily_dose_nlp() would add it anyway, but baseline does not.
+drug_df <- drug_df |>
+  dplyr::mutate(drug_name_std = standardize_drug_name(drug_concept_name))
+
+# Ensure drug_exposure_id exists (present in live DB fetch; absent in synthetic CSV).
+if (!"drug_exposure_id" %in% names(drug_df)) {
+  drug_df <- drug_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
+}
 
 # ---------------------------------------------------------------------------
 # 4. Baseline method

@@ -10,12 +10,30 @@
 #' coverage (# usable / computable episodes), MAE, and MBE.
 #'
 #' @param computed_df A data frame of computed episode summaries. Must contain
-#'   `person_id`, `episode_start`, `episode_end`, and `median_daily_dose`.
+#'   the columns named by `computed_id_col`, `computed_start_col`,
+#'   `computed_end_col`, and `computed_dose_col`.
 #'   Typically the output of [build_episodes()] after [convert_pred_equiv()].
-#' @param gold_df A data frame of gold-standard episodes. Must contain
-#'   `patient_id`, `episode_start`, `episode_end`, and `median_daily_dose`.
+#' @param gold_df A data frame of gold-standard episodes. Must contain the
+#'   columns named by `gold_id_col`, `gold_start_col`, `gold_end_col`, and
+#'   `gold_dose_col`.
 #' @param min_overlap_days `integer(1)`. Minimum calendar-day overlap required
 #'   to consider a computed episode as matching a gold episode. Default: `1L`.
+#' @param computed_id_col `character(1)`. Patient ID column in `computed_df`.
+#'   Default: `"person_id"`.
+#' @param computed_start_col `character(1)`. Episode start column in
+#'   `computed_df`. Default: `"episode_start"`.
+#' @param computed_end_col `character(1)`. Episode end column in `computed_df`.
+#'   Default: `"episode_end"`.
+#' @param computed_dose_col `character(1)`. Dose column in `computed_df`.
+#'   Default: `"median_daily_dose"`.
+#' @param gold_id_col `character(1)`. Patient ID column in `gold_df`.
+#'   Default: `"patient_id"`.
+#' @param gold_start_col `character(1)`. Episode start column in `gold_df`.
+#'   Default: `"episode_start"`.
+#' @param gold_end_col `character(1)`. Episode end column in `gold_df`.
+#'   Default: `"episode_end"`.
+#' @param gold_dose_col `character(1)`. Dose column in `gold_df`.
+#'   Default: `"median_daily_dose"`.
 #'
 #' @return A named list with three elements:
 #' \describe{
@@ -52,14 +70,38 @@
 #' evaluate_against_gold(computed, gold)
 evaluate_against_gold <- function(computed_df,
                                   gold_df,
-                                  min_overlap_days = 1L) {
+                                  min_overlap_days  = 1L,
+                                  computed_id_col   = "person_id",
+                                  computed_start_col = "episode_start",
+                                  computed_end_col  = "episode_end",
+                                  computed_dose_col = "median_daily_dose",
+                                  gold_id_col       = "patient_id",
+                                  gold_start_col    = "episode_start",
+                                  gold_end_col      = "episode_end",
+                                  gold_dose_col     = "median_daily_dose") {
 
   assert_required_cols(computed_df,
-    c("person_id", "episode_start", "episode_end", "median_daily_dose"),
+    c(computed_id_col, computed_start_col, computed_end_col, computed_dose_col),
     "computed_df")
   assert_required_cols(gold_df,
-    c("patient_id", "episode_start", "episode_end", "median_daily_dose"),
+    c(gold_id_col, gold_start_col, gold_end_col, gold_dose_col),
     "gold_df")
+
+  # --- rename user columns to internal names ---------------------------------
+  computed_df <- computed_df |>
+    dplyr::rename(
+      person_id         = dplyr::all_of(computed_id_col),
+      episode_start     = dplyr::all_of(computed_start_col),
+      episode_end       = dplyr::all_of(computed_end_col),
+      median_daily_dose = dplyr::all_of(computed_dose_col)
+    )
+  gold_df <- gold_df |>
+    dplyr::rename(
+      patient_id        = dplyr::all_of(gold_id_col),
+      episode_start     = dplyr::all_of(gold_start_col),
+      episode_end       = dplyr::all_of(gold_end_col),
+      median_daily_dose = dplyr::all_of(gold_dose_col)
+    )
 
   # --- normalise dates -------------------------------------------------------
   comp <- computed_df |>

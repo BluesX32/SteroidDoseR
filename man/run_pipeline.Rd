@@ -7,6 +7,7 @@
 run_pipeline(
   connector_or_df,
   method = c("baseline", "nlp"),
+  m2_sig_parse = c("warn", "auto", "nlp_first", "none"),
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -23,6 +24,18 @@ selected dose method.}
 
 \item{method}{\code{character(1)}. Imputation method: \code{"baseline"} (default) or
 \code{"nlp"}.}
+
+\item{m2_sig_parse}{\code{character(1)}. Only used when \code{method = "baseline"}.
+Controls how M2 (\code{tablets_freq}) is handled when \code{tablets} and
+\code{freq_per_day} are absent:
+\describe{
+\item{\code{"warn"} (default)}{Warn and skip M2.}
+\item{\code{"auto"}}{Parse the \code{sig} column inside \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}.}
+\item{\code{"nlp_first"}}{Run \code{\link[=parse_sig]{parse_sig()}} on the full data frame \emph{before}
+calling \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}, so NLP-derived \code{tablets} and
+\code{freq_per_day} are available for M2.}
+\item{\code{"none"}}{Silently skip M2.}
+}}
 
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Passed to the dose function. Ignored when \code{connector_or_df} is a data
 frame.}

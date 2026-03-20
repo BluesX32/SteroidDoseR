@@ -477,6 +477,7 @@ eval_result$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")]
 | `create_df_connector()` | — | Wrap a data frame as a connector (tests, synthetic data). |
 | `disconnect_connector()` | — | Close the database connection held by a connector. |
 | `detect_capabilities()` | — | Probe which `drug_exposure` fields are available at your site. |
+| `fetch_drug_exposure()` | Yes | Fetch raw `drug_exposure` rows from a connector. |
 | `run_pipeline()` | Yes | One-call fetch → impute → convert → episodes. `m2_sig_parse` controls M2 SIG-parse strategy. |
 | `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). `m2_sig_parse` controls M2 SIG-parse strategy. |
 | `calc_daily_dose_nlp()` | Yes | Rule-based SIG text parsing. |

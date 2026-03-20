@@ -11,7 +11,8 @@ calc_daily_dose_baseline(
   person_ids = NULL,
   start_date = NULL,
   end_date = NULL,
-  sig_source = "sig"
+  sig_source = "sig",
+  m2_sig_parse = c("warn", "auto", "none")
 )
 }
 \arguments{
@@ -40,6 +41,17 @@ Ignored when \code{connector_or_df} is a data frame.}
 \item{sig_source}{\code{character(1)}. Which column to use as SIG text when the
 native \code{sig} field is absent. One of \code{"sig"} (default) or
 \code{"drug_source_value"}. Ignored when \code{connector_or_df} is a data frame.}
+
+\item{m2_sig_parse}{\code{character(1)}. Controls behaviour when \code{tablets} and
+\code{freq_per_day} columns are absent but a \code{sig} column is present:
+\describe{
+\item{\code{"warn"} (default)}{Emit a warning and skip M2.}
+\item{\code{"auto"}}{Call \code{\link[=parse_sig]{parse_sig()}} internally to populate \code{tablets} and
+\code{freq_per_day} before running M2.}
+\item{\code{"none"}}{Silently skip M2 without any message.}
+}
+Ignored when \code{tablets} and \code{freq_per_day} are already present, or when
+\code{"tablets_freq"} is not in \code{methods}.}
 }
 \value{
 The input data frame (or the fetched data frame) with three

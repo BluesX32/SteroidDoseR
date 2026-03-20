@@ -449,7 +449,7 @@ detect_capabilities.omop_connector <- function(connector) {
 #'   all-NA.
 #'
 #' @return A tibble conforming to the [drug_df_contract].
-#' @noRd
+#' @export
 fetch_drug_exposure <- function(connector,
                                  drug_concept_ids = NULL,
                                  person_ids       = NULL,
