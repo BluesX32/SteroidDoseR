@@ -2,21 +2,21 @@
 # Enhanced rule-based NLP SIG parser with taper decomposition.
 #
 # Extends the rule-based engine in nlp.R with:
-#   • Word-form tablet counts  ("one tablet", "half a tablet", "1/2 tablet")
-#   • Fractional tablets       ("1/2", "½", "1 and a half tablets")
-#   • Weekly / monthly freqs   ("once weekly", "twice a week", "monthly")
-#   • Generalised every-N-days ("every 3 days", "q48h", "q72h")
-#   • Generalised every-N-hours ("every 4 hours", "q4h")
-#   • Taper schedule parser    (parse_taper_schedule) — explicit multi-step
+#   - Word-form tablet counts  ("one tablet", "half a tablet", "1/2 tablet")
+#   - Fractional tablets       ("1/2", "1/2", "1 and a half tablets")
+#   - Weekly / monthly freqs   ("once weekly", "twice a week", "monthly")
+#   - Generalised every-N-days ("every 3 days", "q48h", "q72h")
+#   - Generalised every-N-hours ("every 4 hours", "q4h")
+#   - Taper schedule parser    (parse_taper_schedule) -- explicit multi-step
 #                               and decrement-by patterns
-#   • Taper expansion          (expand_tapers = TRUE in calc_daily_dose_nlp_advanced)
-#   • Dose plausibility cap    (max_daily_dose_mg, matching baseline)
+#   - Taper expansion          (expand_tapers = TRUE in calc_daily_dose_nlp_advanced)
+#   - Dose plausibility cap    (max_daily_dose_mg, matching baseline)
 #
 # All public functions are never-error: malformed / empty input returns a
 # row of NAs with an appropriate parsed_status.
 
 # ---------------------------------------------------------------------------
-# Internal helper: word-form → numeric
+# Internal helper: word-form -> numeric
 # ---------------------------------------------------------------------------
 
 #' @noRd
@@ -37,13 +37,13 @@
 # Internal helper: enhanced tablet extraction
 # ---------------------------------------------------------------------------
 
-# Handles numeric, decimal, fractional (1/2, ½), word-form, and
+# Handles numeric, decimal, fractional (1/2, 1/2), word-form, and
 # "X and a half" compounds.  `s` must already be normalised (lowercase).
 #' @noRd
 .extract_tablets_adv <- function(s) {
   unit_pat <- "(?:tablets?|tabs?|pills?|capsules?|caps?)"
 
-  # 1. "N and a half tablets" — numeric lead
+  # 1. "N and a half tablets" -- numeric lead
   m <- stringr::str_match(
     s, paste0("(\\d+(?:\\.\\d+)?)\\s+and\\s+(?:a\\s+)?half\\s+", unit_pat)
   )
@@ -59,7 +59,7 @@
     return(safe_as_numeric(v))
   }
 
-  # 3. "word and a half tablets" — word lead
+  # 3. "word and a half tablets" -- word lead
   m <- stringr::str_match(
     s, paste0("\\b(one|two|three|four|five|six|half|a|an)\\s+and\\s+(?:a\\s+)?half\\s+", unit_pat)
   )
@@ -307,25 +307,25 @@ parse_sig_advanced <- function(drug_df, sig_col = "sig") {
 #' relative to the prescription start date.
 #'
 #' Two strategies are attempted in order:
-#' 1. **Explicit multi-step** — SIG contains two or more `"X mg … for N
+#' 1. **Explicit multi-step** -- SIG contains two or more `"X mg ... for N
 #'    units"` blocks separated by `"then"`, commas, or semicolons.
-#' 2. **Decrement pattern** — SIG states a starting dose and a fixed
+#' 2. **Decrement pattern** -- SIG states a starting dose and a fixed
 #'    decrement: `"60 mg daily then decrease by 10 mg every week"`.
 #'
-#' Returns `NULL` when neither strategy produces ≥ 2 parseable steps.
+#' Returns `NULL` when neither strategy produces >= 2 parseable steps.
 #'
 #' @param sig_text `character(1)`. The raw SIG string.
 #'
 #' @return A `tibble` with one row per taper step and columns:
 #' \describe{
-#'   \item{step}{Integer step number (1, 2, …).}
+#'   \item{step}{Integer step number (1, 2, ...).}
 #'   \item{daily_dose_mg}{Daily dose for this step (mg/day).}
 #'   \item{freq_per_day}{Inferred doses per day (1 = daily by default).}
 #'   \item{duration_days}{Length of this step in days.}
 #'   \item{step_start_day}{Days from prescription start to step start (0-based).}
 #'   \item{step_end_day}{Days from prescription start to step end (inclusive).}
 #' }
-#' Returns `NULL` when the SIG cannot be decomposed into ≥ 2 steps.
+#' Returns `NULL` when the SIG cannot be decomposed into >= 2 steps.
 #'
 #' @export
 #'
@@ -553,7 +553,7 @@ parse_taper_schedule <- function(sig_text) {
 #' @param filter_oral `logical(1)`. If `TRUE` (default), only oral-route
 #'   records are kept.
 #' @param expand_tapers `logical(1)`. If `TRUE`, taper records with a
-#'   parseable schedule are expanded into multiple rows — one per dose step —
+#'   parseable schedule are expanded into multiple rows -- one per dose step --
 #'   with columns `taper_step`, `step_start_day`, and `step_end_day` added.
 #'   Records whose taper cannot be decomposed keep `taper_step = NA`.
 #'   Default: `FALSE`.
@@ -568,7 +568,7 @@ parse_taper_schedule <- function(sig_text) {
 #'
 #' @return A data frame with the same columns as [calc_daily_dose_nlp()] plus:
 #' - When `expand_tapers = TRUE`: `taper_step` (int), `step_start_day`
-#'   (num), `step_end_day` (num) — present on every row, `NA` for
+#'   (num), `step_end_day` (num) -- present on every row, `NA` for
 #'   non-taper records.
 #'
 #' @seealso [calc_daily_dose_nlp()], [parse_taper_schedule()],

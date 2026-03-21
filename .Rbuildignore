@@ -5,3 +5,6 @@
 ^data-raw$
 ^jdbc_drivers$
 ^docs$
+^CLAUDE\.md$
+^LICENSE\.md$
+^\.env\.example$

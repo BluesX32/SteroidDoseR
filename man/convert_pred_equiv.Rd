@@ -9,7 +9,8 @@ convert_pred_equiv(
   drug_col = "drug_name_std",
   dose_col = "daily_dose_mg",
   out_col = "pred_equiv_mg",
-  equiv_table = NULL
+  equiv_table = NULL,
+  drug_name_map = NULL
 )
 }
 \arguments{
@@ -19,7 +20,7 @@ numeric daily-dose column.}
 \item{drug_col}{\code{character(1)}. Name of the column holding drug names.
 Values are standardised internally (lowercase, trimmed, synonym-mapped).
 Default: \code{"drug_name_std"}. The function also accepts \code{"dmard_name"} or
-\code{"drug_concept_name"} — whichever is present if \code{drug_col} is not found,
+\code{"drug_concept_name"} -- whichever is present if \code{drug_col} is not found,
 a fallback search is attempted.}
 
 \item{dose_col}{\code{character(1)}. Name of the numeric daily-dose column.
@@ -30,6 +31,10 @@ prednisone-equivalent dose. Default: \code{"pred_equiv_mg"}.}
 
 \item{equiv_table}{A data frame with columns \code{drug_name_std} and
 \code{equiv_factor}. If \code{NULL} (default), the built-in clinical table is used.}
+
+\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex) and
+\code{canonical_name} for custom drug-name mappings passed to
+\code{\link[=standardize_drug_name]{standardize_drug_name()}}. \code{NULL} uses built-in mappings.}
 }
 \value{
 \code{drug_df} with three additional columns:

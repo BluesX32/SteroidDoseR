@@ -1,5 +1,5 @@
 # pipeline.R
-# Convenience wrapper that chains fetch → impute → convert → episode.
+# Convenience wrapper that chains fetch -> impute -> convert -> episode.
 
 #' Document the standardized drug_df column contract
 #'
@@ -75,7 +75,7 @@ NULL
 #' @param return_level `character(1)`. `"exposure"` returns one row per
 #'   drug-exposure record with dose columns appended. `"episode"` (default)
 #'   additionally runs [build_episodes()] and returns one row per
-#'   patient–drug episode.
+#'   patient-drug episode.
 #'
 #' @return
 #' - When `return_level = "exposure"`: the dose data frame from the chosen

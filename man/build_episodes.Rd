@@ -39,7 +39,7 @@ Supply \code{"drug_exposure_end_date"} when available.}
 
 \item{dose_col}{\code{character(1)}. Daily-dose column. Default:
 \code{"daily_dose_mg_imputed"}. Accepts \code{"daily_dose_mg"} or \code{"pred_equiv_mg"}
-as alternatives — whichever is present in the data.}
+as alternatives -- whichever is present in the data.}
 
 \item{gap_days}{\code{integer(1)}. Maximum gap (in days) between consecutive
 records that are still bridged into the same episode. Default: \code{30L}.}
@@ -48,11 +48,11 @@ records that are still bridged into the same episode. Default: \code{30L}.}
 data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}
 }
 \value{
-A data frame with one row per patient–drug episode:
+A data frame with one row per patient-drug episode:
 \describe{
 \item{person_id}{Patient identifier (renamed from \code{person_col}).}
 \item{drug_name_std}{Drug name (renamed from \code{drug_col}).}
-\item{episode_id}{Integer episode counter within patient–drug.}
+\item{episode_id}{Integer episode counter within patient-drug.}
 \item{episode_start}{First day of the episode (\code{Date}).}
 \item{episode_end}{Last day of the episode (\code{Date}).}
 \item{n_days}{Number of calendar days (\code{episode_end - episode_start + 1}).}

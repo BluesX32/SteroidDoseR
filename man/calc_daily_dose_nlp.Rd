@@ -10,6 +10,9 @@ calc_daily_dose_nlp(
   sig_col = "sig",
   filter_oral = TRUE,
   baseline_fallback = FALSE,
+  max_daily_dose_mg = 2000,
+  equiv_table = NULL,
+  drug_name_map = NULL,
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -34,6 +37,16 @@ records are kept. Set to \code{FALSE} if route filtering was done upstream.}
 \item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, the function tries to
 carry through an existing \code{daily_dose_mg} column (e.g. from the Baseline
 method) for records where NLP parsing fails. Default: \code{FALSE}.}
+
+\item{max_daily_dose_mg}{\code{numeric(1)} or \code{NULL}. Upper plausibility bound in
+mg/day. Default: \code{2000}. Set to \code{NULL} to disable.}
+
+\item{equiv_table}{A data frame with columns \code{drug_name_std} and
+\code{equiv_factor}. If \code{NULL}, the built-in clinical table is used.}
+
+\item{drug_name_map}{Optional data frame with columns \code{pattern} and
+\code{canonical_name} for custom drug-name mappings. \code{NULL} uses built-in
+mappings.}
 
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}

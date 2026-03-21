@@ -34,7 +34,7 @@
 #' @param drug_col `character(1)`. Name of the column holding drug names.
 #'   Values are standardised internally (lowercase, trimmed, synonym-mapped).
 #'   Default: `"drug_name_std"`. The function also accepts `"dmard_name"` or
-#'   `"drug_concept_name"` — whichever is present if `drug_col` is not found,
+#'   `"drug_concept_name"` -- whichever is present if `drug_col` is not found,
 #'   a fallback search is attempted.
 #' @param dose_col `character(1)`. Name of the numeric daily-dose column.
 #'   Default: `"daily_dose_mg"`.

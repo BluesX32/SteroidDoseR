@@ -4,10 +4,14 @@
 \alias{standardize_drug_name}
 \title{Standardise a corticosteroid drug name to a canonical form}
 \usage{
-standardize_drug_name(x)
+standardize_drug_name(x, drug_name_map = NULL)
 }
 \arguments{
 \item{x}{Character vector of drug names.}
+
+\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex) and
+\code{canonical_name}. Rows are applied in order before the built-in synonym
+table. \code{NULL} uses only the built-in mappings.}
 }
 \value{
 Character vector with standardised names.

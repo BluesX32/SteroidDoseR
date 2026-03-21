@@ -1,5 +1,5 @@
 # eval.R
-# Gold-standard comparison — ported from
+# Gold-standard comparison -- ported from
 # DosageCalculation/Comparisons/Comparisons_Sep28.qmd (lines 52-178).
 
 #' Compare computed dose episodes against a gold standard

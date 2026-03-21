@@ -57,7 +57,7 @@ Default \code{TRUE}.}
 }
 \value{
 An \code{omop_connector} object (\code{c("omop_connector", "steroid_connector")}).
-The database connection is lazy — opened per-query and closed immediately
+The database connection is lazy -- opened per-query and closed immediately
 after. No manual \code{disconnect()} call is needed. Pass directly to
 \code{calc_daily_dose_baseline()}, \code{run_pipeline()}, etc.
 }

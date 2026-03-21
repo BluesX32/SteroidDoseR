@@ -19,7 +19,7 @@
 #'
 #' Applies a hierarchy of regex rules to extract tablets per dose, frequency
 #' per day, mg amounts, duration, and flags. The function **never throws an
-#' error** — malformed or empty inputs return a row of `NA`s with
+#' error** -- malformed or empty inputs return a row of `NA`s with
 #' `parsed_status = "empty"` or `"no_parse"`.
 #'
 #' @param sig_text `character(1)`. The raw SIG string to parse.
@@ -127,18 +127,18 @@ parse_sig_one <- function(sig_text) {
   mg_per_dose <- stringr::str_match(s,
     "\\((\\d+(?:\\.\\d+)?)\\s*mg\\s*per\\s*dose\\)")[, 2L] |> safe_as_numeric()
 
-  # 3. Plain mg in parens: "(X mg)" — only when neither of the above
+  # 3. Plain mg in parens: "(X mg)" -- only when neither of the above
   mg_paren_plain <- if (is.na(mg_per_dose) && is.na(mg_total)) {
     stringr::str_match(s, "\\((\\d+(?:\\.\\d+)?)\\s*mg\\)")[, 2L] |> safe_as_numeric()
   } else NA_real_
 
-  # 4. Bare mg not in parens: "X mg" — only when none of the above
+  # 4. Bare mg not in parens: "X mg" -- only when none of the above
   mg_bare <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain)) {
     stringr::str_match(s, "(?<!\\()\\b(\\d+(?:\\.\\d+)?)\\s*mg\\b")[, 2L] |> safe_as_numeric()
   } else NA_real_
 
   # ---- per-administration mg ------------------------------------------------
-  # "(X mg per dose)" is the total per-administration amount — do NOT multiply
+  # "(X mg per dose)" is the total per-administration amount -- do NOT multiply
   # by tablet count (tablets just tell you how many pills, not a dose multiplier).
   # Plain parenthetical "(X mg)" and bare "X mg" are treated as per-tablet
   # strengths, so they ARE multiplied by tablet count when tablets is known.

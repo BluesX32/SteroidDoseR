@@ -7,11 +7,11 @@
 # DatabaseConnector connection with schema metadata stored as attributes.
 #
 # Platform-specific builders:
-#   create_sqlserver_connection()  — SQL Server + Windows AD / NTLM
-#   create_databricks_connection() — Databricks / Spark with Arrow option
+#   create_sqlserver_connection()  -- SQL Server + Windows AD / NTLM
+#   create_databricks_connection() -- Databricks / Spark with Arrow option
 #
 # Convenience wrapper:
-#   create_connection_from_env()   — read everything from a .env file
+#   create_connection_from_env()   -- read everything from a .env file
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -77,7 +77,7 @@ NULL
 #'   Default `TRUE`.
 #'
 #' @return An `omop_connector` object (`c("omop_connector", "steroid_connector")`).
-#'   The database connection is lazy — opened per-query and closed immediately
+#'   The database connection is lazy -- opened per-query and closed immediately
 #'   after. No manual `disconnect()` call is needed. Pass directly to
 #'   `calc_daily_dose_baseline()`, `run_pipeline()`, etc.
 #'
@@ -224,7 +224,7 @@ create_omop_connection <- function(
   }
 
   # ------------------------------------------------------------------
-  # Sanitise schema values — strip any leading = signs that can arise
+  # Sanitise schema values -- strip any leading = signs that can arise
   # from double-equals in .env files (KEY==value) or shell export
   # contamination (export KEY=value parsed as value "=value").
   # ------------------------------------------------------------------

@@ -66,7 +66,7 @@
 #' Each method's episodes appear as coloured horizontal lines spanning
 #' `episode_start` to `episode_end`. Gaps between episodes are blank (no
 #' dose prescribed). The gold standard is drawn in dark grey with a dashed
-#' line style. Panels are faceted by patient × drug.
+#' line style. Panels are faceted by patient x drug.
 #'
 #' @param episode_list A **named** list of episode data frames, one per
 #'   method. Each data frame must be output from [build_episodes()] and
@@ -185,7 +185,7 @@ plot_patient_episodes <- function(episode_list,
     method_colours[missing_col] <- extras
   }
 
-  # --- facet label: person × drug --------------------------------------------
+  # --- facet label: person x drug --------------------------------------------
   segs$facet_label <- paste0("Patient ", segs$person_id,
                               "\n", segs$drug_name_std)
   if (!is.null(gold_segs) && nrow(gold_segs) > 0L)
@@ -211,7 +211,7 @@ plot_patient_episodes <- function(episode_list,
     ggplot2::labs(
       title = title,
       x     = NULL,
-      y     = paste0("Daily dose — ", gsub("_", " ", dose_col), " (mg/day)")
+      y     = paste0("Daily dose -- ", gsub("_", " ", dose_col), " (mg/day)")
     ) +
     ggplot2::theme_bw(base_size = 12) +
     ggplot2::theme(
@@ -234,7 +234,7 @@ plot_patient_episodes <- function(episode_list,
       ggplot2::annotate(
         "text",
         x = -Inf, y = Inf, hjust = -0.1, vjust = 1.5,
-        label = "— — Gold standard", colour = pal[["Gold"]],
+        label = "-- Gold standard", colour = pal[["Gold"]],
         size = 3.2, fontface = "italic"
       )
   }
@@ -266,7 +266,7 @@ plot_patient_episodes <- function(episode_list,
 #' - Toggling individual methods on/off
 #' - Viewing the underlying episode table
 #'
-#' @param episode_list A **named** list of episode data frames — one per method
+#' @param episode_list A **named** list of episode data frames -- one per method
 #'   (see [plot_patient_episodes()] for format). Must include at least one
 #'   entry.
 #' @param gold_std Optional gold-standard data frame. Default: `NULL`.
@@ -334,7 +334,7 @@ launch_dose_dashboard <- function(episode_list,
 
     shiny::titlePanel(
       shiny::div(
-        shiny::strong("SteroidDoseR"), " — Patient Dose Review Dashboard",
+        shiny::strong("SteroidDoseR"), " -- Patient Dose Review Dashboard",
         style = "color:#0f3460;"
       )
     ),
@@ -349,7 +349,7 @@ launch_dose_dashboard <- function(episode_list,
           choices  = all_ids,
           selected = utils::head(all_ids, 3L),
           multiple = TRUE,
-          options  = list(placeholder = "Type or choose IDs…")
+          options  = list(placeholder = "Type or choose IDs...")
         ),
         shiny::actionButton("select_all",   "All",   class = "btn-sm"),
         shiny::actionButton("select_clear", "Clear", class = "btn-sm"),
@@ -443,9 +443,9 @@ launch_dose_dashboard <- function(episode_list,
         gold_id_col   = gold_id_col,
         linewidth    = input$lw,
         title        = paste0(
-          "Dose episodes — patients: ",
+          "Dose episodes -- patients: ",
           paste(utils::head(input$patient_ids, 5L), collapse = ", "),
-          if (length(input$patient_ids) > 5L) "…" else ""
+          if (length(input$patient_ids) > 5L) "..." else ""
         )
       )
     })

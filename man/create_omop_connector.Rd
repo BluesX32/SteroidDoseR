@@ -41,7 +41,7 @@ An object of class \code{c("omop_connector", "steroid_connector")}.
 \description{
 Constructs a connector object that holds connection details and schema
 information for a live OMOP CDM database. The actual database connection
-is opened lazily — only when a query is executed — and closed immediately
+is opened lazily -- only when a query is executed -- and closed immediately
 after via \code{\link[=with_connector]{with_connector()}}.
 }
 \details{
@@ -68,14 +68,14 @@ if (!nzchar(jdbc_path) || !dir.exists(jdbc_path))
        "Download drivers with DatabaseConnector::downloadJdbcDrivers() ",
        "and set JDBC_DRIVER_PATH in ~/.Renviron.")
 
-# SQL Server — Windows integrated security (typical at academic medical centres)
+# SQL Server -- Windows integrated security (typical at academic medical centres)
 cd <- DatabaseConnector::createConnectionDetails(
   dbms         = "sql server",
   server       = "myserver.institution.edu",
   pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
 )
 
-# SQL Server — username / password
+# SQL Server -- username / password
 cd <- DatabaseConnector::createConnectionDetails(
   dbms         = "sql server",
   server       = "myserver.institution.edu",

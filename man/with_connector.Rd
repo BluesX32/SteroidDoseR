@@ -19,7 +19,7 @@ The return value of \code{fn(connector, ...)}.
 }
 \description{
 For \code{omop_connector}: opens a connection, runs \code{fn(connector)}, then
-closes the connection — even if \code{fn} throws an error.
+closes the connection -- even if \code{fn} throws an error.
 }
 \details{
 For \code{df_connector}: runs \code{fn(connector)} directly (no connection needed).

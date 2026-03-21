@@ -32,6 +32,8 @@ Suggests:
     shiny (>= 1.7.0),
     DT (>= 0.28),
     knitr,
-    rmarkdown
+    rmarkdown,
+    rJava,
+    scales
 Config/testthat/edition: 3
 VignetteBuilder: knitr

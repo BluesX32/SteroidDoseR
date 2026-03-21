@@ -49,7 +49,7 @@ used when \code{return_level = "episode"}. Default: \code{30L}.}
 \item{return_level}{\code{character(1)}. \code{"exposure"} returns one row per
 drug-exposure record with dose columns appended. \code{"episode"} (default)
 additionally runs \code{\link[=build_episodes]{build_episodes()}} and returns one row per
-patient–drug episode.}
+patient-drug episode.}
 }
 \value{
 \itemize{

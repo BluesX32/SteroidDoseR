@@ -29,18 +29,18 @@
 #'   Supply `"drug_exposure_end_date"` when available.
 #' @param dose_col `character(1)`. Daily-dose column. Default:
 #'   `"daily_dose_mg_imputed"`. Accepts `"daily_dose_mg"` or `"pred_equiv_mg"`
-#'   as alternatives — whichever is present in the data.
+#'   as alternatives -- whichever is present in the data.
 #' @param gap_days `integer(1)`. Maximum gap (in days) between consecutive
 #'   records that are still bridged into the same episode. Default: `30L`.
 #' @param drug_concept_ids,person_ids,start_date,end_date
 #'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
 #'   data frame. See [calc_daily_dose_baseline()] for full descriptions.
 #'
-#' @return A data frame with one row per patient–drug episode:
+#' @return A data frame with one row per patient-drug episode:
 #' \describe{
 #'   \item{person_id}{Patient identifier (renamed from `person_col`).}
 #'   \item{drug_name_std}{Drug name (renamed from `drug_col`).}
-#'   \item{episode_id}{Integer episode counter within patient–drug.}
+#'   \item{episode_id}{Integer episode counter within patient-drug.}
 #'   \item{episode_start}{First day of the episode (`Date`).}
 #'   \item{episode_end}{Last day of the episode (`Date`).}
 #'   \item{n_days}{Number of calendar days (`episode_end - episode_start + 1`).}
@@ -49,7 +49,7 @@
 #'   \item{min_daily_dose}{Minimum daily dose across merged records.}
 #'   \item{max_daily_dose}{Maximum daily dose across merged records.}
 #'   \item{mean_daily_dose}{Duration-weighted mean daily dose:
-#'     `sum(dose_i × days_i) / sum(days_i)` across non-NA records in the
+#'     `sum(dose_i * days_i) / sum(days_i)` across non-NA records in the
 #'     episode. Use this (via `computed_dose_col = "mean_daily_dose"` in
 #'     [evaluate_against_gold()]) to weight longer prescriptions more heavily
 #'     than short ones.}
@@ -120,7 +120,7 @@ build_episodes <- function(connector_or_df,
       .dose     = if (!is.na(dose_col) && dose_col %in% names(drug_df))
                     safe_as_numeric(.data[[dose_col]])
                   else NA_real_,
-      # record duration in days — used for duration-weighted mean dose
+      # record duration in days -- used for duration-weighted mean dose
       .rec_days = as.integer(.data$.end - .data$.start) + 1L
     ) |>
     dplyr::filter(!is.na(.data$.person), !is.na(.data$.start)) |>

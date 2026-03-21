@@ -37,7 +37,7 @@ render_translate_sql <- function(sql_path, params, dbms) {
 #' @param params Named list of parameter substitutions.
 #'
 #' @return A data frame of query results (column names as returned by the
-#'   DBMS — callers should normalise with `tolower(names(df))`).
+#'   DBMS -- callers should normalise with `tolower(names(df))`).
 #' @noRd
 query_omop <- function(connector, sql_path, params) {
   if (is.null(connector$conn)) {

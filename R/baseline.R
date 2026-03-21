@@ -1,6 +1,9 @@
 # baseline.R
-# Cascading baseline dose imputation — faithful replica of the logic in
+# Cascading baseline dose imputation -- faithful replica of the logic in
 # DosageCalculation/Baseline/Baseline.qmd (lines 23-86).
+
+# Suppress R CMD check NOTEs for dplyr-created intermediate columns
+utils::globalVariables(c(".m1", ".m2", ".m3", ".m4"))
 
 #' Compute daily steroid doses using structured OMOP fields (Baseline method)
 #'
@@ -17,9 +20,9 @@
 #' | Method | Label | Logic |
 #' |--------|-------|-------|
 #' | M1 | `"original"` | Use `daily_dose` or `daily_dose_mg` column if numeric and > 0. |
-#' | M2 | `"tablets_freq"` | `tablets × freq_per_day × strength_mg`. Requires `sig` column to be parsed first, or pre-parsed `tablets` and `freq_per_day` columns. |
-#' | M3 | `"supply_based"` | `(quantity × strength_mg) / days_supply`. |
-#' | M4 | `"actual_duration"` | `(quantity × strength_mg) / actual_duration_days`, where `actual_duration_days` is derived from the date columns. |
+#' | M2 | `"tablets_freq"` | `tablets * freq_per_day * strength_mg`. Requires `sig` column to be parsed first, or pre-parsed `tablets` and `freq_per_day` columns. |
+#' | M3 | `"supply_based"` | `(quantity * strength_mg) / days_supply`. |
+#' | M4 | `"actual_duration"` | `(quantity * strength_mg) / actual_duration_days`, where `actual_duration_days` is derived from the date columns. |
 #'
 #' @param connector_or_df A `steroid_connector` (from [create_omop_connector()]
 #'   or [create_df_connector()]) **or** a data frame. When a connector is
@@ -66,14 +69,14 @@
 #'   \item{strength_mg}{Extracted tablet/capsule strength in mg.}
 #'   \item{dose_from_original}{M1 value: the original `daily_dose` or
 #'     `daily_dose_mg` column cast to numeric (NA if absent or non-positive).}
-#'   \item{dose_from_tablets_freq}{M2 value: `tablets × freq_per_day ×
+#'   \item{dose_from_tablets_freq}{M2 value: `tablets * freq_per_day *
 #'     strength_mg` (NA if any component is missing).}
-#'   \item{dose_from_supply}{M3 value: `(quantity × strength_mg) / days_supply`
+#'   \item{dose_from_supply}{M3 value: `(quantity * strength_mg) / days_supply`
 #'     (NA if any component is missing or `days_supply` is 0).}
-#'   \item{dose_from_actual_duration}{M4 value: `(quantity × strength_mg) /
-#'     actual_duration_days` (NA if any component is missing or duration ≤ 0).}
+#'   \item{dose_from_actual_duration}{M4 value: `(quantity * strength_mg) /
+#'     actual_duration_days` (NA if any component is missing or duration <= 0).}
 #'   \item{daily_dose_mg_imputed}{Best-estimate daily dose in mg: the first
-#'     non-NA value across M1–M4 in cascade order.}
+#'     non-NA value across M1-M4 in cascade order.}
 #'   \item{imputation_method}{One of `"original"`, `"tablets_freq"`,
 #'     `"supply_based"`, `"actual_duration"`, or `"missing"`.}
 #' }
@@ -186,12 +189,12 @@ calc_daily_dose_baseline <- function(connector_or_df,
   # and produce dose explosions in M3/M4; discard them and fall through to the
   # string-extraction fallback.  When amount_unit_concept_id is absent or NA
   # we cannot verify the unit, so we accept the value but also cross-check it
-  # against the string extraction and warn when they differ by > 100×.
+  # against the string extraction and warn when they differ by > 100x.
   av      <- if ("amount_value" %in% names(drug_df)) safe_as_numeric(drug_df$amount_value) else rep(NA_real_, nrow(drug_df))
   av_unit <- if ("amount_unit_concept_id" %in% names(drug_df)) drug_df$amount_unit_concept_id else rep(NA_integer_, nrow(drug_df))
   # Accept when unit is mg (8576), unknown/absent (NA), or unmapped concept 0.
   # Many production CDMs store 0 rather than NULL when the unit concept is not
-  # mapped — treating 0 identically to NA avoids silently discarding all
+  # mapped -- treating 0 identically to NA avoids silently discarding all
   # amount_value rows at sites that use the OMOP "no matching concept" sentinel.
   av_mg   <- dplyr::if_else(
     is.na(av_unit) | as.integer(av_unit) == 0L | as.integer(av_unit) == 8576L,
@@ -216,7 +219,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
                      na.rm = TRUE)
     rlang::warn(sprintf(
       paste0(
-        "strength_mg is NA for all %d records — no dose can be imputed.\n",
+        "strength_mg is NA for all %d records -- no dose can be imputed.\n",
         "  amount_value: %d NA, %d non-NA (unit accepted as mg/unknown)\n",
         "  drug_source_value string fallback: %d non-NA mg values found\n",
         "  Check: is amount_unit_concept_id mostly a non-mg concept (not 8576/0/NA)?\n",
@@ -243,7 +246,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
 
     if (sig_present) {
       if (m2_sig_parse == "auto") {
-        message("M2: `tablets`/`freq_per_day` absent — parsing `sig` column automatically.")
+        message("M2: `tablets`/`freq_per_day` absent -- parsing `sig` column automatically.")
         drug_df  <- parse_sig(drug_df, sig_col = "sig")
         has_tab  <- "tablets"      %in% names(drug_df)
         has_freq <- "freq_per_day" %in% names(drug_df)
@@ -255,7 +258,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
           "  use m2_sig_parse = 'nlp_first' in run_pipeline() to run NLP before baseline."
         ))
       }
-      # "none" → silent skip; no action needed
+      # "none" -> silent skip; no action needed
     }
   }
   # Accept both daily_dose (package convention) and daily_dose_mg (Version2).
@@ -282,7 +285,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
         TRUE ~ NA_real_
       ),
 
-      # M2: tablets × freq × strength
+      # M2: tablets * freq * strength
       .m2 = dplyr::case_when(
         "tablets_freq" %in% methods &
           !is.na(.data$.tablets) & !is.na(.data$.freq) & !is.na(.data$strength_mg) ~
@@ -290,7 +293,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
         TRUE ~ NA_real_
       ),
 
-      # M3: (quantity × strength) / days_supply
+      # M3: (quantity * strength) / days_supply
       .m3 = dplyr::case_when(
         "supply_based" %in% methods &
           !is.na(.data$.quantity) & !is.na(.data$.days_supply) &
@@ -299,7 +302,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
         TRUE ~ NA_real_
       ),
 
-      # M4: (quantity × strength) / actual_duration
+      # M4: (quantity * strength) / actual_duration
       .m4 = dplyr::case_when(
         "actual_duration" %in% methods &
           !is.na(.data$.quantity) & !is.na(.data$.actual_dur) &

@@ -36,7 +36,7 @@
 #'
 #' Constructs a connector object that holds connection details and schema
 #' information for a live OMOP CDM database. The actual database connection
-#' is opened lazily — only when a query is executed — and closed immediately
+#' is opened lazily -- only when a query is executed -- and closed immediately
 #' after via [with_connector()].
 #'
 #' Connection details are created with
@@ -64,14 +64,14 @@
 #'        "Download drivers with DatabaseConnector::downloadJdbcDrivers() ",
 #'        "and set JDBC_DRIVER_PATH in ~/.Renviron.")
 #'
-#' # SQL Server — Windows integrated security (typical at academic medical centres)
+#' # SQL Server -- Windows integrated security (typical at academic medical centres)
 #' cd <- DatabaseConnector::createConnectionDetails(
 #'   dbms         = "sql server",
 #'   server       = "myserver.institution.edu",
 #'   pathToDriver = Sys.getenv("JDBC_DRIVER_PATH")
 #' )
 #'
-#' # SQL Server — username / password
+#' # SQL Server -- username / password
 #' cd <- DatabaseConnector::createConnectionDetails(
 #'   dbms         = "sql server",
 #'   server       = "myserver.institution.edu",
@@ -297,7 +297,7 @@ disconnect_connector <- function(connector) {
 #' Execute a function within a managed database connection
 #'
 #' For `omop_connector`: opens a connection, runs `fn(connector)`, then
-#' closes the connection — even if `fn` throws an error.
+#' closes the connection -- even if `fn` throws an error.
 #'
 #' For `df_connector`: runs `fn(connector)` directly (no connection needed).
 #'
@@ -598,7 +598,7 @@ fetch_drug_exposure <- function(connector,
     }))
   }
 
-  # df_connector — no connection lifecycle needed
+  # df_connector -- no connection lifecycle needed
   fetch_drug_exposure(connector_or_df,
                       drug_concept_ids = drug_concept_ids,
                       person_ids       = person_ids,

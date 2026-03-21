@@ -29,7 +29,7 @@ A one-row \code{tibble} with columns:
 \description{
 Applies a hierarchy of regex rules to extract tablets per dose, frequency
 per day, mg amounts, duration, and flags. The function \strong{never throws an
-error} — malformed or empty inputs return a row of \code{NA}s with
+error} -- malformed or empty inputs return a row of \code{NA}s with
 \code{parsed_status = "empty"} or \code{"no_parse"}.
 }
 \examples{

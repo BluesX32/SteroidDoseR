@@ -12,7 +12,11 @@ calc_daily_dose_baseline(
   start_date = NULL,
   end_date = NULL,
   sig_source = "sig",
-  m2_sig_parse = c("warn", "auto", "none")
+  m2_sig_parse = c("warn", "auto", "none"),
+  max_daily_dose_mg = 2000,
+  filter_oral = FALSE,
+  equiv_table = NULL,
+  drug_name_map = NULL
 )
 }
 \arguments{
@@ -52,6 +56,22 @@ native \code{sig} field is absent. One of \code{"sig"} (default) or
 }
 Ignored when \code{tablets} and \code{freq_per_day} are already present, or when
 \code{"tablets_freq"} is not in \code{methods}.}
+
+\item{max_daily_dose_mg}{\code{numeric(1)} or \code{NULL}. Upper plausibility bound in
+mg/day. Records whose imputed dose exceeds this value are set to \code{NA} with
+a warning. Default: \code{2000}. Set to \code{NULL} to disable the cap.}
+
+\item{filter_oral}{\code{logical(1)}. If \code{TRUE}, restrict to oral-route records
+and to drugs present in the prednisone-equivalency table before imputing.
+Default: \code{FALSE}.}
+
+\item{equiv_table}{A data frame with columns \code{drug_name_std} and
+\code{equiv_factor} used when \code{filter_oral = TRUE}. If \code{NULL}, the built-in
+table is used.}
+
+\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex) and
+\code{canonical_name} passed to \code{\link[=standardize_drug_name]{standardize_drug_name()}}. \code{NULL} uses built-in
+mappings.}
 }
 \value{
 The input data frame (or the fetched data frame) with three
@@ -76,9 +96,9 @@ The first argument accepts either a \strong{connector} (created by
 \subsection{Cascade order}{\tabular{lll}{
    Method \tab Label \tab Logic \cr
    M1 \tab \code{"original"} \tab Use \code{daily_dose} or \code{daily_dose_mg} column if numeric and > 0. \cr
-   M2 \tab \code{"tablets_freq"} \tab \verb{tablets × freq_per_day × strength_mg}. Requires \code{sig} column to be parsed first, or pre-parsed \code{tablets} and \code{freq_per_day} columns. \cr
-   M3 \tab \code{"supply_based"} \tab \verb{(quantity × strength_mg) / days_supply}. \cr
-   M4 \tab \code{"actual_duration"} \tab \verb{(quantity × strength_mg) / actual_duration_days}, where \code{actual_duration_days} is derived from the date columns. \cr
+   M2 \tab \code{"tablets_freq"} \tab \verb{tablets * freq_per_day * strength_mg}. Requires \code{sig} column to be parsed first, or pre-parsed \code{tablets} and \code{freq_per_day} columns. \cr
+   M3 \tab \code{"supply_based"} \tab \verb{(quantity * strength_mg) / days_supply}. \cr
+   M4 \tab \code{"actual_duration"} \tab \verb{(quantity * strength_mg) / actual_duration_days}, where \code{actual_duration_days} is derived from the date columns. \cr
 }
 
 }

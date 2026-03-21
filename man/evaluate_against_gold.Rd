@@ -15,7 +15,9 @@ evaluate_against_gold(
   gold_id_col = "patient_id",
   gold_start_col = "episode_start",
   gold_end_col = "episode_end",
-  gold_dose_col = "median_daily_dose"
+  gold_dose_col = "median_daily_dose",
+  dose_breaks = c(0, 10, 20, 40, Inf),
+  dose_labels = c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)", "Very High (>40mg)")
 )
 }
 \arguments{
@@ -54,6 +56,13 @@ Default: \code{"episode_end"}.}
 
 \item{gold_dose_col}{\code{character(1)}. Dose column in \code{gold_df}.
 Default: \code{"median_daily_dose"}.}
+
+\item{dose_breaks}{Numeric vector of cut-point boundaries for dose-range
+stratification. Default: \code{c(0, 10, 20, 40, Inf)}.}
+
+\item{dose_labels}{Character vector of labels for the dose ranges. Must
+have exactly one fewer element than \code{dose_breaks}. Default:
+\code{c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)", "Very High (>40mg)")}.}
 }
 \value{
 A named list with three elements:
