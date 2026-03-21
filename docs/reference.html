@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteroidDoseR — Reference</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #1a1a2e; background: #f8f9fb; }
+  .wrapper { display: flex; min-height: 100vh; }
+  nav { width: 260px; flex-shrink: 0; background: #16213e; color: #c8d6e5; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 0 0 2rem 0; }
+  main { flex: 1; padding: 2.5rem 3rem; max-width: 920px; }
+  .nav-header { background: #0f3460; padding: 1.4rem 1.2rem 1rem; border-bottom: 1px solid #1a3a5c; }
+  .nav-header h2 { font-size: 1rem; font-weight: 700; color: #e0ecff; letter-spacing: 0.02em; }
+  .nav-header p  { font-size: 0.72rem; color: #7ea8c4; margin-top: 0.2rem; }
+  nav ul { list-style: none; padding: 0.5rem 0; }
+  nav li a { display: block; padding: 0.38rem 1.2rem; color: #a8bfd4; text-decoration: none; font-size: 0.82rem; border-left: 3px solid transparent; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  nav li a:hover { background: #1a3a5c; color: #e0ecff; border-left-color: #4a9eca; }
+  nav .nav-section-label { padding: 0.9rem 1.2rem 0.25rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: #4a7a9b; text-transform: uppercase; }
+  nav .nav-section-label.active-section { color: #7acbf5; }
+  h1 { font-size: 2rem; color: #0f3460; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; color: #0f3460; margin: 2.8rem 0 0.7rem; border-bottom: 2px solid #d0ddf0; padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; color: #16527a; margin: 1.8rem 0 0.4rem; }
+  p  { margin: 0.55rem 0; }
+  ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  a  { color: #1a6bbd; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84em; background: #e8edf5; border: 1px solid #c8d4e8; border-radius: 3px; padding: 0.1em 0.38em; }
+  pre { background: #1e2a3a; color: #cdd9e5; border-radius: 6px; padding: 1.1rem 1.3rem; overflow-x: auto; margin: 0.9rem 0 1.1rem; font-size: 0.84rem; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .kw { color: #79b8ff; } .fn { color: #b392f0; } .st { color: #9ecbff; } .cm { color: #6a737d; font-style: italic; } .nm { color: #f8c555; } .op { color: #e1e4e8; }
+  .callout { border-left: 4px solid; border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; margin: 1rem 0; font-size: 0.9rem; }
+  .callout-note { background: #e8f4fd; border-color: #2196f3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout strong { display: block; margin-bottom: 0.2rem; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th { background: #1a4a7a; color: #e0ecff; padding: 0.55rem 0.9rem; text-align: left; font-weight: 600; }
+  td { padding: 0.45rem 0.9rem; border-bottom: 1px solid #d8e4f0; }
+  tr:hover td { background: #eef3fb; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 0.15em 0.55em; border-radius: 3px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-new { background: #4caf50; color: #fff; }
+  .badge-fix { background: #ff9800; color: #fff; }
+  .back-top { display: block; text-align: right; font-size: 0.78rem; color: #7ea8c4; margin-top: 2rem; }
+  @media (max-width: 800px) { nav { display: none; } main { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<nav>
+  <div class="nav-header">
+    <h2>SteroidDoseR</h2>
+    <p>Package Manual v0.1.6</p>
+  </div>
+  <div class="nav-section-label">Getting started</div>
+  <ul>
+    <li><a href="index.html#overview">Overview</a></li>
+    <li><a href="index.html#installation">Installation</a></li>
+    <li><a href="index.html#quickstart">Quick start</a></li>
+  </ul>
+  <div class="nav-section-label">Data &amp; connectors</div>
+  <ul>
+    <li><a href="connectors.html#connectors">Connector types</a></li>
+    <li><a href="connectors.html#live-db">Live OMOP database</a></li>
+    <li><a href="connectors.html#capabilities">Capability detection</a></li>
+    <li><a href="connectors.html#columns">Column contract</a></li>
+  </ul>
+  <div class="nav-section-label">Methods</div>
+  <ul>
+    <li><a href="methods.html#baseline">Baseline method</a></li>
+    <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
+    <li><a href="methods.html#nlp">NLP method</a></li>
+    <li><a href="methods.html#nlp-params">NLP parameters</a></li>
+    <li><a href="methods.html#nlp-advanced">Advanced NLP</a></li>
+    <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
+    <li><a href="methods.html#taper-parser">Taper parser</a></li>
+    <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+  </ul>
+  <div class="nav-section-label">Pipeline</div>
+  <ul>
+    <li><a href="pipeline.html#equiv">Prednisone equivalency</a></li>
+    <li><a href="pipeline.html#episodes">Episode building</a></li>
+    <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
+    <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+  </ul>
+  <div class="nav-section-label active-section">Reference</div>
+  <ul>
+    <li><a href="reference.html#fn-ref">Function reference</a></li>
+    <li><a href="reference.html#dq">Data quality</a></li>
+    <li><a href="reference.html#troubleshooting">Troubleshooting</a></li>
+    <li><a href="reference.html#changelog">Changelog</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ── FUNCTION REFERENCE ─────────────────────────────────────────── -->
+<h2 id="fn-ref">Function reference</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Function</th><th>Connector?</th><th>Description</th></tr>
+  <tr><td><code>create_omop_connection()</code></td><td>—</td><td>High-level builder; reads config from env vars. Recommended for most sites.</td></tr>
+  <tr><td><code>create_connection_from_env()</code></td><td>—</td><td>Load a <code>.env</code> file and open a connection in one call.</td></tr>
+  <tr><td><code>create_omop_connector()</code></td><td>—</td><td>Low-level; supply a pre-built <code>connectionDetails</code> object.</td></tr>
+  <tr><td><code>create_df_connector()</code></td><td>—</td><td>Wrap an in-memory data frame. No database packages required.</td></tr>
+  <tr><td><code>disconnect_connector()</code></td><td>—</td><td>Close the database connection held by a connector.</td></tr>
+  <tr><td><code>detect_capabilities()</code></td><td>—</td><td>Probe which <code>drug_exposure</code> fields are populated at this site.</td></tr>
+  <tr><td><code>fetch_drug_exposure()</code></td><td>Yes</td><td>Fetch raw <code>drug_exposure</code> rows filtered by date / concept / person.</td></tr>
+  <tr><td><code>run_pipeline()</code></td><td>Yes</td><td>One-call fetch → impute → convert → episodes.</td></tr>
+  <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; plausibility cap. <span class="badge badge-fix">v0.1.6</span> Accept <code>amount_unit_concept_id = 0</code> as unknown unit. <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback. <span class="badge badge-new">v0.1.6</span> <code>max_daily_dose_mg</code> cap, <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp_advanced()</code></td><td>Yes</td><td><span class="badge badge-new">v0.1.2</span> Enhanced NLP: extended vocabulary, taper decomposition (<code>expand_tapers</code>), plausibility cap. <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
+  <tr><td><code>parse_sig()</code></td><td>No</td><td>Vectorised SIG parser, standard vocabulary (data-frame in, data-frame out).</td></tr>
+  <tr><td><code>parse_sig_one()</code></td><td>No</td><td>Parse a single SIG string; returns a 1-row tibble.</td></tr>
+  <tr><td><code>parse_sig_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Vectorised enhanced SIG parser with word-forms, weekly/monthly, every-N patterns.</td></tr>
+  <tr><td><code>parse_sig_one_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Single-record enhanced parser; same output columns as <code>parse_sig_one()</code>.</td></tr>
+  <tr><td><code>parse_taper_schedule()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Decompose a taper SIG into a per-step dose schedule tibble. Returns <code>NULL</code> when ≥ 2 steps cannot be extracted.</td></tr>
+  <tr><td><code>standardize_drug_name()</code></td><td>No</td><td>Normalise drug names to canonical lowercase generic form. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code> for user-supplied overrides.</td></tr>
+  <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code>.</td></tr>
+  <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
+  <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard. <span class="badge badge-new">v0.1.6</span> <code>dose_breaks</code> / <code>dose_labels</code> for customisable stratification.</td></tr>
+  <tr><td><code>plot_patient_episodes()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Static ggplot2 timeline overlaying Baseline, NLP, Advanced NLP, and gold-standard episodes.</td></tr>
+  <tr><td><code>launch_dose_dashboard()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Interactive Shiny review dashboard with patient filter, method toggles, and PDF/CSV download.</td></tr>
+</table>
+</div>
+
+<!-- ── DATA QUALITY ──────────────────────────────────────────────── -->
+<h2 id="dq">Data quality issues and how the package handles them</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Issue</th><th>How it manifests</th><th>Package response</th></tr>
+  <tr>
+    <td>Non-mg <code>amount_value</code></td>
+    <td>M3/M4 produces doses in billions (mcg treated as mg)</td>
+    <td><span class="badge badge-fix">v0.1.1</span> Unit concept ID checked; non-mg values discarded; string fallback used</td>
+  </tr>
+  <tr>
+    <td><code>amount_unit_concept_id = 0</code></td>
+    <td>All methods return <code>"missing"</code> — <code>strength_mg = NA</code> for every record</td>
+    <td><span class="badge badge-fix">v0.1.6</span> Concept 0 (OMOP "No matching concept" sentinel) now treated as unknown unit, identical to NA. Diagnostic warning emitted if <code>strength_mg</code> is still all-NA after both fallbacks.</td>
+  </tr>
+  <tr>
+    <td>SIG omits mg</td>
+    <td>All NLP records fall to <code>"no_parse"</code></td>
+    <td><span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> used as per-tablet strength fallback</td>
+  </tr>
+  <tr>
+    <td>Large quantity × small days_supply</td>
+    <td>M3 dose explosion (e.g. 90-day supply with days_supply = 1)</td>
+    <td><code>max_daily_dose_mg</code> cap (default 2000 mg/day) NAs out outliers with a warning</td>
+  </tr>
+  <tr>
+    <td>Same-day start and end date</td>
+    <td>M4 uses actual_duration = 1 day → high dose</td>
+    <td>Caught by <code>max_daily_dose_mg</code> cap</td>
+  </tr>
+  <tr>
+    <td>Missing <code>sig</code> column</td>
+    <td>NLP method finds nothing to parse</td>
+    <td>Empty <code>sig</code> column inserted automatically; <code>parsed_status = "empty"</code> for all; strength fallback still applies</td>
+  </tr>
+  <tr>
+    <td>Missing <code>drug_exposure_end_date</code></td>
+    <td>M4 and episode building fail</td>
+    <td>Today's date substituted with a one-time warning; M1–M3 unaffected</td>
+  </tr>
+  <tr>
+    <td>Budesonide</td>
+    <td>Equivalency factor is route-dependent (oral vs. inhaled differ by 10×)</td>
+    <td><code>equiv_factor = NA</code> for budesonide; <code>pred_equiv_status = "na_factor"</code>; requires manual review</td>
+  </tr>
+  <tr>
+    <td>Taper prescriptions</td>
+    <td>A single record covers a decreasing-dose course</td>
+    <td><code>parsed_status = "taper"</code>; dose computation skipped (no stable daily dose). Use <code>calc_daily_dose_nlp_advanced(expand_tapers = TRUE)</code> to decompose.</td>
+  </tr>
+</table>
+</div>
+
+<!-- ── TROUBLESHOOTING ───────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<h3>All Baseline methods returning "missing"</h3>
+<ol>
+  <li>Check <code>table(drug_df$amount_unit_concept_id, useNA = "ifany")</code>. If the dominant value is <code>0</code>, the fix in v0.1.6 resolves this — upgrade the package.</li>
+  <li>Check <code>table(baseline_df$imputation_method)</code> — which method is producing the missing values?</li>
+  <li>Look at <code>drug_df$drug_source_value</code> — does it contain "X mg" patterns that the string fallback can extract?</li>
+</ol>
+
+<h3>All NLP records are "no_parse" or "empty"</h3>
+<ol>
+  <li>Check whether <code>sig</code> is populated: <code>table(is.na(drug_df$sig))</code></li>
+  <li>If all NA, use <code>sig_source = "drug_source_value"</code> or rely on the strength fallback alone.</li>
+  <li>If SIG exists but records still fail, inspect the failing patterns: <code>nlp_df |> dplyr::filter(parsed_status == "no_parse") |> dplyr::count(sig, sort = TRUE) |> head(20)</code></li>
+</ol>
+
+<h3>Baseline doses are implausibly high</h3>
+<ol>
+  <li>Inspect <code>amount_unit_concept_id</code>: concept 8576 (mg), 0, and NA are accepted; all others are discarded.</li>
+  <li>Check <code>days_supply</code> distribution: <code>summary(drug_df$days_supply)</code> — very small values inflate M3.</li>
+  <li>The default <code>max_daily_dose_mg = 2000</code> cap will NA out obvious outliers with a warning that counts affected rows.</li>
+</ol>
+
+<h3>No records after oral filter</h3>
+<div class="callout callout-warn">
+  <strong>Warning: "No oral corticosteroid records found after filtering"</strong>
+  <p>Either <code>route_concept_name</code> is absent and/or drug names don't match the built-in steroid list. Use <code>filter_oral = FALSE</code> if your data is already pre-filtered to steroids, or check <code>drug_df$route_concept_name</code> and <code>drug_df$drug_name_std</code>.</p>
+</div>
+
+<h3>Database connection fails</h3>
+<ol>
+  <li>Verify JDBC drivers: <code>pkgbuild::has_build_tools(debug = TRUE)</code></li>
+  <li>Test connection independently: <code>DatabaseConnector::connect(connectionDetails)</code></li>
+  <li>Check schema: the SQL queries reference <code>@cdm_schema.drug_exposure</code> — confirm your schema name and account permissions.</li>
+  <li>Use <code>create_connection_from_env(".env")</code> to centralise all config and eliminate copy-paste errors.</li>
+</ol>
+
+<!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
+<h2 id="changelog">Changelog</h2>
+
+<h3>v0.1.6 <span class="badge badge-new">Generalisation</span> <span class="badge badge-fix">Bug fixes</span></h3>
+<ul>
+  <li><strong>fix(baseline): <code>amount_unit_concept_id = 0</code> accepted as unknown</strong> — many production CDMs write concept 0 ("No matching concept") instead of NULL. Previously this caused <code>strength_mg = NA</code> for every record and returned <code>"missing"</code> for all methods. Concept 0 now treated identically to NA. A diagnostic warning is emitted when <code>strength_mg</code> is still all-NA after both fallbacks. (#BUG-8)</li>
+  <li><strong>feat: <code>drug_name_map</code> parameter</strong> — <code>standardize_drug_name()</code>, <code>convert_pred_equiv()</code>, and all three imputation functions accept a user-supplied data frame (<code>pattern</code>, <code>canonical_name</code>) for site-specific synonyms or non-English brand names.</li>
+  <li><strong>feat: <code>equiv_table</code> in imputation functions</strong> — all three imputation functions derive the allowed-drug list from the user-supplied <code>equiv_table</code> when <code>filter_oral = TRUE</code>, enabling studies beyond the built-in 7-drug table.</li>
+  <li><strong>feat: <code>max_daily_dose_mg</code> in <code>calc_daily_dose_nlp()</code></strong> — dose plausibility cap (default 2000 mg/day) added to the basic NLP function.</li>
+  <li><strong>feat: SQL <code>@vocab_schema</code></strong> — vocabulary table joins now use <code>@vocab_schema</code> instead of <code>@cdm_schema</code>, enabling sites with separate vocabulary schemas.</li>
+  <li><strong>feat: <code>dose_breaks</code> / <code>dose_labels</code> in <code>evaluate_against_gold()</code></strong> — dose-range stratification bins are now fully customisable.</li>
+</ul>
+
+<h3>v0.1.5 <span class="badge badge-new">Baseline intermediate columns</span></h3>
+<ul>
+  <li><strong>feat(baseline):</strong> <code>calc_daily_dose_baseline()</code> now retains all four intermediate method columns — <code>dose_from_original</code>, <code>dose_from_tablets_freq</code>, <code>dose_from_supply</code>, <code>dose_from_actual_duration</code> — in its output, matching the Version2 <code>Baseline.qmd</code> column names.</li>
+</ul>
+
+<h3>v0.1.3 <span class="badge badge-new">Visualisation</span></h3>
+<ul>
+  <li><strong>New: <code>plot_patient_episodes()</code></strong> — static ggplot2 timeline overlaying all methods and gold standard as horizontal step segments, faceted by patient × drug.</li>
+  <li><strong>New: <code>launch_dose_dashboard()</code></strong> — interactive Shiny review dashboard with patient/drug filters, method toggles, line-width slider, and PDF/CSV download.</li>
+  <li><strong>feat(episodes):</strong> <code>build_episodes()</code> now returns <code>mean_daily_dose</code> — duration-weighted mean daily dose within each episode.</li>
+</ul>
+
+<h3>v0.1.2 <span class="badge badge-new">Advanced NLP</span></h3>
+<ul>
+  <li><strong>New: <code>calc_daily_dose_nlp_advanced()</code></strong> — enhanced NLP pipeline with extended vocabulary, taper decomposition (<code>expand_tapers</code>), and dose plausibility cap.</li>
+  <li><strong>New: <code>parse_taper_schedule()</code></strong> — standalone taper SIG decomposer. Supports explicit multi-step and decrement patterns.</li>
+  <li><strong>New: <code>parse_sig_one_advanced()</code> / <code>parse_sig_advanced()</code></strong> — drop-in replacements for the standard parsers with richer vocabulary.</li>
+</ul>
+
+<h3>v0.1.1 <span class="badge badge-fix">Bug fixes</span></h3>
+<ul>
+  <li><strong>Baseline — unit-safe <code>amount_value</code></strong>: non-mg <code>amount_unit_concept_id</code> values discarded before <code>strength_mg</code> calculation. Eliminates doses in the billions caused by mcg/g being treated as mg.</li>
+  <li><strong>Baseline — plausibility cap</strong>: new <code>max_daily_dose_mg</code> parameter (default 2000). Implausible doses set to NA with a diagnostic warning.</li>
+  <li><strong>Baseline — <code>filter_oral</code></strong>: new parameter matching NLP method's oral filter. Default <code>FALSE</code> preserves backward compatibility.</li>
+  <li><strong>NLP — strength fallback</strong>: when SIG contains no mg amount, <code>amount_value</code> (then <code>drug_concept_name</code>/<code>drug_source_value</code>) is used as per-tablet strength, promoting records from <code>"no_parse"</code> to <code>"ok"</code>.</li>
+</ul>
+
+<h3>v0.1.0 <span class="badge badge-new">Initial release</span></h3>
+<ul>
+  <li>Baseline method (M1–M4 cascade), NLP SIG parser, prednisone equivalency, episode building, evaluation against gold standard</li>
+  <li>Connector abstraction: <code>omop_connector</code> and <code>df_connector</code></li>
+  <li>Capability detection, concept-set and patient-level filters</li>
+  <li>112 unit tests, 29-record synthetic dataset, 4 vignettes</li>
+</ul>
+
+<a class="back-top" href="#fn-ref">↑ Back to top</a>
+
+</main>
+</div>
+</body>
+</html>

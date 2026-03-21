@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteroidDoseR — Overview &amp; Quick Start</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #1a1a2e; background: #f8f9fb; }
+  .wrapper { display: flex; min-height: 100vh; }
+  nav { width: 260px; flex-shrink: 0; background: #16213e; color: #c8d6e5; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 0 0 2rem 0; }
+  main { flex: 1; padding: 2.5rem 3rem; max-width: 920px; }
+  .nav-header { background: #0f3460; padding: 1.4rem 1.2rem 1rem; border-bottom: 1px solid #1a3a5c; }
+  .nav-header h2 { font-size: 1rem; font-weight: 700; color: #e0ecff; letter-spacing: 0.02em; }
+  .nav-header p  { font-size: 0.72rem; color: #7ea8c4; margin-top: 0.2rem; }
+  nav ul { list-style: none; padding: 0.5rem 0; }
+  nav li a { display: block; padding: 0.38rem 1.2rem; color: #a8bfd4; text-decoration: none; font-size: 0.82rem; border-left: 3px solid transparent; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  nav li a:hover { background: #1a3a5c; color: #e0ecff; border-left-color: #4a9eca; }
+  nav .nav-section-label { padding: 0.9rem 1.2rem 0.25rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: #4a7a9b; text-transform: uppercase; }
+  nav .nav-section-label.active-section { color: #7acbf5; }
+  h1 { font-size: 2rem; color: #0f3460; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; color: #0f3460; margin: 2.8rem 0 0.7rem; border-bottom: 2px solid #d0ddf0; padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; color: #16527a; margin: 1.8rem 0 0.4rem; }
+  p  { margin: 0.55rem 0; }
+  ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  a  { color: #1a6bbd; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84em; background: #e8edf5; border: 1px solid #c8d4e8; border-radius: 3px; padding: 0.1em 0.38em; }
+  pre { background: #1e2a3a; color: #cdd9e5; border-radius: 6px; padding: 1.1rem 1.3rem; overflow-x: auto; margin: 0.9rem 0 1.1rem; font-size: 0.84rem; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .kw { color: #79b8ff; } .fn { color: #b392f0; } .st { color: #9ecbff; } .cm { color: #6a737d; font-style: italic; } .nm { color: #f8c555; } .op { color: #e1e4e8; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th { background: #1a4a7a; color: #e0ecff; padding: 0.55rem 0.9rem; text-align: left; font-weight: 600; }
+  td { padding: 0.45rem 0.9rem; border-bottom: 1px solid #d8e4f0; }
+  tr:hover td { background: #eef3fb; }
+  tr:last-child td { border-bottom: none; }
+  .hero { background: linear-gradient(135deg, #0f3460 0%, #16527a 100%); border-radius: 8px; padding: 2rem 2.2rem; margin-bottom: 2rem; color: #e0ecff; }
+  .hero h1 { color: #fff; margin-bottom: 0.3rem; }
+  .hero p  { color: #a8cce0; margin: 0; font-size: 1rem; }
+  .hero .meta { margin-top: 0.8rem; font-size: 0.82rem; color: #7ea8c4; }
+  .hero .meta span { margin-right: 1.2rem; }
+  .back-top { display: block; text-align: right; font-size: 0.78rem; color: #7ea8c4; margin-top: 2rem; }
+  @media (max-width: 800px) { nav { display: none; } main { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<nav>
+  <div class="nav-header">
+    <h2>SteroidDoseR</h2>
+    <p>Package Manual v0.1.6</p>
+  </div>
+  <div class="nav-section-label active-section">Getting started</div>
+  <ul>
+    <li><a href="index.html#overview">Overview</a></li>
+    <li><a href="index.html#installation">Installation</a></li>
+    <li><a href="index.html#quickstart">Quick start</a></li>
+  </ul>
+  <div class="nav-section-label">Data &amp; connectors</div>
+  <ul>
+    <li><a href="connectors.html#connectors">Connector types</a></li>
+    <li><a href="connectors.html#live-db">Live OMOP database</a></li>
+    <li><a href="connectors.html#capabilities">Capability detection</a></li>
+    <li><a href="connectors.html#columns">Column contract</a></li>
+  </ul>
+  <div class="nav-section-label">Methods</div>
+  <ul>
+    <li><a href="methods.html#baseline">Baseline method</a></li>
+    <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
+    <li><a href="methods.html#nlp">NLP method</a></li>
+    <li><a href="methods.html#nlp-params">NLP parameters</a></li>
+    <li><a href="methods.html#nlp-advanced">Advanced NLP</a></li>
+    <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
+    <li><a href="methods.html#taper-parser">Taper parser</a></li>
+    <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+  </ul>
+  <div class="nav-section-label">Pipeline</div>
+  <ul>
+    <li><a href="pipeline.html#equiv">Prednisone equivalency</a></li>
+    <li><a href="pipeline.html#episodes">Episode building</a></li>
+    <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
+    <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+  </ul>
+  <div class="nav-section-label">Reference</div>
+  <ul>
+    <li><a href="reference.html#fn-ref">Function reference</a></li>
+    <li><a href="reference.html#dq">Data quality</a></li>
+    <li><a href="reference.html#troubleshooting">Troubleshooting</a></li>
+    <li><a href="reference.html#changelog">Changelog</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<div class="hero">
+  <h1>SteroidDoseR</h1>
+  <p>Automated corticosteroid dose extraction from OMOP CDM electronic health records</p>
+  <div class="meta">
+    <span>Version 0.1.6</span>
+    <span>R package</span>
+    <span>JHU Myositis Research Group · OHDSI AgentDose 2025</span>
+  </div>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  <strong>SteroidDoseR</strong> computes prednisone-equivalent daily doses from
+  OMOP CDM <code>drug_exposure</code> data and aggregates individual prescription
+  records into continuous treatment episodes. It was built to support rheumatologic
+  cohort studies — particularly myositis — where accurate steroid burden
+  quantification is a primary outcome variable.
+</p>
+
+<h3>Two complementary imputation methods</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Method</th><th>Approach</th><th>Best when</th></tr>
+  <tr>
+    <td><strong>Baseline</strong></td>
+    <td>Four-step cascade (M1–M4) using structured OMOP fields: pre-existing dose value, tablets×freq×strength, quantity/days_supply, quantity/actual_duration</td>
+    <td>OMOP fields well-populated; SIG text absent or unreliable</td>
+  </tr>
+  <tr>
+    <td><strong>NLP</strong></td>
+    <td>Rule-based regex parsing of free-text SIG prescription instructions; falls back to <code>amount_value</code> when SIG omits mg</td>
+    <td>SIG column populated with structured abbreviations (QD, BID, TID, etc.)</td>
+  </tr>
+  <tr>
+    <td><strong>Advanced NLP</strong></td>
+    <td>NLP extended with word-form tablet counts, weekly/monthly frequencies, every-N-days patterns, and taper schedule decomposition</td>
+    <td>Taper SIGs that need per-step expansion</td>
+  </tr>
+</table>
+</div>
+
+<h3>Analysis workflow</h3>
+<ol>
+  <li><strong>Cohort selection</strong> — identify patients via ICD-10 codes, computable phenotype, or <code>COHORT_PERSON_IDS = NULL</code> for the entire database</li>
+  <li><strong>Fetch</strong> — query <code>drug_exposure</code>, <code>concept</code>, and <code>drug_strength</code> with a drug concept filter and patient filter</li>
+  <li><strong>Impute</strong> — compute <code>daily_dose_mg</code> via Baseline or NLP</li>
+  <li><strong>Convert</strong> — multiply by prednisone-equivalency factor → <code>pred_equiv_mg</code></li>
+  <li><strong>Aggregate</strong> — gap-bridge consecutive prescriptions into episodes</li>
+  <li><strong>(Optional) Evaluate</strong> — compare episodes to a manually reviewed gold standard</li>
+</ol>
+
+<h2 id="installation">Installation</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>R ≥ 4.1</li>
+  <li>Core dependencies (auto-installed): <code>dplyr</code>, <code>purrr</code>, <code>stringr</code>, <code>tibble</code>, <code>rlang</code>, <code>readr</code></li>
+  <li><em>For live OMOP CDM connectivity only</em>: <code>DatabaseConnector</code> (≥ 3.0.0) and <code>SqlRender</code> (≥ 1.11.0) — not auto-installed</li>
+  <li><em>Windows source build</em>: Rtools matching your R version</li>
+</ul>
+
+<h3>Install from local source</h3>
+<pre><code><span class="cm"># Using devtools</span>
+<span class="fn">devtools</span>::<span class="fn">install_local</span>(<span class="st">"path/to/SteroidDoseR/"</span>)
+
+<span class="cm"># Using pak (handles some Windows path issues better)</span>
+<span class="fn">pak</span>::<span class="fn">local_install</span>(<span class="st">"path/to/SteroidDoseR/"</span>)
+</code></pre>
+
+<h3>Database connectivity packages (optional)</h3>
+<pre><code><span class="fn">install.packages</span>(<span class="st">"DatabaseConnector"</span>)
+<span class="fn">install.packages</span>(<span class="st">"SqlRender"</span>)
+</code></pre>
+
+<h3>Verify installation</h3>
+<pre><code><span class="fn">library</span>(SteroidDoseR)
+<span class="fn">sessionInfo</span>()  <span class="cm"># should list SteroidDoseR under "other attached packages"</span>
+</code></pre>
+
+<h2 id="quickstart">Quick start</h2>
+
+<p>Run the full pipeline against the bundled synthetic data — no database required:</p>
+
+<pre><code><span class="fn">library</span>(SteroidDoseR)
+
+<span class="cm"># Load bundled 29-record synthetic dataset</span>
+extdata  <span class="op">&lt;-</span> <span class="fn">system.file</span>(<span class="st">"extdata"</span>, package <span class="op">=</span> <span class="st">"SteroidDoseR"</span>)
+drug_exp <span class="op">&lt;-</span> readr::<span class="fn">read_csv</span>(<span class="fn">file.path</span>(extdata, <span class="st">"synthetic_drug_exposure.csv"</span>),
+                             show_col_types <span class="op">=</span> <span class="kw">FALSE</span>)
+
+<span class="cm"># Wrap in a connector</span>
+con <span class="op">&lt;-</span> <span class="fn">create_df_connector</span>(drug_exp)
+
+<span class="cm"># One-call pipeline: fetch → impute → convert → episodes</span>
+episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"baseline"</span>)
+
+episodes[, c(<span class="st">"person_id"</span>, <span class="st">"drug_name_std"</span>, <span class="st">"episode_start"</span>,
+             <span class="st">"episode_end"</span>, <span class="st">"n_days"</span>, <span class="st">"median_daily_dose"</span>)]
+</code></pre>
+
+<p>Switch to the NLP method with one argument change:</p>
+<pre><code>episodes_nlp <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"nlp"</span>)
+</code></pre>
+
+<p>
+  <strong>Next:</strong>
+  <a href="connectors.html">Connect to a live OMOP database →</a>
+  &nbsp;|&nbsp;
+  <a href="methods.html">Explore imputation methods →</a>
+  &nbsp;|&nbsp;
+  <a href="pipeline.html">Build episodes and evaluate →</a>
+</p>
+
+<a class="back-top" href="#overview">↑ Back to top</a>
+
+</main>
+</div>
+</body>
+</html>

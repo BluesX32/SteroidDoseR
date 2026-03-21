@@ -16,11 +16,17 @@ modification, regardless of scope.
 - Minimum required columns table if column requirements changed
 - Troubleshooting section if a new failure mode or fix is relevant
 
-**docs/manual.html** — mirror all README updates plus:
+**docs/** — multi-page HTML manual. Mirror all README updates plus:
+- `docs/index.html` — overview, installation, quick start
+- `docs/connectors.html` — connector types, live OMOP database, capability detection, column contract
+- `docs/methods.html` — Baseline (M1–M4), NLP, Advanced NLP, taper parser, SIG vocabulary
+- `docs/pipeline.html` — prednisone equivalency, episode building, run_pipeline(), evaluation
+- `docs/reference.html` — function reference table, data quality issues, troubleshooting, changelog
 - Add or update the parameter table row (`<tr>`) in the relevant function section
 - Apply the correct badge: `<span class="badge badge-new">v0.x.x</span>` for new
   features, `<span class="badge badge-fix">v0.x.x</span>` for bug fixes
-- Update the Changelog section at the bottom of the HTML
+- Update the Changelog section in `docs/reference.html`
+- `docs/manual.html` redirects to `docs/index.html` via meta-refresh (do not edit)
 
 **NEWS.md** — add a bullet under the current version section describing what
 changed and why (one bullet per logical change).

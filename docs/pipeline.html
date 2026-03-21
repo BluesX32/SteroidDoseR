@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteroidDoseR — Pipeline</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #1a1a2e; background: #f8f9fb; }
+  .wrapper { display: flex; min-height: 100vh; }
+  nav { width: 260px; flex-shrink: 0; background: #16213e; color: #c8d6e5; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 0 0 2rem 0; }
+  main { flex: 1; padding: 2.5rem 3rem; max-width: 920px; }
+  .nav-header { background: #0f3460; padding: 1.4rem 1.2rem 1rem; border-bottom: 1px solid #1a3a5c; }
+  .nav-header h2 { font-size: 1rem; font-weight: 700; color: #e0ecff; letter-spacing: 0.02em; }
+  .nav-header p  { font-size: 0.72rem; color: #7ea8c4; margin-top: 0.2rem; }
+  nav ul { list-style: none; padding: 0.5rem 0; }
+  nav li a { display: block; padding: 0.38rem 1.2rem; color: #a8bfd4; text-decoration: none; font-size: 0.82rem; border-left: 3px solid transparent; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  nav li a:hover { background: #1a3a5c; color: #e0ecff; border-left-color: #4a9eca; }
+  nav .nav-section-label { padding: 0.9rem 1.2rem 0.25rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: #4a7a9b; text-transform: uppercase; }
+  nav .nav-section-label.active-section { color: #7acbf5; }
+  h1 { font-size: 2rem; color: #0f3460; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; color: #0f3460; margin: 2.8rem 0 0.7rem; border-bottom: 2px solid #d0ddf0; padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; color: #16527a; margin: 1.8rem 0 0.4rem; }
+  h4 { font-size: 0.92rem; color: #2d6a94; margin: 1.2rem 0 0.25rem; font-weight: 600; }
+  p  { margin: 0.55rem 0; }
+  ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  a  { color: #1a6bbd; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84em; background: #e8edf5; border: 1px solid #c8d4e8; border-radius: 3px; padding: 0.1em 0.38em; }
+  pre { background: #1e2a3a; color: #cdd9e5; border-radius: 6px; padding: 1.1rem 1.3rem; overflow-x: auto; margin: 0.9rem 0 1.1rem; font-size: 0.84rem; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .kw { color: #79b8ff; } .fn { color: #b392f0; } .st { color: #9ecbff; } .cm { color: #6a737d; font-style: italic; } .nm { color: #f8c555; } .op { color: #e1e4e8; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th { background: #1a4a7a; color: #e0ecff; padding: 0.55rem 0.9rem; text-align: left; font-weight: 600; }
+  td { padding: 0.45rem 0.9rem; border-bottom: 1px solid #d8e4f0; }
+  tr:hover td { background: #eef3fb; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 0.15em 0.55em; border-radius: 3px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-new { background: #4caf50; color: #fff; }
+  .fn-sig { background: #f0f4fb; border: 1px solid #c8d4e8; border-left: 4px solid #0f3460; border-radius: 0 6px 6px 0; padding: 0.8rem 1.1rem; font-family: monospace; font-size: 0.88rem; margin: 0.6rem 0 1rem; white-space: pre-wrap; word-break: break-word; }
+  .param-table td:first-child { font-family: monospace; color: #0f3460; font-size: 0.85rem; white-space: nowrap; }
+  .param-table td:nth-child(2) { color: #555; font-size: 0.82rem; white-space: nowrap; }
+  .back-top { display: block; text-align: right; font-size: 0.78rem; color: #7ea8c4; margin-top: 2rem; }
+  @media (max-width: 800px) { nav { display: none; } main { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<nav>
+  <div class="nav-header">
+    <h2>SteroidDoseR</h2>
+    <p>Package Manual v0.1.6</p>
+  </div>
+  <div class="nav-section-label">Getting started</div>
+  <ul>
+    <li><a href="index.html#overview">Overview</a></li>
+    <li><a href="index.html#installation">Installation</a></li>
+    <li><a href="index.html#quickstart">Quick start</a></li>
+  </ul>
+  <div class="nav-section-label">Data &amp; connectors</div>
+  <ul>
+    <li><a href="connectors.html#connectors">Connector types</a></li>
+    <li><a href="connectors.html#live-db">Live OMOP database</a></li>
+    <li><a href="connectors.html#capabilities">Capability detection</a></li>
+    <li><a href="connectors.html#columns">Column contract</a></li>
+  </ul>
+  <div class="nav-section-label">Methods</div>
+  <ul>
+    <li><a href="methods.html#baseline">Baseline method</a></li>
+    <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
+    <li><a href="methods.html#nlp">NLP method</a></li>
+    <li><a href="methods.html#nlp-params">NLP parameters</a></li>
+    <li><a href="methods.html#nlp-advanced">Advanced NLP</a></li>
+    <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
+    <li><a href="methods.html#taper-parser">Taper parser</a></li>
+    <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+  </ul>
+  <div class="nav-section-label active-section">Pipeline</div>
+  <ul>
+    <li><a href="pipeline.html#equiv">Prednisone equivalency</a></li>
+    <li><a href="pipeline.html#episodes">Episode building</a></li>
+    <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
+    <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+  </ul>
+  <div class="nav-section-label">Reference</div>
+  <ul>
+    <li><a href="reference.html#fn-ref">Function reference</a></li>
+    <li><a href="reference.html#dq">Data quality</a></li>
+    <li><a href="reference.html#troubleshooting">Troubleshooting</a></li>
+    <li><a href="reference.html#changelog">Changelog</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ── EQUIVALENCY ───────────────────────────────────────────────── -->
+<h2 id="equiv">Prednisone equivalency</h2>
+
+<div class="fn-sig">convert_pred_equiv(
+  drug_df,
+  drug_col      = "drug_name_std",
+  dose_col      = "daily_dose_mg_imputed",
+  equiv_table   = NULL,
+  drug_name_map = NULL
+)</div>
+
+<p>Multiplies each record's daily dose by the appropriate prednisone-equivalency factor:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Drug</th><th>Factor</th><th>Notes</th></tr>
+  <tr><td>Prednisone</td><td>1.0</td><td>Reference drug</td></tr>
+  <tr><td>Prednisolone</td><td>1.0</td><td>Equipotent</td></tr>
+  <tr><td>Methylprednisolone</td><td>1.25</td><td>1 mg methylpred = 1.25 mg pred</td></tr>
+  <tr><td>Triamcinolone</td><td>1.25</td><td></td></tr>
+  <tr><td>Dexamethasone</td><td>7.5</td><td>High potency</td></tr>
+  <tr><td>Hydrocortisone</td><td>0.25</td><td>Low potency</td></tr>
+  <tr><td>Budesonide</td><td>NA</td><td>Route-dependent; flagged for manual review</td></tr>
+</table>
+</div>
+
+<p>Pass a custom equivalency table via <code>equiv_table</code> to override or extend the built-in table. The table must have columns <code>drug_name_std</code> and <code>equiv_factor</code>.</p>
+
+<h3>Output columns added</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>pred_equiv_mg</code></td><td>Prednisone-equivalent daily dose in mg</td></tr>
+  <tr><td><code>equiv_factor</code></td><td>Multiplication factor applied</td></tr>
+  <tr><td><code>pred_equiv_status</code></td><td><code>"ok"</code>, <code>"no_equiv"</code> (drug not in table), <code>"na_dose"</code> (dose was NA), <code>"na_factor"</code> (budesonide etc.)</td></tr>
+</table>
+</div>
+
+<!-- ── EPISODES ──────────────────────────────────────────────────── -->
+<h2 id="episodes">Episode building</h2>
+
+<div class="fn-sig">build_episodes(
+  drug_df,
+  id_col    = "person_id",
+  drug_col  = "drug_name_std",
+  start_col = "drug_exposure_start_date",
+  end_col   = "drug_exposure_end_date",
+  dose_col  = "daily_dose_mg_imputed",
+  gap_days  = 30L
+)</div>
+
+<p>
+  Merges overlapping or adjacent prescription records within a patient–drug
+  group into continuous treatment episodes using the OHDSI standard 30-day gap.
+  Records are sorted by start date; any two records whose gap is ≤
+  <code>gap_days</code> are merged into a single episode.
+</p>
+
+<h3>Output columns (one row per episode)</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>person_id</code></td><td>Patient identifier</td></tr>
+  <tr><td><code>drug_name_std</code></td><td>Standardised drug name</td></tr>
+  <tr><td><code>episode_id</code></td><td>Integer episode index within each patient–drug pair</td></tr>
+  <tr><td><code>episode_start</code></td><td>Start date of the episode</td></tr>
+  <tr><td><code>episode_end</code></td><td>End date of the episode</td></tr>
+  <tr><td><code>n_days</code></td><td>Duration of episode in days</td></tr>
+  <tr><td><code>n_records</code></td><td>Number of prescriptions merged</td></tr>
+  <tr><td><code>median_daily_dose</code></td><td>Median prednisone-equivalent daily dose across records</td></tr>
+  <tr><td><code>min_daily_dose</code></td><td>Minimum daily dose in episode</td></tr>
+  <tr><td><code>max_daily_dose</code></td><td>Maximum daily dose in episode</td></tr>
+  <tr><td><code>mean_daily_dose</code> <span class="badge badge-new">v0.1.3</span></td><td>Duration-weighted mean daily dose: <code>sum(dose_i × days_i) / sum(days_i)</code></td></tr>
+</table>
+</div>
+
+<!-- ── RUN PIPELINE ──────────────────────────────────────────────── -->
+<h2 id="run-pipeline">run_pipeline()</h2>
+
+<p>Convenience wrapper that chains all steps (fetch → impute → convert → episodes) in a single call.</p>
+
+<div class="fn-sig">run_pipeline(
+  connector_or_df,
+  method           = c("baseline", "nlp"),
+  m2_sig_parse     = c("warn", "auto", "nlp_first", "none"),
+  drug_concept_ids = NULL,
+  person_ids       = NULL,
+  start_date       = NULL,
+  end_date         = NULL,
+  sig_source       = "sig",
+  gap_days         = 30L,
+  equiv_table      = NULL,
+  return_level     = c("episode", "exposure")
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>method</td><td>"baseline"</td><td>Imputation method. Use <code>"nlp"</code> for SIG-text parsing.</td></tr>
+  <tr><td>m2_sig_parse</td><td>"warn"</td><td>M2 SIG-parse strategy for Baseline method:<br>
+    <code>"warn"</code> — emit warning and skip M2<br>
+    <code>"auto"</code> — call <code>parse_sig()</code> internally<br>
+    <code>"nlp_first"</code> — run full NLP pass before baseline (NLP columns retained)<br>
+    <code>"none"</code> — silently skip M2</td></tr>
+  <tr><td>gap_days</td><td>30L</td><td>Gap threshold for episode building.</td></tr>
+  <tr><td>return_level</td><td>"episode"</td><td><code>"episode"</code> = one row per episode; <code>"exposure"</code> = one row per drug-exposure record</td></tr>
+</table>
+</div>
+
+<h3>Step-by-step alternative</h3>
+<pre><code><span class="cm"># Equivalent to run_pipeline(con, method = "baseline", return_level = "episode")</span>
+dose_df  <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_baseline</span>(con, m2_sig_parse <span class="op">=</span> <span class="st">"auto"</span>)
+equiv_df <span class="op">&lt;-</span> <span class="fn">convert_pred_equiv</span>(dose_df,
+              drug_col <span class="op">=</span> <span class="st">"drug_name_std"</span>,
+              dose_col <span class="op">=</span> <span class="st">"daily_dose_mg_imputed"</span>)
+episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
+  equiv_df |> dplyr::<span class="fn">filter</span>(!<span class="fn">is.na</span>(pred_equiv_mg)),
+  end_col  <span class="op">=</span> <span class="st">"drug_exposure_end_date"</span>,
+  dose_col <span class="op">=</span> <span class="st">"pred_equiv_mg"</span>,
+  gap_days <span class="op">=</span> <span class="nm">30L</span>
+)
+</code></pre>
+
+<!-- ── EVALUATION ────────────────────────────────────────────────── -->
+<h2 id="evaluation">Evaluation against a gold standard</h2>
+
+<div class="fn-sig">evaluate_against_gold(
+  computed_df,
+  gold_df,
+  min_overlap_days   = 1L,
+  computed_id_col    = "person_id",
+  computed_start_col = "episode_start",
+  computed_end_col   = "episode_end",
+  computed_dose_col  = "median_daily_dose",
+  gold_id_col        = "patient_id",
+  gold_start_col     = "episode_start",
+  gold_end_col       = "episode_end",
+  gold_dose_col      = "median_daily_dose",
+  dose_breaks        = c(0, 10, 20, 40, Inf),
+  dose_labels        = c("Low (<=10mg)", "Medium (10-20mg)",
+                         "High (20-40mg)", "Very High (>40mg)")
+)</div>
+
+<p>
+  Matches computed episodes to gold-standard episodes using a date-overlap join
+  (any overlap ≥ <code>min_overlap_days</code>). For each gold episode the
+  computed episode with the most overlap is selected.
+</p>
+
+<h3>Key parameters</h3>
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>min_overlap_days</td><td>1L</td><td>Minimum calendar-day overlap required to match a computed episode to a gold episode.</td></tr>
+  <tr><td>computed_dose_col</td><td>"median_daily_dose"</td><td>Dose column to compare against gold. Can be <code>"min_daily_dose"</code>, <code>"max_daily_dose"</code>, or <code>"mean_daily_dose"</code>.</td></tr>
+  <tr><td>dose_breaks <span class="badge badge-new">v0.1.6</span></td><td>c(0, 10, 20, 40, Inf)</td><td>Cut-points for dose-range stratification in <code>$stratified</code>. Default bins are tuned for typical myositis maintenance doses.</td></tr>
+  <tr><td>dose_labels <span class="badge badge-new">v0.1.6</span></td><td>c("Low (≤10mg)", …)</td><td>Labels for the dose ranges. Change both parameters together to customise for other diseases.</td></tr>
+</table>
+</div>
+
+<h3>Return value</h3>
+<p>A named list with three elements:</p>
+<ul>
+  <li><strong><code>$summary</code></strong> — One-row summary: <code>n_gold_periods</code>, <code>n_matched_periods</code>, <code>coverage_pct</code>, <code>MAE</code>, <code>MBE</code>, <code>RMSE</code>, <code>median_AE</code>, <code>MAPE</code>, <code>pearson_corr</code>, <code>spearman_corr</code></li>
+  <li><strong><code>$comparison</code></strong> — One row per gold episode: <code>gold_dose</code>, <code>computed_dose</code>, <code>overlap_days</code>, <code>absolute_error</code>, <code>bias_error</code>, <code>agreement_category</code>, <code>error_direction</code></li>
+  <li><strong><code>$stratified</code></strong> — Metrics broken down by dose range and taper status</li>
+</ul>
+
+<h3>Agreement categories</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Category</th><th>Condition</th></tr>
+  <tr><td>Exact (≤5%)</td><td>|computed − gold| / gold ≤ 5%</td></tr>
+  <tr><td>Good (≤20%)</td><td>≤ 20%</td></tr>
+  <tr><td>Moderate (≤50%)</td><td>≤ 50%</td></tr>
+  <tr><td>Poor (&gt;50%)</td><td>&gt; 50%</td></tr>
+</table>
+</div>
+
+<h3>Example</h3>
+<pre><code>gold_std    <span class="op">&lt;-</span> readr::<span class="fn">read_csv</span>(<span class="fn">file.path</span>(extdata, <span class="st">"synthetic_gold_standard.csv"</span>),
+                             show_col_types <span class="op">=</span> <span class="kw">FALSE</span>)
+eval_result <span class="op">&lt;-</span> <span class="fn">evaluate_against_gold</span>(episodes, gold_std)
+
+s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
+<span class="fn">sprintf</span>(<span class="st">"Coverage: %.1f%%  MAE: %.2f  MBE: %.2f  RMSE: %.2f"</span>,
+        s<span class="op">$</span>coverage_pct, s<span class="op">$</span>MAE, s<span class="op">$</span>MBE, s<span class="op">$</span>RMSE)
+</code></pre>
+
+<a class="back-top" href="#equiv">↑ Back to top</a>
+
+</main>
+</div>
+</body>
+</html>

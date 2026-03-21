@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteroidDoseR — Connectors</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #1a1a2e; background: #f8f9fb; }
+  .wrapper { display: flex; min-height: 100vh; }
+  nav { width: 260px; flex-shrink: 0; background: #16213e; color: #c8d6e5; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 0 0 2rem 0; }
+  main { flex: 1; padding: 2.5rem 3rem; max-width: 920px; }
+  .nav-header { background: #0f3460; padding: 1.4rem 1.2rem 1rem; border-bottom: 1px solid #1a3a5c; }
+  .nav-header h2 { font-size: 1rem; font-weight: 700; color: #e0ecff; letter-spacing: 0.02em; }
+  .nav-header p  { font-size: 0.72rem; color: #7ea8c4; margin-top: 0.2rem; }
+  nav ul { list-style: none; padding: 0.5rem 0; }
+  nav li a { display: block; padding: 0.38rem 1.2rem; color: #a8bfd4; text-decoration: none; font-size: 0.82rem; border-left: 3px solid transparent; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  nav li a:hover { background: #1a3a5c; color: #e0ecff; border-left-color: #4a9eca; }
+  nav .nav-section-label { padding: 0.9rem 1.2rem 0.25rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: #4a7a9b; text-transform: uppercase; }
+  nav .nav-section-label.active-section { color: #7acbf5; }
+  h1 { font-size: 2rem; color: #0f3460; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; color: #0f3460; margin: 2.8rem 0 0.7rem; border-bottom: 2px solid #d0ddf0; padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; color: #16527a; margin: 1.8rem 0 0.4rem; }
+  h4 { font-size: 0.92rem; color: #2d6a94; margin: 1.2rem 0 0.25rem; font-weight: 600; }
+  p  { margin: 0.55rem 0; }
+  ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  a  { color: #1a6bbd; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84em; background: #e8edf5; border: 1px solid #c8d4e8; border-radius: 3px; padding: 0.1em 0.38em; }
+  pre { background: #1e2a3a; color: #cdd9e5; border-radius: 6px; padding: 1.1rem 1.3rem; overflow-x: auto; margin: 0.9rem 0 1.1rem; font-size: 0.84rem; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .kw { color: #79b8ff; } .fn { color: #b392f0; } .st { color: #9ecbff; } .cm { color: #6a737d; font-style: italic; } .nm { color: #f8c555; } .op { color: #e1e4e8; }
+  .callout { border-left: 4px solid; border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; margin: 1rem 0; font-size: 0.9rem; }
+  .callout-note { background: #e8f4fd; border-color: #2196f3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout strong { display: block; margin-bottom: 0.2rem; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th { background: #1a4a7a; color: #e0ecff; padding: 0.55rem 0.9rem; text-align: left; font-weight: 600; }
+  td { padding: 0.45rem 0.9rem; border-bottom: 1px solid #d8e4f0; }
+  tr:hover td { background: #eef3fb; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 0.15em 0.55em; border-radius: 3px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-new { background: #4caf50; color: #fff; }
+  .back-top { display: block; text-align: right; font-size: 0.78rem; color: #7ea8c4; margin-top: 2rem; }
+  @media (max-width: 800px) { nav { display: none; } main { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<nav>
+  <div class="nav-header">
+    <h2>SteroidDoseR</h2>
+    <p>Package Manual v0.1.6</p>
+  </div>
+  <div class="nav-section-label">Getting started</div>
+  <ul>
+    <li><a href="index.html#overview">Overview</a></li>
+    <li><a href="index.html#installation">Installation</a></li>
+    <li><a href="index.html#quickstart">Quick start</a></li>
+  </ul>
+  <div class="nav-section-label active-section">Data &amp; connectors</div>
+  <ul>
+    <li><a href="connectors.html#connectors">Connector types</a></li>
+    <li><a href="connectors.html#live-db">Live OMOP database</a></li>
+    <li><a href="connectors.html#capabilities">Capability detection</a></li>
+    <li><a href="connectors.html#columns">Column contract</a></li>
+  </ul>
+  <div class="nav-section-label">Methods</div>
+  <ul>
+    <li><a href="methods.html#baseline">Baseline method</a></li>
+    <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
+    <li><a href="methods.html#nlp">NLP method</a></li>
+    <li><a href="methods.html#nlp-params">NLP parameters</a></li>
+    <li><a href="methods.html#nlp-advanced">Advanced NLP</a></li>
+    <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
+    <li><a href="methods.html#taper-parser">Taper parser</a></li>
+    <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+  </ul>
+  <div class="nav-section-label">Pipeline</div>
+  <ul>
+    <li><a href="pipeline.html#equiv">Prednisone equivalency</a></li>
+    <li><a href="pipeline.html#episodes">Episode building</a></li>
+    <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
+    <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+  </ul>
+  <div class="nav-section-label">Reference</div>
+  <ul>
+    <li><a href="reference.html#fn-ref">Function reference</a></li>
+    <li><a href="reference.html#dq">Data quality</a></li>
+    <li><a href="reference.html#troubleshooting">Troubleshooting</a></li>
+    <li><a href="reference.html#changelog">Changelog</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<h2 id="connectors">Connector types</h2>
+
+<p>
+  All SteroidDoseR functions accept a <strong>connector object</strong> as their
+  first argument. All connectors implement the same interface, so the same calling
+  code works unchanged against a live database or an in-memory data frame.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Constructor</th><th>Use case</th></tr>
+  <tr><td><code>create_df_connector(df)</code></td><td>In-memory data frame, synthetic data, unit tests — no database packages required</td></tr>
+  <tr><td><code>create_omop_connection(...)</code></td><td>Live OMOP CDM — high-level builder, reads config from env vars. Recommended for most sites.</td></tr>
+  <tr><td><code>create_connection_from_env(".env")</code></td><td>Load a <code>.env</code> file and open a connection in one call — simplest setup</td></tr>
+  <tr><td><code>create_omop_connector(connectionDetails, ...)</code></td><td>Low-level — supply a pre-built <code>connectionDetails</code> object from DatabaseConnector</td></tr>
+</table>
+</div>
+
+<p>Functions also accept a <strong>plain data frame</strong> directly (legacy path). When a data frame is supplied, connector-path arguments (<code>drug_concept_ids</code>, <code>person_ids</code>, <code>start_date</code>, <code>end_date</code>, <code>sig_source</code>) are silently ignored.</p>
+
+<h2 id="live-db">Live OMOP database</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li><code>DatabaseConnector</code> and <code>SqlRender</code> installed</li>
+  <li>Read-only access to a schema containing <code>drug_exposure</code>, <code>concept</code>, and <code>drug_strength</code></li>
+  <li>JDBC driver files for your database platform</li>
+</ul>
+
+<h3>JDBC driver setup</h3>
+<pre><code><span class="cm"># Download drivers once to a local folder</span>
+DatabaseConnector::<span class="fn">downloadJdbcDrivers</span>(<span class="st">"sql server"</span>, pathToDriver <span class="op">=</span> <span class="st">"~/jdbc"</span>)
+DatabaseConnector::<span class="fn">downloadJdbcDrivers</span>(<span class="st">"postgresql"</span>, pathToDriver <span class="op">=</span> <span class="st">"~/jdbc"</span>)
+<span class="cm"># other options: "redshift", "oracle", "bigquery", "spark", "snowflake"</span>
+
+<span class="cm"># Add to ~/.Renviron so the path is never hard-coded in scripts:</span>
+<span class="cm"># JDBC_DRIVER_PATH=/path/to/jdbc</span>
+</code></pre>
+
+<h3>Using a .env file (recommended)</h3>
+<pre><code>con      <span class="op">&lt;-</span> <span class="fn">create_connection_from_env</span>(<span class="st">".env"</span>)
+episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"baseline"</span>)
+<span class="fn">disconnect_connector</span>(con)
+</code></pre>
+
+<h3>SQL Server — Windows integrated auth</h3>
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
+  dbms             <span class="op">=</span> <span class="st">"sql server"</span>,
+  server           <span class="op">=</span> <span class="st">"myserver.institution.edu"</span>,
+  database         <span class="op">=</span> <span class="st">"OMOP_CDM"</span>,
+  use_windows_auth <span class="op">=</span> <span class="kw">TRUE</span>,
+  cdm_schema       <span class="op">=</span> <span class="st">"MyDatabase.dbo"</span>
+)
+</code></pre>
+
+<h3>SQL Server — username / password</h3>
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
+  dbms       <span class="op">=</span> <span class="st">"sql server"</span>,
+  server     <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_SERVER"</span>),
+  database   <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_DATABASE"</span>),
+  user       <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_USER"</span>),
+  password   <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_PASSWORD"</span>),
+  cdm_schema <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_CDM_SCHEMA"</span>)
+)
+</code></pre>
+
+<h3>PostgreSQL</h3>
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
+  dbms       <span class="op">=</span> <span class="st">"postgresql"</span>,
+  server     <span class="op">=</span> <span class="st">"localhost"</span>,
+  database   <span class="op">=</span> <span class="st">"omop_cdm"</span>,
+  user       <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DB_USER"</span>),
+  password   <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DB_PASSWORD"</span>),
+  port       <span class="op">=</span> <span class="nm">5432</span>,
+  cdm_schema <span class="op">=</span> <span class="st">"cdm_54"</span>
+)
+</code></pre>
+
+<h3>Databricks / Spark</h3>
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
+  dbms          <span class="op">=</span> <span class="st">"databricks"</span>,
+  server        <span class="op">=</span> <span class="st">"workspace.cloud.databricks.com"</span>,
+  database      <span class="op">=</span> <span class="st">"default"</span>,
+  user          <span class="op">=</span> <span class="st">"token"</span>,
+  password      <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DATABRICKS_TOKEN"</span>),
+  cdm_schema    <span class="op">=</span> <span class="st">"omop.data"</span>,
+  extraSettings <span class="op">=</span> <span class="st">"httpPath=/sql/1.0/warehouses/&lt;warehouse-id&gt;"</span>
+)
+</code></pre>
+
+<h3>Environment variables recognised</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Variable</th><th>Description</th></tr>
+  <tr><td><code>SQL_SERVER</code> / <code>DB_SERVER</code></td><td>Server hostname</td></tr>
+  <tr><td><code>SQL_DATABASE</code> / <code>DB_DATABASE</code></td><td>Database name</td></tr>
+  <tr><td><code>SQL_DBMS</code> / <code>DB_TYPE</code></td><td>DBMS type (default: <code>"sql server"</code>)</td></tr>
+  <tr><td><code>SQL_USER</code> / <code>DB_USER</code></td><td>Username</td></tr>
+  <tr><td><code>SQL_PASSWORD</code> / <code>DB_PASSWORD</code></td><td>Password</td></tr>
+  <tr><td><code>SQL_JDBC_PATH</code> / <code>JDBC_DRIVER_PATH</code></td><td>JDBC driver folder</td></tr>
+  <tr><td><code>SQL_CDM_SCHEMA</code> / <code>CDM_SCHEMA</code></td><td>CDM schema (default: <code>"dbo"</code>)</td></tr>
+  <tr><td><code>USE_WINDOWS_AUTH</code></td><td><code>"true"</code> to enable Windows AD auth</td></tr>
+  <tr><td><code>DB_EXTRA_SETTINGS</code></td><td>Extra JDBC settings (e.g. Databricks HTTPPath)</td></tr>
+</table>
+</div>
+
+<div class="callout callout-note">
+  <strong>Separate vocabulary schema <span class="badge badge-new">v0.1.6</span></strong>
+  Many OMOP sites store vocabulary tables (<code>concept</code>, <code>drug_strength</code>) in a different schema from <code>drug_exposure</code>. Pass <code>vocab_schema = "my_vocab_schema"</code> to <code>create_omop_connector()</code> — it is now wired through to the SQL template. When omitted, <code>vocab_schema</code> defaults to <code>cdm_schema</code>.
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connector</span>(
+  connectionDetails,
+  cdm_schema   <span class="op">=</span> <span class="st">"my_cdm"</span>,
+  vocab_schema <span class="op">=</span> <span class="st">"my_vocab"</span>   <span class="cm"># vocabulary tables in a separate schema</span>
+)
+</code></pre>
+</div>
+
+<h2 id="capabilities">Capability detection</h2>
+
+<p>
+  OMOP implementations vary by site. <code>detect_capabilities()</code> probes
+  which <code>drug_exposure</code> columns are populated and stores the results
+  on the connector so imputation functions can adapt automatically.
+</p>
+
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">detect_capabilities</span>(con)
+con<span class="op">$</span>capabilities
+<span class="cm">#&gt; $has_sig         TRUE</span>
+<span class="cm">#&gt; $has_days_supply TRUE</span>
+<span class="cm">#&gt; $has_quantity    TRUE</span>
+<span class="cm">#&gt; $has_route       TRUE</span>
+</code></pre>
+
+<h3>Sites without a SIG column</h3>
+<p>
+  If <code>drug_exposure.sig</code> is absent, pass <code>sig_source = "drug_source_value"</code>
+  to use the source string instead. The package will also insert a blank <code>sig</code>
+  column automatically (all rows return <code>parsed_status = "empty"</code>) and rely
+  on the strength fallback from <code>amount_value</code>.
+</p>
+<pre><code>doses <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp</span>(con, sig_source <span class="op">=</span> <span class="st">"drug_source_value"</span>)
+</code></pre>
+
+<h3>Filtering by patient or drug concept</h3>
+<pre><code><span class="cm"># Restrict to specific patients at the SQL level (cohort filter)</span>
+doses <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_baseline</span>(con, person_ids <span class="op">=</span> <span class="fn">c</span>(<span class="nm">1001L</span>, <span class="nm">1002L</span>))
+
+<span class="cm"># Restrict to specific OMOP drug concept IDs</span>
+doses <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp</span>(con, drug_concept_ids <span class="op">=</span> <span class="fn">c</span>(<span class="nm">1518254L</span>, <span class="nm">40224131L</span>))
+</code></pre>
+
+<h2 id="columns">Column contract</h2>
+
+<p>When supplying a plain data frame, columns must follow the OMOP <code>drug_exposure</code> schema. See <code>?drug_df_contract</code> for the full specification.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Type</th><th>Required by</th><th>Notes</th></tr>
+  <tr><td><code>person_id</code></td><td>int/chr</td><td>All</td><td>Patient identifier</td></tr>
+  <tr><td><code>drug_exposure_start_date</code></td><td>Date</td><td>All</td><td>Exposure start</td></tr>
+  <tr><td><code>drug_exposure_end_date</code></td><td>Date</td><td>Baseline M4, episodes</td><td>Optional — today substituted if absent (with warning)</td></tr>
+  <tr><td><code>drug_concept_name</code></td><td>chr</td><td>NLP, Baseline fallback</td><td>Drug name for standardisation and mg extraction</td></tr>
+  <tr><td><code>drug_source_value</code></td><td>chr</td><td>Baseline strength fallback</td><td>Source drug string; mg extracted via regex</td></tr>
+  <tr><td><code>amount_value</code></td><td>num</td><td>Baseline M2–M4, NLP fallback</td><td>Per-tablet strength from <code>drug_strength</code> JOIN</td></tr>
+  <tr><td><code>amount_unit_concept_id</code></td><td>int</td><td>Baseline unit check</td><td>OMOP concept for unit; 8576 = mg, 0 = unmapped (treated as unknown). Non-mg units are discarded.</td></tr>
+  <tr><td><code>quantity</code></td><td>num</td><td>Baseline M3, M4</td><td>Tablets dispensed</td></tr>
+  <tr><td><code>days_supply</code></td><td>num</td><td>Baseline M3</td><td>Days of supply</td></tr>
+  <tr><td><code>sig</code></td><td>chr</td><td>NLP</td><td>Free-text SIG instruction</td></tr>
+  <tr><td><code>route_concept_name</code></td><td>chr</td><td>NLP oral filter</td><td>Route standardised name; used to restrict to oral records</td></tr>
+  <tr><td><code>route_concept_id</code></td><td>int</td><td>NLP oral filter fallback</td><td>Used when <code>route_concept_name</code> is absent</td></tr>
+</table>
+</div>
+
+<a class="back-top" href="#connectors">↑ Back to top</a>
+
+</main>
+</div>
+</body>
+</html>

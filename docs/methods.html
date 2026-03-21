@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteroidDoseR — Methods</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #1a1a2e; background: #f8f9fb; }
+  .wrapper { display: flex; min-height: 100vh; }
+  nav { width: 260px; flex-shrink: 0; background: #16213e; color: #c8d6e5; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 0 0 2rem 0; }
+  main { flex: 1; padding: 2.5rem 3rem; max-width: 920px; }
+  .nav-header { background: #0f3460; padding: 1.4rem 1.2rem 1rem; border-bottom: 1px solid #1a3a5c; }
+  .nav-header h2 { font-size: 1rem; font-weight: 700; color: #e0ecff; letter-spacing: 0.02em; }
+  .nav-header p  { font-size: 0.72rem; color: #7ea8c4; margin-top: 0.2rem; }
+  nav ul { list-style: none; padding: 0.5rem 0; }
+  nav li a { display: block; padding: 0.38rem 1.2rem; color: #a8bfd4; text-decoration: none; font-size: 0.82rem; border-left: 3px solid transparent; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  nav li a:hover { background: #1a3a5c; color: #e0ecff; border-left-color: #4a9eca; }
+  nav .nav-section-label { padding: 0.9rem 1.2rem 0.25rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: #4a7a9b; text-transform: uppercase; }
+  nav .nav-section-label.active-section { color: #7acbf5; }
+  h1 { font-size: 2rem; color: #0f3460; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; color: #0f3460; margin: 2.8rem 0 0.7rem; border-bottom: 2px solid #d0ddf0; padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; color: #16527a; margin: 1.8rem 0 0.4rem; }
+  h4 { font-size: 0.92rem; color: #2d6a94; margin: 1.2rem 0 0.25rem; font-weight: 600; }
+  p  { margin: 0.55rem 0; }
+  ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  a  { color: #1a6bbd; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84em; background: #e8edf5; border: 1px solid #c8d4e8; border-radius: 3px; padding: 0.1em 0.38em; }
+  pre { background: #1e2a3a; color: #cdd9e5; border-radius: 6px; padding: 1.1rem 1.3rem; overflow-x: auto; margin: 0.9rem 0 1.1rem; font-size: 0.84rem; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .kw { color: #79b8ff; } .fn { color: #b392f0; } .st { color: #9ecbff; } .cm { color: #6a737d; font-style: italic; } .nm { color: #f8c555; } .op { color: #e1e4e8; }
+  .callout { border-left: 4px solid; border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; margin: 1rem 0; font-size: 0.9rem; }
+  .callout-note { background: #e8f4fd; border-color: #2196f3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout strong { display: block; margin-bottom: 0.2rem; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th { background: #1a4a7a; color: #e0ecff; padding: 0.55rem 0.9rem; text-align: left; font-weight: 600; }
+  td { padding: 0.45rem 0.9rem; border-bottom: 1px solid #d8e4f0; }
+  tr:hover td { background: #eef3fb; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 0.15em 0.55em; border-radius: 3px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-new { background: #4caf50; color: #fff; }
+  .badge-fix { background: #ff9800; color: #fff; }
+  .fn-sig { background: #f0f4fb; border: 1px solid #c8d4e8; border-left: 4px solid #0f3460; border-radius: 0 6px 6px 0; padding: 0.8rem 1.1rem; font-family: monospace; font-size: 0.88rem; margin: 0.6rem 0 1rem; white-space: pre-wrap; word-break: break-word; }
+  .param-table td:first-child { font-family: monospace; color: #0f3460; font-size: 0.85rem; white-space: nowrap; }
+  .param-table td:nth-child(2) { color: #555; font-size: 0.82rem; white-space: nowrap; }
+  .back-top { display: block; text-align: right; font-size: 0.78rem; color: #7ea8c4; margin-top: 2rem; }
+  @media (max-width: 800px) { nav { display: none; } main { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<nav>
+  <div class="nav-header">
+    <h2>SteroidDoseR</h2>
+    <p>Package Manual v0.1.6</p>
+  </div>
+  <div class="nav-section-label">Getting started</div>
+  <ul>
+    <li><a href="index.html#overview">Overview</a></li>
+    <li><a href="index.html#installation">Installation</a></li>
+    <li><a href="index.html#quickstart">Quick start</a></li>
+  </ul>
+  <div class="nav-section-label">Data &amp; connectors</div>
+  <ul>
+    <li><a href="connectors.html#connectors">Connector types</a></li>
+    <li><a href="connectors.html#live-db">Live OMOP database</a></li>
+    <li><a href="connectors.html#capabilities">Capability detection</a></li>
+    <li><a href="connectors.html#columns">Column contract</a></li>
+  </ul>
+  <div class="nav-section-label active-section">Methods</div>
+  <ul>
+    <li><a href="methods.html#baseline">Baseline method</a></li>
+    <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
+    <li><a href="methods.html#nlp">NLP method</a></li>
+    <li><a href="methods.html#nlp-params">NLP parameters</a></li>
+    <li><a href="methods.html#nlp-advanced">Advanced NLP</a></li>
+    <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
+    <li><a href="methods.html#taper-parser">Taper parser</a></li>
+    <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+  </ul>
+  <div class="nav-section-label">Pipeline</div>
+  <ul>
+    <li><a href="pipeline.html#equiv">Prednisone equivalency</a></li>
+    <li><a href="pipeline.html#episodes">Episode building</a></li>
+    <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
+    <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+  </ul>
+  <div class="nav-section-label">Reference</div>
+  <ul>
+    <li><a href="reference.html#fn-ref">Function reference</a></li>
+    <li><a href="reference.html#dq">Data quality</a></li>
+    <li><a href="reference.html#troubleshooting">Troubleshooting</a></li>
+    <li><a href="reference.html#changelog">Changelog</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ── BASELINE ──────────────────────────────────────────────────── -->
+<h2 id="baseline">Baseline method</h2>
+
+<p>
+  The Baseline method estimates daily dose from structured OMOP fields using a
+  four-step cascade. It tries each method in order and uses the first that
+  produces a non-NA result.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Step</th><th>Label</th><th>Formula</th><th>Requires</th></tr>
+  <tr><td><strong>M1</strong></td><td><code>original</code></td><td>Pre-existing <code>daily_dose</code> or <code>daily_dose_mg</code> if numeric and &gt; 0</td><td><code>daily_dose</code> or <code>daily_dose_mg</code></td></tr>
+  <tr><td><strong>M2</strong></td><td><code>tablets_freq</code></td><td><code>tablets × freq_per_day × strength_mg</code></td><td><code>tablets</code>, <code>freq_per_day</code>, <code>strength_mg</code> — requires SIG parsing first</td></tr>
+  <tr><td><strong>M3</strong></td><td><code>supply_based</code></td><td><code>(quantity × strength_mg) / days_supply</code></td><td><code>quantity</code>, <code>days_supply</code> &gt; 0, <code>strength_mg</code></td></tr>
+  <tr><td><strong>M4</strong></td><td><code>actual_duration</code></td><td><code>(quantity × strength_mg) / actual_duration_days</code></td><td><code>quantity</code>, date columns, <code>strength_mg</code></td></tr>
+</table>
+</div>
+
+<h3>Workflow</h3>
+<pre>
+OMOP drug_exposure (all drugs, all routes)
+          │
+          ▼
+  standardize_drug_name(drug_concept_name)  →  drug_name_std
+          │
+          ▼  filter_oral = TRUE
+  ┌───────────────────────────────────┐
+  │ Gate 1: oral route only           │
+  │  classify_route(route_concept_name│
+  │                 route_source_value)│
+  │  keep: "oral" or NA (unknown)     │
+  └───────────────────────────────────┘
+          │
+          ▼
+  ┌───────────────────────────────────┐
+  │ Gate 2: known systemic steroids   │
+  │  drug_name_std ∈ pred_equiv_table │
+  └───────────────────────────────────┘
+          │
+          ▼
+  strength_mg
+  ├─ amount_value  (amount_unit_concept_id == 8576, 0, or NA)
+  └─ fallback: mg regex on drug_source_value
+          │
+          ▼
+  Imputation cascade  (first non-NA wins)
+  ├── M1  original       pre-existing daily_dose / daily_dose_mg
+  ├── M2  tablets_freq   tablets × freq_per_day × strength_mg
+  ├── M3  supply_based   (quantity × strength_mg) / days_supply
+  └── M4  actual_dur     (quantity × strength_mg) / actual_duration_days
+          │
+          ▼
+  Plausibility cap: doses &gt; 2000 mg/day → NA + warning
+</pre>
+
+<h3>strength_mg derivation</h3>
+<div class="callout callout-warn">
+  <strong>Unit safety (v0.1.1 / v0.1.6)</strong>
+  <code>amount_value</code> is accepted when <code>amount_unit_concept_id</code>
+  is the OMOP mg concept (<strong>8576</strong>), is absent/unknown
+  (<strong>NA</strong>), or is the OMOP "No matching concept" sentinel
+  (<strong>0</strong>). Many production CDMs write 0 instead of NULL for an
+  unmapped unit; this is treated identically to NA. If the unit is mcg (9655),
+  g (8504), or any other explicit non-mg concept, the value is discarded and the
+  function falls back to extracting mg from <code>drug_source_value</code>
+  (e.g. "PREDNISONE 5 MG TABLET"). Before v0.1.6, concept 0 was incorrectly
+  rejected as non-mg, causing all imputation methods to return
+  <code>"missing"</code> at sites that use the 0 sentinel.
+</div>
+
+<h3>Plausibility cap</h3>
+<div class="callout callout-note">
+  <strong>max_daily_dose_mg (v0.1.1)</strong>
+  Records whose imputed dose exceeds <code>max_daily_dose_mg</code> (default 2000)
+  are set to NA with a warning counting affected rows. Pass <code>NULL</code> to
+  disable. Raise the threshold if your cohort includes high-dose pulse therapy
+  (&gt; 2000 mg/day IV methylprednisolone).
+</div>
+
+<h3>Example</h3>
+<pre><code>baseline_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_baseline</span>(
+  drug_df,
+  m2_sig_parse      <span class="op">=</span> <span class="st">"auto"</span>,  <span class="cm"># parse SIG to enable M2</span>
+  max_daily_dose_mg <span class="op">=</span> <span class="nm">2000</span>
+)
+<span class="fn">table</span>(baseline_df<span class="op">$</span>imputation_method, useNA <span class="op">=</span> <span class="st">"ifany"</span>)
+</code></pre>
+
+<!-- ── BASELINE PARAMS ───────────────────────────────────────────── -->
+<h2 id="baseline-params">Baseline parameters</h2>
+
+<div class="fn-sig">calc_daily_dose_baseline(
+  connector_or_df,
+  methods           = c("original", "tablets_freq", "supply_based", "actual_duration"),
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig",
+  m2_sig_parse      = c("warn", "auto", "none"),
+  max_daily_dose_mg = 2000,
+  filter_oral       = FALSE,
+  equiv_table       = NULL,
+  drug_name_map     = NULL
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>A connector or data frame. Required.</td></tr>
+  <tr><td>methods</td><td>all four</td><td>Ordered cascade. Remove steps to skip, e.g. <code>c("original","supply_based")</code>.</td></tr>
+  <tr><td>drug_concept_ids</td><td>NULL</td><td>Filter to specific OMOP drug concept IDs. Connector path only.</td></tr>
+  <tr><td>person_ids</td><td>NULL</td><td>Filter to specific patients. Connector path only.</td></tr>
+  <tr><td>start_date / end_date</td><td>NULL</td><td>Date bounds on <code>drug_exposure_start_date</code>. Connector path only.</td></tr>
+  <tr><td>sig_source</td><td>"sig"</td><td>Column to use as SIG text when the native <code>sig</code> field is absent.</td></tr>
+  <tr><td>m2_sig_parse</td><td>"warn"</td><td>How to handle M2 when <code>tablets</code>/<code>freq_per_day</code> are absent: <code>"warn"</code> = emit warning and skip; <code>"auto"</code> = call <code>parse_sig()</code> internally; <code>"none"</code> = silently skip.</td></tr>
+  <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.1</span></td><td>2000</td><td>Records exceeding this are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>filter_oral <span class="badge badge-new">v0.1.1</span></td><td>FALSE</td><td>If <code>TRUE</code>, restrict to oral-route records and drugs in the equivalency table before imputing.</td></tr>
+  <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table (<code>drug_name_std</code>, <code>equiv_factor</code>). When <code>filter_oral = TRUE</code>, the allowed-drug list derives from this table. Pass <code>NULL</code> for the built-in 7-steroid table.</td></tr>
+  <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in drug name mapping for site-specific synonyms or non-English brand names.</td></tr>
+</table>
+</div>
+
+<h3>Output columns added</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>strength_mg</code></td><td>Per-tablet strength in mg (unit-checked from <code>amount_value</code>, then <code>drug_source_value</code> string)</td></tr>
+  <tr><td><code>dose_from_original</code> <span class="badge badge-new">v0.1.5</span></td><td>M1 raw value: original <code>daily_dose</code>/<code>daily_dose_mg</code> cast to numeric</td></tr>
+  <tr><td><code>dose_from_tablets_freq</code> <span class="badge badge-new">v0.1.5</span></td><td>M2 raw value: <code>tablets × freq_per_day × strength_mg</code></td></tr>
+  <tr><td><code>dose_from_supply</code> <span class="badge badge-new">v0.1.5</span></td><td>M3 raw value: <code>(quantity × strength_mg) / days_supply</code></td></tr>
+  <tr><td><code>dose_from_actual_duration</code> <span class="badge badge-new">v0.1.5</span></td><td>M4 raw value: <code>(quantity × strength_mg) / actual_duration_days</code></td></tr>
+  <tr><td><code>daily_dose_mg_imputed</code></td><td>Best-estimate daily dose in mg — first non-NA across M1–M4</td></tr>
+  <tr><td><code>imputation_method</code></td><td><code>"original"</code>, <code>"tablets_freq"</code>, <code>"supply_based"</code>, <code>"actual_duration"</code>, or <code>"missing"</code></td></tr>
+</table>
+</div>
+
+<!-- ── NLP ───────────────────────────────────────────────────────── -->
+<h2 id="nlp">NLP method</h2>
+
+<p>
+  The NLP method parses the free-text <code>sig</code> column using a hierarchy
+  of regex rules. Before parsing, it filters to oral systemic corticosteroids
+  by route and drug name.
+</p>
+
+<h3>Parsing hierarchy</h3>
+<ol>
+  <li><strong>Flag detection</strong> — free-text ("as directed"), taper language, PRN ("as needed")</li>
+  <li><strong>Tablet count</strong> — "2 tablets", "2 tabs", "2 caps", etc.</li>
+  <li><strong>Frequency</strong> — QD/daily/once daily (1×), BID/twice daily (2×), TID (3×), QID (4×), QOD (0.5×), q6h, q8h, q12h</li>
+  <li><strong>mg extraction</strong> (priority order):
+    <ol type="a">
+      <li><code>(X mg total)</code> — explicit daily total in parentheses</li>
+      <li><code>(X mg per dose)</code> — per-administration total</li>
+      <li><code>(X mg)</code> — plain parenthetical; multiplied by tablet count if known</li>
+      <li><code>X mg</code> — bare mg anywhere in string</li>
+      <li><span class="badge badge-new">v0.1.1</span> <strong>Strength fallback</strong> — when no mg in SIG: use <code>amount_value</code> (from <code>drug_strength</code> JOIN), then mg from <code>drug_concept_name</code> or <code>drug_source_value</code></li>
+    </ol>
+  </li>
+  <li><strong>Daily dose</strong> = <code>mg_per_admin × freq_per_day</code></li>
+  <li><strong>Status</strong>: <code>"free_text"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"ok"</code>, <code>"no_parse"</code>, <code>"empty"</code></li>
+</ol>
+
+<div class="callout callout-note">
+  <strong>Strength fallback (v0.1.1)</strong>
+  In live OMOP data the <code>sig</code> field typically contains administration
+  instructions without a dose amount (e.g. "take 1 tablet daily"). The drug
+  strength lives in <code>drug_strength.amount_value</code>, already fetched by
+  the SQL query. The NLP pipeline uses this as a per-tablet strength fallback,
+  promoting records from <code>"no_parse"</code> to <code>"ok"</code> when freq
+  was parseable from the SIG.
+</div>
+
+<h3>Example</h3>
+<pre><code>nlp_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp</span>(drug_df)
+<span class="fn">table</span>(nlp_df<span class="op">$</span>parsed_status, useNA <span class="op">=</span> <span class="st">"ifany"</span>)
+
+<span class="cm"># Inspect "no_parse" records — which field is missing?</span>
+nlp_df |>
+  dplyr::<span class="fn">filter</span>(parsed_status <span class="op">==</span> <span class="st">"no_parse"</span>) |>
+  dplyr::<span class="fn">mutate</span>(
+    missing_field <span class="op">=</span> dplyr::<span class="fn">case_when</span>(
+      <span class="fn">is.na</span>(freq_per_day) <span class="op">&amp;</span> <span class="fn">is.na</span>(mg_per_admin) <span class="op">~</span> <span class="st">"freq + mg"</span>,
+      <span class="fn">is.na</span>(freq_per_day)                          <span class="op">~</span> <span class="st">"freq only"</span>,
+      <span class="fn">is.na</span>(mg_per_admin)                          <span class="op">~</span> <span class="st">"mg only"</span>,
+      <span class="kw">TRUE</span>                                          <span class="op">~</span> <span class="st">"other"</span>
+    )
+  ) |>
+  dplyr::<span class="fn">count</span>(missing_field, sort <span class="op">=</span> <span class="kw">TRUE</span>)
+</code></pre>
+
+<!-- ── NLP PARAMS ─────────────────────────────────────────────────── -->
+<h2 id="nlp-params">NLP parameters</h2>
+
+<div class="fn-sig">calc_daily_dose_nlp(
+  connector_or_df,
+  drug_name_col     = "drug_concept_name",
+  sig_col           = "sig",
+  filter_oral       = TRUE,
+  baseline_fallback = FALSE,
+  max_daily_dose_mg = 2000,
+  equiv_table       = NULL,
+  drug_name_map     = NULL,
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig"
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>Required.</td></tr>
+  <tr><td>drug_name_col</td><td>"drug_concept_name"</td><td>Column with the OMOP drug concept name.</td></tr>
+  <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records and known systemic steroids. Set <code>FALSE</code> if upstream filtering was applied.</td></tr>
+  <tr><td>baseline_fallback</td><td>FALSE</td><td>If <code>TRUE</code> and a <code>daily_dose_mg_orig</code> column exists, use it to fill NAs after SIG parsing.</td></tr>
+  <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.6</span></td><td>2000</td><td>Dose plausibility cap. Records above this are set to NA with <code>parsed_status = "implausible"</code> and a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table for the drug allow-list when <code>filter_oral = TRUE</code>. Pass <code>NULL</code> for the built-in 7-steroid table.</td></tr>
+  <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in mapping.</td></tr>
+  <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
+</table>
+</div>
+
+<h3>Output columns added</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>drug_name_std</code></td><td>Standardised drug name (lowercase, generic)</td></tr>
+  <tr><td><code>tablets</code></td><td>Number of tablets per dose extracted from SIG</td></tr>
+  <tr><td><code>freq_per_day</code></td><td>Doses per day (0.5 = QOD, 1 = QD, 2 = BID, 3 = TID, 4 = QID)</td></tr>
+  <tr><td><code>mg_per_admin</code></td><td>mg per administration (from SIG or strength fallback)</td></tr>
+  <tr><td><code>duration_days</code></td><td>Prescribed duration in days (when stated in SIG)</td></tr>
+  <tr><td><code>taper_flag</code></td><td>TRUE when taper/decreasing language detected</td></tr>
+  <tr><td><code>prn_flag</code></td><td>TRUE when "as needed" detected</td></tr>
+  <tr><td><code>free_text_flag</code></td><td>TRUE when "as directed" or unstructured SIG</td></tr>
+  <tr><td><code>daily_dose_mg</code></td><td>Computed daily dose in mg</td></tr>
+  <tr><td><code>parsed_status</code></td><td>One of: <code>"ok"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"free_text"</code>, <code>"no_parse"</code>, <code>"empty"</code></td></tr>
+</table>
+</div>
+
+<!-- ── ADVANCED NLP ──────────────────────────────────────────────── -->
+<h2 id="nlp-advanced">Advanced NLP method <span class="badge badge-new">v0.1.2</span></h2>
+
+<p>
+  <code>calc_daily_dose_nlp_advanced()</code> extends the standard NLP method
+  with richer SIG vocabulary and <strong>taper schedule decomposition</strong>.
+  It returns the same columns as <code>calc_daily_dose_nlp()</code> and is
+  fully compatible with <code>convert_pred_equiv()</code> and
+  <code>build_episodes()</code>.
+</p>
+
+<h3>What is new</h3>
+<ul>
+  <li><strong>Word-form tablet counts</strong> — <code>"one tablet"</code>, <code>"two tabs"</code>, <code>"half a tablet"</code>, <code>"1/2 tab"</code>, <code>"½ cap"</code>, compound forms like <code>"one and a half tablets"</code></li>
+  <li><strong>Weekly frequencies</strong> — <code>"once weekly"</code>, <code>"twice a week"</code>, <code>"3 times a week"</code>, <code>"q7d"</code>, <code>"every 7 days"</code> (→ 1/7 per day)</li>
+  <li><strong>Monthly frequencies</strong> — <code>"monthly"</code>, <code>"once a month"</code>, <code>"q30d"</code> (→ 1/30 per day)</li>
+  <li><strong>Every-N-days</strong> — <code>"every 3 days"</code>, <code>"q48h"</code> (→ 0.5/day), <code>"q72h"</code> (→ 1/3 per day)</li>
+  <li><strong>Sub-daily every-N-hours</strong> — <code>"every 4 hours"</code> / <code>"q4h"</code> (→ 6/day)</li>
+  <li><strong>Taper schedule decomposition</strong> — when <code>expand_tapers = TRUE</code>, taper records are expanded into per-step rows</li>
+</ul>
+
+<h3>Taper schedule decomposition</h3>
+<p>Two decomposition strategies are tried in order:</p>
+<ol>
+  <li><strong>Explicit multi-step</strong> — SIG contains ≥ 2 blocks of the form <em>"X mg [freq] for N [unit]"</em> separated by <code>"then"</code>, commas, or semicolons</li>
+  <li><strong>Decrement pattern</strong> — SIG states a starting dose and fixed reduction: <em>"start 60 mg then decrease by 10 mg every week"</em> → generates descending steps</li>
+</ol>
+
+<h4>Example: explicit multi-step taper</h4>
+<pre><code>adv_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp_advanced</span>(drug_df, expand_tapers <span class="op">=</span> <span class="kw">TRUE</span>)
+
+<span class="cm"># Compute actual step dates from prescription start</span>
+adv_df |>
+  dplyr::<span class="fn">filter</span>(!<span class="fn">is.na</span>(taper_step)) |>
+  dplyr::<span class="fn">mutate</span>(
+    step_start_date <span class="op">=</span> drug_exposure_start_date <span class="op">+</span> step_start_day,
+    step_end_date   <span class="op">=</span> drug_exposure_start_date <span class="op">+</span> step_end_day
+  ) |>
+  dplyr::<span class="fn">select</span>(person_id, drug_name_std, taper_step,
+                step_start_date, step_end_date, daily_dose_mg, parsed_status)
+</code></pre>
+
+<!-- ── ADVANCED NLP PARAMS ─────────────────────────────────────────── -->
+<h2 id="nlp-advanced-params">Advanced NLP parameters <span class="badge badge-new">v0.1.2</span></h2>
+
+<div class="fn-sig">calc_daily_dose_nlp_advanced(
+  connector_or_df,
+  drug_name_col     = "drug_concept_name",
+  sig_col           = "sig",
+  filter_oral       = TRUE,
+  expand_tapers     = FALSE,
+  max_daily_dose_mg = 2000,
+  baseline_fallback = FALSE,
+  equiv_table       = NULL,
+  drug_name_map     = NULL,
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig"
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>Required. Connector or data frame.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records and known systemic steroids.</td></tr>
+  <tr><td>expand_tapers</td><td>FALSE</td><td>When <code>TRUE</code>, taper records with a parseable schedule are expanded into per-step rows. Three columns added: <code>taper_step</code> (int), <code>step_start_day</code> (num), <code>step_end_day</code> (num). <code>NA</code> for non-taper records and unexpandable tapers.</td></tr>
+  <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap. Records above this are set to NA (<code>parsed_status = "implausible"</code>) with a warning.</td></tr>
+  <tr><td>baseline_fallback</td><td>FALSE</td><td>If <code>TRUE</code> and <code>daily_dose_mg_orig</code> column exists, use it to fill NAs after parsing.</td></tr>
+  <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table for the drug allow-list when <code>filter_oral = TRUE</code>.</td></tr>
+  <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in mapping.</td></tr>
+  <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
+</table>
+</div>
+
+<h3>Additional output columns (when expand_tapers = TRUE)</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>taper_step</code></td><td>Integer step number within the taper (1, 2, …). <code>NA</code> for non-taper records.</td></tr>
+  <tr><td><code>step_start_day</code></td><td>Days from <code>drug_exposure_start_date</code> to the start of this step (0-based).</td></tr>
+  <tr><td><code>step_end_day</code></td><td>Days from <code>drug_exposure_start_date</code> to the end of this step (inclusive).</td></tr>
+</table>
+</div>
+
+<!-- ── TAPER PARSER ──────────────────────────────────────────────── -->
+<h2 id="taper-parser">Taper schedule parser <span class="badge badge-new">v0.1.2</span></h2>
+
+<div class="fn-sig">parse_taper_schedule(sig_text)  # returns a tibble or NULL</div>
+
+<p>
+  Standalone function that decomposes a taper SIG string into a table of dose steps.
+  Returns <code>NULL</code> when the SIG cannot be parsed into ≥ 2 steps. Never throws an error.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Output column</th><th>Description</th></tr>
+  <tr><td><code>step</code></td><td>Integer step number (1, 2, …)</td></tr>
+  <tr><td><code>daily_dose_mg</code></td><td>Daily dose for this step (mg/day)</td></tr>
+  <tr><td><code>freq_per_day</code></td><td>Doses per day (defaults to 1 when not stated)</td></tr>
+  <tr><td><code>duration_days</code></td><td>Length of this step in days</td></tr>
+  <tr><td><code>step_start_day</code></td><td>Cumulative days from prescription start to step start (0-based)</td></tr>
+  <tr><td><code>step_end_day</code></td><td>Cumulative days from prescription start to step end (inclusive)</td></tr>
+</table>
+</div>
+
+<pre><code><span class="fn">parse_taper_schedule</span>(
+  <span class="st">"60 mg daily for 2 weeks, then 40 mg daily for 2 weeks, then 20 mg daily for 2 weeks"</span>
+)
+<span class="cm">#   step daily_dose_mg freq_per_day duration_days step_start_day step_end_day</span>
+<span class="cm">#      1            60            1            14              0           13</span>
+<span class="cm">#      2            40            1            14             14           27</span>
+<span class="cm">#      3            20            1            14             28           41</span>
+
+<span class="fn">parse_taper_schedule</span>(<span class="st">"start 60 mg then decrease by 10 mg every week"</span>)
+<span class="cm">#   step daily_dose_mg freq_per_day duration_days step_start_day step_end_day</span>
+<span class="cm">#      1            60            1             7              0            6</span>
+<span class="cm">#      2            50            1             7              7           13</span>
+<span class="cm">#   ... (continues down to step 6: 10 mg)</span>
+</code></pre>
+
+<!-- ── SIG PARSING ───────────────────────────────────────────────── -->
+<h2 id="sig-parsing">SIG parsing details</h2>
+
+<h3>parse_sig_one() — single record</h3>
+<div class="fn-sig">parse_sig_one(sig_text)  # returns a 1-row tibble</div>
+<p>Never throws an error. Malformed or empty input returns <code>parsed_status = "empty"</code>.</p>
+
+<h3>parse_sig() — vectorised</h3>
+<div class="fn-sig">parse_sig(drug_df, sig_col = "sig")</div>
+<p>Applies <code>parse_sig_one()</code> to every row and binds the results back onto <code>drug_df</code>.</p>
+
+<h3>parse_sig_one_advanced() / parse_sig_advanced()</h3>
+<p>Drop-in replacements for the standard parsers with the extended vocabulary (word-forms, weekly/monthly, every-N patterns). Return identical output columns.</p>
+
+<h3>Frequency patterns recognised</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>SIG text</th><th>freq_per_day</th><th>Source</th></tr>
+  <tr><td>daily, QD, once daily, every day, every morning, QAM, every 24 hours</td><td>1</td><td>Standard</td></tr>
+  <tr><td>BID, twice daily, two times daily, Q12H, every 12 hours</td><td>2</td><td>Standard</td></tr>
+  <tr><td>TID, three times daily, Q8H, every 8 hours</td><td>3</td><td>Standard</td></tr>
+  <tr><td>QID, four times daily, Q6H, every 6 hours</td><td>4</td><td>Standard</td></tr>
+  <tr><td>every other day, QOD</td><td>0.5</td><td>Standard</td></tr>
+  <tr><td>once weekly, twice a week, 3 times a week, q7d, every 7 days</td><td>1/7 – 3/7</td><td>Advanced only</td></tr>
+  <tr><td>monthly, once a month, q30d</td><td>1/30</td><td>Advanced only</td></tr>
+  <tr><td>q48h, every 3 days, q72h, every 4 days</td><td>0.5, 1/3, 0.25</td><td>Advanced only</td></tr>
+  <tr><td>every 4 hours, q4h</td><td>6</td><td>Advanced only</td></tr>
+</table>
+</div>
+
+<a class="back-top" href="#baseline">↑ Back to top</a>
+
+</main>
+</div>
+</body>
+</html>
