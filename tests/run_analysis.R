@@ -173,7 +173,63 @@ print(head(nlp_episodes[, c(
 )]))
 
 # ---------------------------------------------------------------------------
-# 6. Method comparison (exposure level)
+# 6. Advanced NLP method
+# ---------------------------------------------------------------------------
+message("\n=== Advanced NLP method ===")
+
+adv_nlp_df <- calc_daily_dose_nlp_advanced(
+  drug_df,
+  max_daily_dose_mg = 2000,  # plausibility cap — same as baseline
+  expand_tapers     = FALSE  # keep one row per record; set TRUE to expand taper steps
+)
+
+cat("\nparsed_status breakdown (advanced NLP):\n")
+print(table(adv_nlp_df$parsed_status, useNA = "ifany"))
+
+cat("\nDose summary (parsed_status == 'ok'):\n")
+print(summary(adv_nlp_df$daily_dose_mg[adv_nlp_df$parsed_status == "ok"]))
+
+cat("\nGain over standard NLP (records promoted to 'ok'):\n")
+cat(sprintf(
+  "  Standard NLP ok: %d  |  Advanced NLP ok: %d  |  Delta: +%d\n",
+  sum(nlp_df$parsed_status == "ok", na.rm = TRUE),
+  sum(adv_nlp_df$parsed_status == "ok", na.rm = TRUE),
+  sum(adv_nlp_df$parsed_status == "ok", na.rm = TRUE) -
+    sum(nlp_df$parsed_status == "ok", na.rm = TRUE)
+))
+
+cat("\nSample taper SIG decompositions (parse_taper_schedule):\n")
+taper_sigs <- adv_nlp_df |>
+  filter(taper_flag) |>
+  distinct(sig) |>
+  head(5) |>
+  pull(sig)
+
+for (s in taper_sigs) {
+  steps <- parse_taper_schedule(s)
+  if (!is.null(steps)) {
+    cat(sprintf("\n  SIG: %s\n", substr(s, 1L, 80L)))
+    print(steps)
+  }
+}
+
+# Taper expansion example — one row per dose step
+if (any(adv_nlp_df$taper_flag, na.rm = TRUE)) {
+  adv_nlp_expanded <- calc_daily_dose_nlp_advanced(
+    drug_df,
+    max_daily_dose_mg = 2000,
+    expand_tapers     = TRUE
+  )
+  cat(sprintf(
+    "\nWith expand_tapers = TRUE: %d records → %d rows (%d taper_ok steps)\n",
+    nrow(adv_nlp_df),
+    nrow(adv_nlp_expanded),
+    sum(adv_nlp_expanded$parsed_status == "taper_ok", na.rm = TRUE)
+  ))
+}
+
+# ---------------------------------------------------------------------------
+# 7. Method comparison (exposure level)
 # ---------------------------------------------------------------------------
 message("\n=== Baseline vs NLP comparison (exposure level) ===")
 
@@ -230,7 +286,7 @@ cmp |>
   print()
 
 # ---------------------------------------------------------------------------
-# 7. Method comparison (episode level)
+# 8. Method comparison (episode level)
 # ---------------------------------------------------------------------------
 message("\n=== Baseline vs NLP comparison (episode level) ===")
 
@@ -264,7 +320,7 @@ if (nrow(epi_cmp) > 0) {
 }
 
 # ---------------------------------------------------------------------------
-# 8. (Optional) Gold standard evaluation
+# 9. (Optional) Gold standard evaluation
 # ---------------------------------------------------------------------------
 if (USE_SYNTHETIC) {
   message("\n=== Gold standard evaluation (synthetic data) ===")
@@ -284,7 +340,7 @@ if (USE_SYNTHETIC) {
 }
 
 # ---------------------------------------------------------------------------
-# 9. Disconnect (live DB only)
+# 10. Disconnect (live DB only)
 # ---------------------------------------------------------------------------
 if (!USE_SYNTHETIC) {
   disconnect_connector(con)
