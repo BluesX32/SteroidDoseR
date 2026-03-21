@@ -131,5 +131,5 @@ See `bug.md` for the full list. All entries through BUG-6 are resolved.
 
 ## Citation
 
-Xiong M et al. *AgentDose: Automated Steroid Dose Calculation from EHR Data.*
+Xiong C et al. *AgentDose: Automated Steroid Dose Calculation from EHR Data.*
 OHDSI Global Symposium 2025. Abstract 205.

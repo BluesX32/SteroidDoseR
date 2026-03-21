@@ -430,6 +430,110 @@ eval_result$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")]
 
 ---
 
+## Method workflows
+
+Both methods apply the same two intake gates — oral route then steroid name list — before diverging into their respective dose-calculation logic.
+
+### Baseline method
+
+```
+OMOP drug_exposure (all drugs, all routes)
+          │
+          ▼
+  standardize_drug_name(drug_concept_name)  →  drug_name_std
+          │
+          ▼  filter_oral = TRUE
+  ┌───────────────────────────────────┐
+  │ Gate 1: oral route only           │
+  │  classify_route(route_concept_name│
+  │                 route_source_value)│
+  │  keep: "oral" or NA (unknown)     │
+  └───────────────────────────────────┘
+          │
+          ▼
+  ┌───────────────────────────────────┐
+  │ Gate 2: known systemic steroids   │
+  │  drug_name_std ∈ pred_equiv_table │
+  └───────────────────────────────────┘
+          │
+          ▼
+  strength_mg
+  ├─ amount_value  (amount_unit_concept_id == 8576 mg only)
+  └─ fallback: mg regex on drug_source_value
+          │
+          ▼
+  Imputation cascade  (first non-NA wins)
+  ├── M1  original       pre-existing daily_dose / daily_dose_mg
+  ├── M2  tablets_freq   tablets × freq_per_day × strength_mg
+  ├── M3  supply_based   (quantity × strength_mg) / days_supply
+  └── M4  actual_dur     (quantity × strength_mg) / actual_duration_days
+          │
+          ▼
+  Plausibility cap: doses > 2000 mg/day → NA + warning
+          │
+          ▼
+  convert_pred_equiv()  →  pred_equiv_mg
+          │
+          ▼
+  build_episodes(gap_days = 30)
+  →  one row per patient–drug continuous episode
+```
+
+### NLP method
+
+```
+OMOP drug_exposure (all drugs, all routes)
+          │
+          ▼
+  standardize_drug_name(drug_concept_name)  →  drug_name_std
+          │
+          ▼  filter_oral = TRUE  (default)
+  ┌───────────────────────────────────┐
+  │ Gate 1: oral route only           │
+  │  classify_route(route_concept_name│
+  │                 route_source_value)│
+  │  keep: "oral" or NA (unknown)     │
+  └───────────────────────────────────┘
+          │
+          ▼
+  ┌───────────────────────────────────┐
+  │ Gate 2: known systemic steroids   │
+  │  drug_name_std ∈ pred_equiv_table │
+  └───────────────────────────────────┘
+          │
+          ▼
+  parse_sig_one() on each SIG string
+  │
+  ├── flags      free_text / taper / prn
+  ├── tablets    "2 tablets / tabs / caps"
+  ├── freq       QD→1  BID→2  TID→3  QID→4  QOD→0.5
+  └── mg  (priority order)
+        1. "(X mg total)"    — explicit daily total
+        2. "(X mg per dose)" — per-administration total
+        3. "(X mg)"          — per-tablet × tablets
+        4. "X mg" bare       — per-tablet × tablets
+        5. FALLBACK: amount_value  (unit_concept_id == 8576)
+           then: mg from drug_concept_name / drug_source_value
+          │
+          ▼  daily_dose_mg = mg_per_admin × freq_per_day
+  parsed_status:
+  ├── "free_text"   unstructured SIG
+  ├── "taper"       dose changes over time
+  ├── "prn"         as-needed
+  ├── "ok"          daily_dose_mg computed ✓
+  ├── "no_parse"    freq or mg still missing
+  └── "empty"       SIG was blank / NA
+          │
+          ▼  ("ok" records only carry a dose forward)
+  convert_pred_equiv()  →  pred_equiv_mg
+          │
+          ▼
+  build_episodes(gap_days = 30)
+  →  one row per patient–drug continuous episode
+```
+
+---
+
 ## Output
 
 ### Episodes
