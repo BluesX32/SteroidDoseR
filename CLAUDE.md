@@ -60,6 +60,8 @@ Stage only the files relevant to the change. Do not stage unrelated files.
 R/
   baseline.R      — calc_daily_dose_baseline() — M1–M4 cascading imputation
   nlp.R           — calc_daily_dose_nlp(), parse_sig(), parse_sig_one()
+  nlp_advanced.R  — calc_daily_dose_nlp_advanced(), parse_sig_advanced(),
+                    parse_sig_one_advanced(), parse_taper_schedule()
   connector.R     — create_omop_connector(), create_df_connector(), etc.
   connection.R    — create_omop_connection(), create_connection_from_env()
   conversion.R    — convert_pred_equiv()

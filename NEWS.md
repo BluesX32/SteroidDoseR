@@ -1,3 +1,55 @@
+# SteroidDoseR 0.1.2
+
+## New functions
+
+* **`calc_daily_dose_nlp_advanced()`** — enhanced NLP pipeline that extends
+  `calc_daily_dose_nlp()` with richer vocabulary, taper decomposition, and a
+  dose plausibility cap matching the Baseline method.
+
+* **`parse_sig_one_advanced()`** / **`parse_sig_advanced()`** — drop-in
+  replacements for `parse_sig_one()` / `parse_sig()` with the expanded
+  vocabulary below. Return identical columns for full compatibility.
+
+* **`parse_taper_schedule()`** — standalone taper decomposer. Given a SIG
+  string, returns a tibble of taper steps with `daily_dose_mg`,
+  `freq_per_day`, `duration_days`, `step_start_day`, and `step_end_day`.
+  Returns `NULL` when the SIG cannot be decomposed into ≥ 2 steps.
+
+## Enhanced SIG vocabulary (applies to all `*_advanced` functions)
+
+* **Word-form tablet counts**: `"one tablet"`, `"two tablets"`, `"half a
+  tablet"`, `"a tablet"`, and `"N and a half tablets"` compounds.
+* **Fractional tablets**: `"1/2 tablet"`, `"½ tab"`.
+* **Weekly frequencies**: `"once weekly"`, `"twice a week"`,
+  `"3 times a week"`, `"q7d"`, `"every 7 days"`.
+* **Monthly frequencies**: `"monthly"`, `"once a month"`, `"q30d"`.
+* **Generalised every-N-days**: `"every 3 days"`, `"q48h"` (= 0.5/day),
+  `"q72h"` (= 1/3 day), `"every 4 days"`.
+* **Sub-daily every-N-hours**: `"every 4 hours"` / `"q4h"` (= 6/day),
+  alongside the existing `q6h`, `q8h`, `q12h`.
+
+## Taper decomposition
+
+* `calc_daily_dose_nlp_advanced(expand_tapers = TRUE)` expands taper records
+  into per-step rows. Each expanded row carries `taper_step` (step number),
+  `step_start_day`, and `step_end_day` (days from prescription start).
+  `parsed_status` is set to `"taper_ok"` for successfully decomposed steps.
+  Two patterns are supported:
+  - *Explicit multi-step*: `"60 mg daily for 4 weeks, then 40 mg daily for
+    4 weeks, then 20 mg daily for 4 weeks"` — split on `"then"`, commas, or
+    semicolons; each piece parsed independently.
+  - *Decrement*: `"start 60 mg then decrease by 10 mg every week"` —
+    generates descending dose steps down to the decrement amount.
+
+## New parameter
+
+* **`max_daily_dose_mg`** added to `calc_daily_dose_nlp_advanced()` (default
+  2000 mg/day). Records above this threshold are set to `NA` with status
+  `"implausible"` and a diagnostic warning — identical behaviour to the
+  Baseline method.
+
+---
+
 # SteroidDoseR 0.1.1
 
 ## New parameters

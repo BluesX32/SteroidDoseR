@@ -24,6 +24,7 @@ OMOP CDM is a standardized data format maintained by the OHDSI (Observational He
 ## Key features
 
 - **Two imputation methods** — Baseline (structured OMOP fields, M1–M4 cascade with unit-safe `amount_value` and plausibility cap) and NLP (rule-based SIG text parsing with `amount_value` strength fallback for SIGs that omit mg).
+- **Advanced NLP method** — `calc_daily_dose_nlp_advanced()` extends the rule-based parser with word-form tablet counts (`"one tablet"`, `"half a tab"`), weekly/monthly frequencies (`"once weekly"`, `"monthly"`), every-N-days and every-N-hours patterns, a dose plausibility cap, and **taper schedule decomposition** that expands multi-step taper SIGs into per-step rows with `step_start_day` / `step_end_day` offsets.
 - **Prednisone-equivalency conversion** — built-in table covering 8 corticosteroids (prednisone, prednisolone, methylprednisolone, dexamethasone, hydrocortisone, triamcinolone, budesonide, and others).
 - **Episode building** — gap-bridges overlapping and adjacent prescriptions into continuous treatment episodes using the OHDSI standard 30-day gap.
 - **Connector abstraction** — identical calling code works against a live OMOP CDM database or an in-memory data frame; no code changes needed when switching.
@@ -585,8 +586,12 @@ OMOP drug_exposure (all drugs, all routes)
 | `run_pipeline()` | Yes | One-call fetch → impute → convert → episodes. `m2_sig_parse` controls M2 SIG-parse strategy. |
 | `calc_daily_dose_baseline()` | Yes | Structured-field cascading imputation (M1–M4). `m2_sig_parse` controls M2 SIG-parse strategy. `max_daily_dose_mg` (default 2000) caps implausible doses; `amount_unit_concept_id` is checked so non-mg `amount_value` units don't explode M3/M4. |
 | `calc_daily_dose_nlp()` | Yes | Rule-based SIG text parsing. Falls back to `amount_value` / drug name strength when SIG omits mg amount. |
-| `parse_sig()` | No | Vectorized SIG string parser (low-level). |
-| `parse_sig_one()` | No | Parse a single SIG string; returns all parsed components. |
+| `calc_daily_dose_nlp_advanced()` | Yes | Enhanced NLP: extended vocabulary, taper decomposition (`expand_tapers`), dose plausibility cap (`max_daily_dose_mg`). |
+| `parse_sig()` | No | Vectorized SIG string parser (standard vocabulary). |
+| `parse_sig_one()` | No | Parse a single SIG string; returns all parsed components (standard vocabulary). |
+| `parse_sig_advanced()` | No | Vectorized SIG parser with enhanced vocabulary (word-forms, weekly/monthly, every-N patterns). |
+| `parse_sig_one_advanced()` | No | Single-record enhanced SIG parser; same output columns as `parse_sig_one()`. |
+| `parse_taper_schedule()` | No | Decompose a taper SIG into a per-step dose schedule tibble. Returns `NULL` if not parseable. |
 | `convert_pred_equiv()` | No | Multiply daily doses by prednisone-equivalency factors. |
 | `build_episodes()` | Yes | Gap-bridge prescriptions into continuous episodes. |
 | `evaluate_against_gold()` | No | Coverage, MAE, MBE, RMSE vs. manual gold standard. |
@@ -597,7 +602,7 @@ OMOP drug_exposure (all drugs, all routes)
 
 ## Project status
 
-This is version 0.1.0, research-stage software. It is under active development.
+This is version 0.1.2, research-stage software. It is under active development.
 
 | Phase | Status | Content |
 |-------|--------|---------|

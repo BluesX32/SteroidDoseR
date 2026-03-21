@@ -223,6 +223,9 @@
     <li><a href="#baseline-params">Baseline parameters</a></li>
     <li><a href="#nlp">NLP method</a></li>
     <li><a href="#nlp-params">NLP parameters</a></li>
+    <li><a href="#nlp-advanced">Advanced NLP method</a></li>
+    <li><a href="#nlp-advanced-params">Advanced NLP parameters</a></li>
+    <li><a href="#taper-parser">Taper schedule parser</a></li>
     <li><a href="#sig-parsing">SIG parsing details</a></li>
   </ul>
   <div class="nav-section-label">Pipeline</div>
@@ -780,6 +783,209 @@ nlp_df |>
 </table>
 </div>
 
+<!-- ── ADVANCED NLP ──────────────────────────────────────────────── -->
+<h2 id="nlp-advanced">Advanced NLP method <span class="badge badge-new">v0.1.2</span></h2>
+
+<p>
+  <code>calc_daily_dose_nlp_advanced()</code> extends the standard NLP method
+  with richer SIG vocabulary, <strong>taper schedule decomposition</strong>,
+  and a dose plausibility cap. It returns the same columns as
+  <code>calc_daily_dose_nlp()</code> and is fully compatible with
+  <code>convert_pred_equiv()</code> and <code>build_episodes()</code>.
+</p>
+
+<h3>What is new</h3>
+<ul>
+  <li><strong>Word-form tablet counts</strong> — <code>"one tablet"</code>,
+    <code>"two tabs"</code>, <code>"half a tablet"</code>,
+    <code>"1/2 tab"</code>, <code>"½ cap"</code>, and compound forms like
+    <code>"one and a half tablets"</code>.</li>
+  <li><strong>Weekly frequencies</strong> — <code>"once weekly"</code>,
+    <code>"twice a week"</code>, <code>"3 times a week"</code>,
+    <code>"q7d"</code>, <code>"every 7 days"</code> (→ 1/7 per day).</li>
+  <li><strong>Monthly frequencies</strong> — <code>"monthly"</code>,
+    <code>"once a month"</code>, <code>"q30d"</code> (→ 1/30 per day).</li>
+  <li><strong>Every-N-days</strong> — <code>"every 3 days"</code>,
+    <code>"q48h"</code> (→ 0.5/day), <code>"q72h"</code> (→ 1/3 per day),
+    <code>"every 4 days"</code>.</li>
+  <li><strong>Sub-daily every-N-hours</strong> — <code>"every 4 hours"</code>
+    / <code>"q4h"</code> (→ 6/day) added to the existing q6h/q8h/q12h set.</li>
+  <li><strong>Dose plausibility cap</strong> — <code>max_daily_dose_mg</code>
+    (default 2000): records above this value are set to NA with status
+    <code>"implausible"</code> and a warning.</li>
+  <li><strong>Taper schedule decomposition</strong> — when
+    <code>expand_tapers = TRUE</code>, taper records are expanded into
+    per-step rows (see below).</li>
+</ul>
+
+<h3>Taper schedule decomposition</h3>
+<p>
+  Steroid tapers are common and clinically important, but the standard NLP
+  method can only flag them as <code>parsed_status = "taper"</code> and assign
+  <code>NA</code> to the dose. The advanced method adds
+  <code>parse_taper_schedule()</code> which decomposes the SIG into a sequence
+  of dose steps.
+</p>
+<p>Two decomposition strategies are tried in order:</p>
+<ol>
+  <li><strong>Explicit multi-step</strong> — the SIG contains ≥ 2 blocks of
+    the form <em>"X mg [freq] for N [unit]"</em> separated by
+    <code>"then"</code>, commas, or semicolons. Each block is parsed
+    independently.</li>
+  <li><strong>Decrement pattern</strong> — the SIG states a starting dose and
+    a fixed reduction: <em>"start 60 mg then decrease by 10 mg every week"</em>
+    or <em>"taper by 5 mg each month"</em>. Steps are generated from start
+    dose down to the decrement amount.</li>
+</ol>
+
+<h4>Example: explicit multi-step taper</h4>
+<pre><code><span class="fn">parse_taper_schedule</span>(
+  <span class="st">"60 mg daily for 2 weeks, then 40 mg daily for 2 weeks, then 20 mg daily for 2 weeks"</span>
+)
+<span class="cm">#   step daily_dose_mg freq_per_day duration_days step_start_day step_end_day</span>
+<span class="cm">#      1            60            1            14              0           13</span>
+<span class="cm">#      2            40            1            14             14           27</span>
+<span class="cm">#      3            20            1            14             28           41</span>
+</code></pre>
+
+<h4>Expanding taper records in the full pipeline</h4>
+<pre><code><span class="cm"># Each taper record becomes multiple rows — one per dose step</span>
+adv_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp_advanced</span>(
+  drug_df,
+  expand_tapers <span class="op">=</span> <span class="kw">TRUE</span>
+)
+
+<span class="cm"># Compute actual step dates from the prescription start</span>
+adv_df |>
+  dplyr::<span class="fn">filter</span>(!<span class="fn">is.na</span>(taper_step)) |>
+  dplyr::<span class="fn">mutate</span>(
+    step_start_date <span class="op">=</span> drug_exposure_start_date <span class="op">+</span> step_start_day,
+    step_end_date   <span class="op">=</span> drug_exposure_start_date <span class="op">+</span> step_end_day
+  ) |>
+  dplyr::<span class="fn">select</span>(person_id, drug_name_std, taper_step,
+                step_start_date, step_end_date, daily_dose_mg, parsed_status)
+</code></pre>
+
+<p>
+  Records whose taper SIG cannot be decomposed keep
+  <code>taper_step = NA</code> and <code>parsed_status = "taper"</code>.
+  Successfully expanded steps get <code>parsed_status = "taper_ok"</code>.
+</p>
+
+<h3>Workflow</h3>
+<pre>
+OMOP drug_exposure (all drugs, all routes)
+          │
+          ▼ (same two intake gates as standard NLP)
+  Gate 1: oral route  →  Gate 2: known steroids
+          │
+          ▼
+  parse_sig_one_advanced() on each SIG string
+  │
+  ├── tablets  (numeric + word-form + fractional)
+  ├── freq     (daily/BID/TID/QID + weekly + monthly + every-N-days/hours)
+  └── mg       (same 4-level hierarchy + strength fallback)
+          │
+          ▼
+  Dose plausibility cap  (default 2000 mg/day)
+  → doses above cap → NA + status "implausible"
+          │
+          ▼  expand_tapers = TRUE
+  ┌───────────────────────────────────────────────────────┐
+  │ parse_taper_schedule() for each "taper" record         │
+  │                                                        │
+  │ Strategy 1: explicit steps                             │
+  │   "60 mg for 2 wk, then 40 mg for 2 wk, then …"       │
+  │   → one row per step (taper_step, step_start/end_day)  │
+  │                                                        │
+  │ Strategy 2: decrement                                  │
+  │   "start 60 mg, decrease by 10 mg every week"          │
+  │   → generated steps: 60, 50, 40, 30, 20, 10           │
+  └───────────────────────────────────────────────────────┘
+          │
+          ▼
+  parsed_status: "ok" / "taper_ok" / "taper" / "prn" / …
+          │
+          ▼
+  convert_pred_equiv()  →  build_episodes()
+</pre>
+
+<!-- ── ADVANCED NLP PARAMS ─────────────────────────────────────────── -->
+<h2 id="nlp-advanced-params">Advanced NLP parameters <span class="badge badge-new">v0.1.2</span></h2>
+
+<div class="fn-sig">calc_daily_dose_nlp_advanced(
+  connector_or_df,
+  drug_name_col     = "drug_concept_name",
+  sig_col           = "sig",
+  filter_oral       = TRUE,
+  expand_tapers     = FALSE,
+  max_daily_dose_mg = 2000,
+  baseline_fallback = FALSE,
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig"
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>Required. Connector or data frame.</td></tr>
+  <tr><td>drug_name_col</td><td>"drug_concept_name"</td><td>Column with the OMOP drug concept name.</td></tr>
+  <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records and known systemic steroids.</td></tr>
+  <tr><td>expand_tapers</td><td>FALSE</td><td>When <code>TRUE</code>, taper records with a parseable schedule are expanded into per-step rows. Three new columns added to every row: <code>taper_step</code> (int), <code>step_start_day</code> (num), <code>step_end_day</code> (num). <code>NA</code> for non-taper records and unexpandable tapers.</td></tr>
+  <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap. Records above this value are set to NA (<code>parsed_status = "implausible"</code>) with a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>baseline_fallback</td><td>FALSE</td><td>If <code>TRUE</code> and <code>daily_dose_mg_orig</code> column exists, use it to fill NAs after parsing.</td></tr>
+  <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
+</table>
+</div>
+
+<h3>Additional output columns (when expand_tapers = TRUE)</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>taper_step</code></td><td>Integer step number within the taper (1, 2, …). <code>NA</code> for non-taper records and unparseable tapers.</td></tr>
+  <tr><td><code>step_start_day</code></td><td>Days from <code>drug_exposure_start_date</code> to the start of this step (0-based).</td></tr>
+  <tr><td><code>step_end_day</code></td><td>Days from <code>drug_exposure_start_date</code> to the end of this step (inclusive).</td></tr>
+</table>
+</div>
+
+<!-- ── TAPER PARSER ──────────────────────────────────────────────── -->
+<h2 id="taper-parser">Taper schedule parser <span class="badge badge-new">v0.1.2</span></h2>
+
+<div class="fn-sig">parse_taper_schedule(sig_text)  # returns a tibble or NULL</div>
+
+<p>
+  Standalone function that decomposes a taper SIG string into a table of dose
+  steps. Returns <code>NULL</code> when the SIG cannot be parsed into ≥ 2
+  steps. Never throws an error.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Output column</th><th>Description</th></tr>
+  <tr><td><code>step</code></td><td>Integer step number (1, 2, …)</td></tr>
+  <tr><td><code>daily_dose_mg</code></td><td>Daily dose for this step (mg/day). In taper SIGs, the mg value is treated as the daily total.</td></tr>
+  <tr><td><code>freq_per_day</code></td><td>Doses per day inferred from the step (defaults to 1 = daily when not stated).</td></tr>
+  <tr><td><code>duration_days</code></td><td>Length of this step in days.</td></tr>
+  <tr><td><code>step_start_day</code></td><td>Cumulative days from prescription start to step start (0-based).</td></tr>
+  <tr><td><code>step_end_day</code></td><td>Cumulative days from prescription start to step end (inclusive).</td></tr>
+</table>
+</div>
+
+<h4>Decrement-pattern example</h4>
+<pre><code><span class="fn">parse_taper_schedule</span>(<span class="st">"start 60 mg then decrease by 10 mg every week"</span>)
+<span class="cm">#   step daily_dose_mg freq_per_day duration_days step_start_day step_end_day</span>
+<span class="cm">#      1            60            1             7              0            6</span>
+<span class="cm">#      2            50            1             7              7           13</span>
+<span class="cm">#      3            40            1             7             14           20</span>
+<span class="cm">#      4            30            1             7             21           27</span>
+<span class="cm">#      5            20            1             7             28           34</span>
+<span class="cm">#      6            10            1             7             35           41</span>
+</code></pre>
+
 <!-- ── SIG PARSING ───────────────────────────────────────────────── -->
 <h2 id="sig-parsing">SIG parsing details</h2>
 
@@ -1005,8 +1211,12 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
   <tr><td><code>run_pipeline()</code></td><td>Yes</td><td>One-call fetch → impute → convert → episodes.</td></tr>
   <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; <code>max_daily_dose_mg</code> cap.</td></tr>
   <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback.</td></tr>
-  <tr><td><code>parse_sig()</code></td><td>No</td><td>Vectorised SIG parser (data-frame in, data-frame out).</td></tr>
-  <tr><td><code>parse_sig_one()</code></td><td>No</td><td>Parse a single SIG string; returns a 1-row tibble of all parsed components.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp_advanced()</code></td><td>Yes</td><td><span class="badge badge-new">v0.1.2</span> Enhanced NLP: extended vocabulary, taper decomposition (<code>expand_tapers</code>), plausibility cap (<code>max_daily_dose_mg</code>).</td></tr>
+  <tr><td><code>parse_sig()</code></td><td>No</td><td>Vectorised SIG parser, standard vocabulary (data-frame in, data-frame out).</td></tr>
+  <tr><td><code>parse_sig_one()</code></td><td>No</td><td>Parse a single SIG string; returns a 1-row tibble of all parsed components (standard vocabulary).</td></tr>
+  <tr><td><code>parse_sig_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Vectorised enhanced SIG parser with word-forms, weekly/monthly, every-N patterns.</td></tr>
+  <tr><td><code>parse_sig_one_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Single-record enhanced parser; same output columns as <code>parse_sig_one()</code>.</td></tr>
+  <tr><td><code>parse_taper_schedule()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Decompose a taper SIG into a per-step dose schedule tibble. Returns <code>NULL</code> when ≥ 2 steps cannot be extracted.</td></tr>
   <tr><td><code>standardize_drug_name()</code></td><td>No</td><td>Normalise free-form drug names to canonical lowercase generic form.</td></tr>
   <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors.</td></tr>
   <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
@@ -1097,6 +1307,14 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.1.2 <span class="badge badge-new">Advanced NLP</span></h3>
+<ul>
+  <li><strong>New: <code>calc_daily_dose_nlp_advanced()</code></strong> — enhanced NLP pipeline with extended vocabulary, taper decomposition (<code>expand_tapers</code>), and dose plausibility cap (<code>max_daily_dose_mg</code>).</li>
+  <li><strong>New: <code>parse_taper_schedule()</code></strong> — standalone taper SIG decomposer. Supports explicit multi-step patterns (<em>"X mg for N weeks then …"</em>) and decrement patterns (<em>"start X mg, decrease by Y mg every week"</em>).</li>
+  <li><strong>New: <code>parse_sig_one_advanced()</code> / <code>parse_sig_advanced()</code></strong> — drop-in replacements for the standard SIG parsers with richer vocabulary.</li>
+  <li>Enhanced vocabulary: word-form tablet counts, fractional tablets (1/2), weekly / monthly frequencies, every-N-days / every-N-hours patterns.</li>
+</ul>
 
 <h3>v0.1.1 <span class="badge badge-fix">Bug fixes</span></h3>
 <ul>
