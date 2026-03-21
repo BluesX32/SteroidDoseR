@@ -72,6 +72,19 @@ was already parsed from the SIG, `daily_dose_mg` is computed and
 
 ## connector / SQL
 
+### BUG-7 SQL template not found when package is loaded via devtools::load_all() or stale install ✅ FIXED
+`system.file("sql", "extract_drug_exposure.sql", package = "SteroidDoseR")`
+returns `""` when (a) the package was loaded with `devtools::load_all()` instead
+of installed, or (b) the installed copy at `C:/Program Files/RPackages/` is
+outdated and lacks the `inst/sql/` directory.
+
+**Fix**: Added a fallback path check in `.fetch_drug_exposure_omop()`. After
+`system.file()` is called, if the result is empty or the file does not exist,
+the code checks `file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql")`.
+This covers the source-package / `load_all()` workflow where the working
+directory is the package root. The error message now also includes actionable
+reinstall instructions.
+
 ### route_concept_name missing from SQL extraction ✅ FIXED
 `extract_drug_exposure.sql` fetched `route_concept_id` but not
 `route_concept_name`. `calc_daily_dose_nlp()` checks for `route_concept_name`

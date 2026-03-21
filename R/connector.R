@@ -518,6 +518,22 @@ fetch_drug_exposure <- function(connector,
 
   sql_path <- system.file("sql", "extract_drug_exposure.sql",
                            package = "SteroidDoseR")
+  # Fallback for devtools::load_all() or stale install: look relative to the
+  # package source root (the working directory when developing).
+  if (!nzchar(sql_path) || !file.exists(sql_path)) {
+    src_fallback <- file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql")
+    if (file.exists(src_fallback)) sql_path <- src_fallback
+  }
+  if (!nzchar(sql_path) || !file.exists(sql_path)) {
+    rlang::abort(paste0(
+      "SQL template not found. ",
+      "If running from source, set the working directory to the package root ",
+      "(the folder that contains DESCRIPTION). ",
+      "If using an installed package, reinstall with: ",
+      "devtools::install(\"path/to/SteroidDoseR\").\n",
+      "Searched: ", file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql")
+    ))
+  }
 
   df <- query_omop(connector, sql_path, list(
     cdm_schema     = connector$cdm_schema,

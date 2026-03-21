@@ -1,3 +1,15 @@
+# SteroidDoseR 0.1.4
+
+## Bug fixes
+
+* **SQL template path fallback** (`connector.R`): `fetch_drug_exposure()` now
+  falls back to `file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql")`
+  when `system.file()` returns `""` — the common situation when the package is
+  loaded with `devtools::load_all()` or the installed copy is stale. The error
+  message now includes reinstall instructions. (#BUG-7)
+
+---
+
 # SteroidDoseR 0.1.3
 
 ## New functions
