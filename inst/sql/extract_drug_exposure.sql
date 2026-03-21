@@ -4,7 +4,10 @@
 --
 -- Parameters
 -- ----------
--- @cdm_schema      : schema containing OMOP CDM tables
+-- @cdm_schema      : schema containing clinical OMOP CDM tables (drug_exposure)
+-- @vocab_schema    : schema containing OMOP vocabulary tables (concept,
+--                   drug_strength). Often the same as @cdm_schema; set
+--                   separately for sites that split CDM and vocabulary schemas.
 -- @start_date      : lower bound on drug_exposure_start_date (YYYY-MM-DD string)
 -- @end_date        : upper bound on drug_exposure_start_date (YYYY-MM-DD string)
 -- @concept_filter  : comma-separated drug_concept_id list, or empty string '' to skip
@@ -33,10 +36,10 @@ SELECT
 
 FROM @cdm_schema.drug_exposure de
 
-LEFT JOIN @cdm_schema.concept c
+LEFT JOIN @vocab_schema.concept c
     ON de.drug_concept_id = c.concept_id
 
-LEFT JOIN @cdm_schema.concept rc
+LEFT JOIN @vocab_schema.concept rc
     ON de.route_concept_id = rc.concept_id
 
 -- drug_strength is aggregated per drug_concept_id before joining so that
@@ -48,7 +51,7 @@ LEFT JOIN (
         drug_concept_id,
         MAX(amount_value)           AS amount_value,
         MAX(amount_unit_concept_id) AS amount_unit_concept_id
-    FROM @cdm_schema.drug_strength
+    FROM @vocab_schema.drug_strength
     WHERE amount_value IS NOT NULL
     GROUP BY drug_concept_id
 ) ds ON de.drug_concept_id = ds.drug_concept_id

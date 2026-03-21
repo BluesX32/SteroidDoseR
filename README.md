@@ -566,7 +566,7 @@ OMOP drug_exposure (all drugs, all routes)
 
 ### Intermediate outputs
 
-- **`calc_daily_dose_baseline()`** adds `daily_dose_mg_imputed`, `strength_mg`, and `imputation_method` columns (M1–M4 label or "missing").
+- **`calc_daily_dose_baseline()`** adds `strength_mg`, `daily_dose_mg_imputed`, and `imputation_method` columns, plus four intermediate columns matching the Version2 output format: `dose_from_original` (M1), `dose_from_tablets_freq` (M2), `dose_from_supply` (M3), `dose_from_actual_duration` (M4). Each intermediate column holds the raw method value before cascading, making it easy to audit which method provided the final estimate.
 - **`calc_daily_dose_nlp()`** adds `daily_dose_mg`, `parsed_status`, and parsing components: `tablets`, `freq_per_day`, `mg_per_admin`, `duration_days`, `taper_flag`, `prn_flag`, `free_text_flag`.
 - **`convert_pred_equiv()`** adds `pred_equiv_mg`, `equiv_factor`, and `pred_equiv_status`.
 

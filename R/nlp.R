@@ -265,6 +265,9 @@ calc_daily_dose_nlp <- function(connector_or_df,
                                 sig_col           = "sig",
                                 filter_oral       = TRUE,
                                 baseline_fallback  = FALSE,
+                                max_daily_dose_mg = 2000,
+                                equiv_table       = NULL,
+                                drug_name_map     = NULL,
                                 drug_concept_ids  = NULL,
                                 person_ids        = NULL,
                                 start_date        = NULL,
@@ -284,7 +287,8 @@ calc_daily_dose_nlp <- function(connector_or_df,
 
   # --- standardise drug names -----------------------------------------------
   drug_df <- drug_df |>
-    dplyr::mutate(drug_name_std = standardize_drug_name(.data[[drug_name_col]]))
+    dplyr::mutate(drug_name_std = standardize_drug_name(.data[[drug_name_col]],
+                                                         drug_name_map = drug_name_map))
 
   # --- filter to oral corticosteroids ----------------------------------------
   if (filter_oral) {
@@ -298,8 +302,9 @@ calc_daily_dose_nlp <- function(connector_or_df,
       drug_df <- drug_df[route_class == "oral" | is.na(route_class), ]
     }
 
-    # Keep only recognised oral systemic steroids
-    known_steroids <- .pred_equiv_table$drug_name_std[!is.na(.pred_equiv_table$drug_name_std)]
+    # Keep only recognised oral systemic steroids (built-in or user-supplied table)
+    .etbl          <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
+    known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
     drug_df <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
   }
 
@@ -363,6 +368,24 @@ calc_daily_dose_nlp <- function(connector_or_df,
         daily_dose_mg = dplyr::coalesce(.data$daily_dose_mg,
                                         safe_as_numeric(.data$daily_dose_mg_orig))
       )
+  }
+
+  # --- dose plausibility cap ---------------------------------------------------
+  if (!is.null(max_daily_dose_mg) && is.finite(max_daily_dose_mg)) {
+    implausible <- !is.na(result$daily_dose_mg) &
+                   result$daily_dose_mg > max_daily_dose_mg
+    if (any(implausible, na.rm = TRUE)) {
+      rlang::warn(sprintf(
+        paste0(
+          "%d record(s) have daily_dose_mg > %.0f mg/day and were set to NA.\n",
+          "Possible causes: SIG with total-course dose, unit mismatch, or ",
+          "data-entry error.\nPass max_daily_dose_mg = NULL to disable this cap."
+        ),
+        sum(implausible), max_daily_dose_mg
+      ))
+      result$daily_dose_mg[implausible] <- NA_real_
+      result$parsed_status[implausible] <- "implausible"
+    }
   }
 
   result

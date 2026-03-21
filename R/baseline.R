@@ -60,11 +60,20 @@
 #'   Ignored when `tablets` and `freq_per_day` are already present, or when
 #'   `"tablets_freq"` is not in `methods`.
 #'
-#' @return The input data frame (or the fetched data frame) with three
+#' @return The input data frame (or the fetched data frame) with seven
 #' additional columns:
 #' \describe{
 #'   \item{strength_mg}{Extracted tablet/capsule strength in mg.}
-#'   \item{daily_dose_mg_imputed}{Best-estimate daily dose in mg.}
+#'   \item{dose_from_original}{M1 value: the original `daily_dose` or
+#'     `daily_dose_mg` column cast to numeric (NA if absent or non-positive).}
+#'   \item{dose_from_tablets_freq}{M2 value: `tablets × freq_per_day ×
+#'     strength_mg` (NA if any component is missing).}
+#'   \item{dose_from_supply}{M3 value: `(quantity × strength_mg) / days_supply`
+#'     (NA if any component is missing or `days_supply` is 0).}
+#'   \item{dose_from_actual_duration}{M4 value: `(quantity × strength_mg) /
+#'     actual_duration_days` (NA if any component is missing or duration ≤ 0).}
+#'   \item{daily_dose_mg_imputed}{Best-estimate daily dose in mg: the first
+#'     non-NA value across M1–M4 in cascade order.}
 #'   \item{imputation_method}{One of `"original"`, `"tablets_freq"`,
 #'     `"supply_based"`, `"actual_duration"`, or `"missing"`.}
 #' }
@@ -97,7 +106,9 @@ calc_daily_dose_baseline <- function(connector_or_df,
                                      sig_source        = "sig",
                                      m2_sig_parse      = c("warn", "auto", "none"),
                                      max_daily_dose_mg = 2000,
-                                     filter_oral       = FALSE) {
+                                     filter_oral       = FALSE,
+                                     equiv_table       = NULL,
+                                     drug_name_map     = NULL) {
 
   m2_sig_parse <- match.arg(m2_sig_parse)
 
@@ -117,12 +128,19 @@ calc_daily_dose_baseline <- function(connector_or_df,
       name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(drug_df))
       if (length(name_col) > 0L) {
         drug_df <- drug_df |>
-          dplyr::mutate(drug_name_std = standardize_drug_name(.data[[name_col[[1L]]]]))
+          dplyr::mutate(
+            drug_name_std = standardize_drug_name(
+              .data[[name_col[[1L]]]],
+              drug_name_map = drug_name_map
+            )
+          )
       }
     }
 
-    rc <- if ("route_concept_name" %in% names(drug_df)) drug_df$route_concept_name else NULL
-    rs <- if ("route_source_value" %in% names(drug_df)) drug_df$route_source_value else NULL
+    rc <- if ("route_concept_name" %in% names(drug_df))
+      drug_df$route_concept_name else NULL
+    rs <- if ("route_source_value" %in% names(drug_df))
+      drug_df$route_source_value else NULL
 
     if (is.null(rc) && is.null(rs)) {
       rlang::warn("No route column found; skipping oral-route filter.")
@@ -132,7 +150,8 @@ calc_daily_dose_baseline <- function(connector_or_df,
     }
 
     if ("drug_name_std" %in% names(drug_df)) {
-      known_steroids <- .pred_equiv_table$drug_name_std[!is.na(.pred_equiv_table$drug_name_std)]
+      .etbl <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
+      known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
       drug_df <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
     }
 
@@ -314,10 +333,18 @@ calc_daily_dose_baseline <- function(connector_or_df,
     }
   }
 
-  # --- 7. remove internal scratch columns -----------------------------------
+  # --- 7. rename intermediates to Version2-compatible public names ----------
+  drug_df <- drug_df |>
+    dplyr::rename(
+      dose_from_original        = .m1,
+      dose_from_tablets_freq    = .m2,
+      dose_from_supply          = .m3,
+      dose_from_actual_duration = .m4
+    )
+
+  # Drop only the arithmetic scratch columns (not the renamed dose columns)
   drug_df |>
     dplyr::select(-dplyr::any_of(c(".start", ".end", ".actual_dur",
                                     ".quantity", ".days_supply",
-                                    ".tablets", ".freq", ".dd",
-                                    ".m1", ".m2", ".m3", ".m4")))
+                                    ".tablets", ".freq", ".dd")))
 }

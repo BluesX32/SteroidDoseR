@@ -604,6 +604,8 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
                                          expand_tapers     = FALSE,
                                          max_daily_dose_mg = 2000,
                                          baseline_fallback = FALSE,
+                                         equiv_table       = NULL,
+                                         drug_name_map     = NULL,
                                          drug_concept_ids  = NULL,
                                          person_ids        = NULL,
                                          start_date        = NULL,
@@ -621,7 +623,8 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
 
   # --- standardise drug names -----------------------------------------------
   drug_df <- drug_df |>
-    dplyr::mutate(drug_name_std = standardize_drug_name(.data[[drug_name_col]]))
+    dplyr::mutate(drug_name_std = standardize_drug_name(.data[[drug_name_col]],
+                                                         drug_name_map = drug_name_map))
 
   # --- filter to oral corticosteroids ----------------------------------------
   if (filter_oral) {
@@ -635,7 +638,9 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
       drug_df <- drug_df[route_class == "oral" | is.na(route_class), ]
     }
 
-    known_steroids <- .pred_equiv_table$drug_name_std[!is.na(.pred_equiv_table$drug_name_std)]
+    # Keep only recognised oral systemic steroids (built-in or user-supplied table)
+    .etbl          <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
+    known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
     drug_df <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
   }
 

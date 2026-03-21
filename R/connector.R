@@ -518,11 +518,17 @@ fetch_drug_exposure <- function(connector,
 
   sql_path <- system.file("sql", "extract_drug_exposure.sql",
                            package = "SteroidDoseR")
-  # Fallback for devtools::load_all() or stale install: look relative to the
-  # package source root (the working directory when developing).
+  # Fallback 1: working directory IS the package source root (SteroidDoseR/).
   if (!nzchar(sql_path) || !file.exists(sql_path)) {
     src_fallback <- file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql")
     if (file.exists(src_fallback)) sql_path <- src_fallback
+  }
+  # Fallback 2: working directory is the project root containing SteroidDoseR/
+  # as a subdirectory (e.g. DoseCalculation/ when sourcing tests/run_analysis.R).
+  if (!nzchar(sql_path) || !file.exists(sql_path)) {
+    src_fallback2 <- file.path(getwd(), "SteroidDoseR", "inst", "sql",
+                               "extract_drug_exposure.sql")
+    if (file.exists(src_fallback2)) sql_path <- src_fallback2
   }
   if (!nzchar(sql_path) || !file.exists(sql_path)) {
     rlang::abort(paste0(
@@ -531,12 +537,15 @@ fetch_drug_exposure <- function(connector,
       "(the folder that contains DESCRIPTION). ",
       "If using an installed package, reinstall with: ",
       "devtools::install(\"path/to/SteroidDoseR\").\n",
-      "Searched: ", file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql")
+      "Searched:\n",
+      "  ", file.path(getwd(), "inst", "sql", "extract_drug_exposure.sql"), "\n",
+      "  ", file.path(getwd(), "SteroidDoseR", "inst", "sql", "extract_drug_exposure.sql")
     ))
   }
 
   df <- query_omop(connector, sql_path, list(
     cdm_schema     = connector$cdm_schema,
+    vocab_schema   = connector$vocab_schema,
     start_date     = sd,
     end_date       = ed,
     concept_filter = concept_filter,

@@ -34,6 +34,13 @@
 #'   Default: `"episode_end"`.
 #' @param gold_dose_col `character(1)`. Dose column in `gold_df`.
 #'   Default: `"median_daily_dose"`.
+#' @param dose_breaks Numeric vector of cut-point boundaries for dose-range
+#'   stratification in `$stratified$by_dose_range`. Default:
+#'   `c(0, 10, 20, 40, Inf)` (tuned for typical myositis maintenance doses).
+#'   Must have exactly one more element than `dose_labels`.
+#' @param dose_labels Character vector of labels for the dose ranges defined
+#'   by `dose_breaks`. Default:
+#'   `c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)", "Very High (>40mg)")`.
 #'
 #' @return A named list with three elements:
 #' \describe{
@@ -78,7 +85,12 @@ evaluate_against_gold <- function(computed_df,
                                   gold_id_col       = "patient_id",
                                   gold_start_col    = "episode_start",
                                   gold_end_col      = "episode_end",
-                                  gold_dose_col     = "median_daily_dose") {
+                                  gold_dose_col     = "median_daily_dose",
+                                  dose_breaks       = c(0, 10, 20, 40, Inf),
+                                  dose_labels       = c("Low (<=10mg)",
+                                                        "Medium (10-20mg)",
+                                                        "High (20-40mg)",
+                                                        "Very High (>40mg)")) {
 
   assert_required_cols(computed_df,
     c(computed_id_col, computed_start_col, computed_end_col, computed_dose_col),
@@ -86,6 +98,13 @@ evaluate_against_gold <- function(computed_df,
   assert_required_cols(gold_df,
     c(gold_id_col, gold_start_col, gold_end_col, gold_dose_col),
     "gold_df")
+
+  if (length(dose_breaks) != length(dose_labels) + 1L) {
+    rlang::abort(paste0(
+      "dose_breaks must have exactly one more element than dose_labels. ",
+      "Got ", length(dose_breaks), " breaks and ", length(dose_labels), " labels."
+    ))
+  }
 
   # --- rename user columns to internal names ---------------------------------
   computed_df <- computed_df |>
@@ -216,8 +235,8 @@ evaluate_against_gold <- function(computed_df,
     dplyr::mutate(
       dose_range = cut(
         .data$gold_dose,
-        breaks = c(0, 10, 20, 40, Inf),
-        labels = c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)", "Very High (>40mg)"),
+        breaks = dose_breaks,
+        labels = dose_labels,
         right  = TRUE
       )
     ) |>

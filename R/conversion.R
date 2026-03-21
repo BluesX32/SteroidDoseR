@@ -42,6 +42,9 @@
 #'   prednisone-equivalent dose. Default: `"pred_equiv_mg"`.
 #' @param equiv_table A data frame with columns `drug_name_std` and
 #'   `equiv_factor`. If `NULL` (default), the built-in clinical table is used.
+#' @param drug_name_map Optional data frame with columns `pattern` and
+#'   `canonical_name` passed to [standardize_drug_name()]. Use to add
+#'   site-specific brand names or non-English synonyms. Default: `NULL`.
 #'
 #' @return `drug_df` with three additional columns:
 #'   - **`<out_col>`** (`numeric`): prednisone-equivalent daily dose (mg/day).
@@ -60,10 +63,11 @@
 #' )
 #' convert_pred_equiv(df)
 convert_pred_equiv <- function(drug_df,
-                               drug_col   = "drug_name_std",
-                               dose_col   = "daily_dose_mg",
-                               out_col    = "pred_equiv_mg",
-                               equiv_table = NULL) {
+                               drug_col      = "drug_name_std",
+                               dose_col      = "daily_dose_mg",
+                               out_col       = "pred_equiv_mg",
+                               equiv_table   = NULL,
+                               drug_name_map = NULL) {
 
   # --- resolve drug column with fallback ---
   if (!drug_col %in% names(drug_df)) {
@@ -88,7 +92,8 @@ convert_pred_equiv <- function(drug_df,
 
   # --- standardise drug names ---
   drug_df <- drug_df |>
-    dplyr::mutate(.drug_std_tmp = standardize_drug_name(.data[[drug_col]]))
+    dplyr::mutate(.drug_std_tmp = standardize_drug_name(.data[[drug_col]],
+                                                         drug_name_map = drug_name_map))
 
   # --- join ---
   result <- drug_df |>

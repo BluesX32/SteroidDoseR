@@ -202,7 +202,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.1.1</p>
+    <p>Package Manual v0.1.6</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -252,7 +252,7 @@
   <h1>SteroidDoseR</h1>
   <p>Automated corticosteroid dose extraction from OMOP CDM electronic health records</p>
   <div class="meta">
-    <span>Version 0.1.1</span>
+    <span>Version 0.1.6</span>
     <span>R package</span>
     <span>JHU Myositis Research Group · OHDSI AgentDose 2025</span>
   </div>
@@ -412,6 +412,20 @@ episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con,
   <tr><td><code>SQL_CDM_SCHEMA</code> / <code>CDM_SCHEMA</code></td><td>CDM schema (default: <code>"dbo"</code>)</td></tr>
   <tr><td><code>USE_WINDOWS_AUTH</code></td><td><code>"true"</code> to enable Windows AD auth</td></tr>
 </table>
+</div>
+
+<div class="callout callout-note">
+  <strong>Separate vocabulary schema <span class="badge badge-new">v0.1.6</span></strong>
+  Many OMOP sites store vocabulary tables (<code>concept</code>, <code>drug_strength</code>) in a different schema from the CDM tables (<code>drug_exposure</code>). Pass <code>vocab_schema = "my_vocab_schema"</code> to <code>create_omop_connector()</code> — it is now wired through to the SQL template. When omitted, <code>vocab_schema</code> defaults to <code>cdm_schema</code> so existing callers are unaffected.
+<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connector</span>(
+  connectionDetails,
+  cdm_schema   <span class="op">=</span> <span class="st">"my_cdm"</span>,
+  vocab_schema <span class="op">=</span> <span class="st">"my_vocab"</span>   <span class="cm"># vocabulary tables in a separate schema</span>
+)
+</code></pre>
+</div>
+
+<div class="table-wrap">
 </div>
 
 <!-- ── CAPABILITIES ──────────────────────────────────────────────── -->
@@ -583,7 +597,9 @@ OMOP drug_exposure (all drugs, all routes)
   sig_source        = "sig",
   m2_sig_parse      = c("warn", "auto", "none"),
   max_daily_dose_mg = 2000,
-  filter_oral       = FALSE
+  filter_oral       = FALSE,
+  equiv_table       = NULL,
+  drug_name_map     = NULL
 )</div>
 
 <div class="table-wrap">
@@ -604,6 +620,8 @@ OMOP drug_exposure (all drugs, all routes)
   </td></tr>
   <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.1</span></td><td>2000</td><td>Records exceeding this threshold are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
   <tr><td>filter_oral <span class="badge badge-new">v0.1.1</span></td><td>FALSE</td><td>If <code>TRUE</code>, restrict to oral-route records and drugs in the steroid equivalency table before imputing — matches <code>calc_daily_dose_nlp(filter_oral = TRUE)</code>. Default <code>FALSE</code> preserves backward compatibility.</td></tr>
+  <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table (data frame with <code>drug_name_std</code> and <code>equiv_factor</code>). When <code>filter_oral = TRUE</code>, the allowed-drug list is derived from this table instead of the built-in 7-steroid table. Pass <code>NULL</code> to use the built-in table.</td></tr>
+  <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>User-supplied drug name overrides. A data frame with columns <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after the built-in mapping so site-specific synonyms or non-English brand names take priority.</td></tr>
 </table>
 </div>
 
@@ -612,7 +630,11 @@ OMOP drug_exposure (all drugs, all routes)
 <table>
   <tr><th>Column</th><th>Description</th></tr>
   <tr><td><code>strength_mg</code></td><td>Per-tablet strength in mg (unit-checked from <code>amount_value</code>, then from <code>drug_source_value</code> string)</td></tr>
-  <tr><td><code>daily_dose_mg_imputed</code></td><td>Best-estimate daily dose in mg from the cascade</td></tr>
+  <tr><td><code>dose_from_original</code></td><td><span class="badge badge-new">v0.1.5</span> M1 raw value: original <code>daily_dose</code> / <code>daily_dose_mg</code> column cast to numeric (NA if absent or ≤ 0)</td></tr>
+  <tr><td><code>dose_from_tablets_freq</code></td><td><span class="badge badge-new">v0.1.5</span> M2 raw value: <code>tablets × freq_per_day × strength_mg</code> (NA if any component missing)</td></tr>
+  <tr><td><code>dose_from_supply</code></td><td><span class="badge badge-new">v0.1.5</span> M3 raw value: <code>(quantity × strength_mg) / days_supply</code> (NA if any component missing or days_supply = 0)</td></tr>
+  <tr><td><code>dose_from_actual_duration</code></td><td><span class="badge badge-new">v0.1.5</span> M4 raw value: <code>(quantity × strength_mg) / actual_duration_days</code> (NA if any component missing or duration ≤ 0)</td></tr>
+  <tr><td><code>daily_dose_mg_imputed</code></td><td>Best-estimate daily dose in mg — first non-NA across M1–M4 in cascade order</td></tr>
   <tr><td><code>imputation_method</code></td><td>Which step succeeded: <code>"original"</code>, <code>"tablets_freq"</code>, <code>"supply_based"</code>, <code>"actual_duration"</code>, or <code>"missing"</code></td></tr>
 </table>
 </div>
@@ -742,15 +764,18 @@ nlp_df |>
 
 <div class="fn-sig">calc_daily_dose_nlp(
   connector_or_df,
-  drug_name_col    = "drug_concept_name",
-  sig_col          = "sig",
-  filter_oral      = TRUE,
+  drug_name_col     = "drug_concept_name",
+  sig_col           = "sig",
+  filter_oral       = TRUE,
   baseline_fallback = FALSE,
-  drug_concept_ids = NULL,
-  person_ids       = NULL,
-  start_date       = NULL,
-  end_date         = NULL,
-  sig_source       = "sig"
+  max_daily_dose_mg = 2000,
+  equiv_table       = NULL,
+  drug_name_map     = NULL,
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig"
 )</div>
 
 <div class="table-wrap">
@@ -761,6 +786,9 @@ nlp_df |>
   <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions.</td></tr>
   <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records and known systemic steroids. Set <code>FALSE</code> if upstream filtering was applied.</td></tr>
   <tr><td>baseline_fallback</td><td>FALSE</td><td>If <code>TRUE</code> and a <code>daily_dose_mg_orig</code> column exists, use it to fill NAs after SIG parsing.</td></tr>
+  <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.6</span></td><td>2000</td><td>Dose plausibility cap. Records above this value are set to NA with <code>parsed_status = "implausible"</code> and a warning. Pass <code>NULL</code> to disable. (Previously this cap was only in the advanced NLP and baseline functions.)</td></tr>
+  <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table (data frame with <code>drug_name_std</code> and <code>equiv_factor</code>). Determines the allowed-drug allow-list when <code>filter_oral = TRUE</code>. Pass <code>NULL</code> to use the built-in 7-steroid table.</td></tr>
+  <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>User-supplied drug name overrides. A data frame with columns <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after the built-in mapping.</td></tr>
   <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
 </table>
 </div>
@@ -921,6 +949,8 @@ OMOP drug_exposure (all drugs, all routes)
   expand_tapers     = FALSE,
   max_daily_dose_mg = 2000,
   baseline_fallback = FALSE,
+  equiv_table       = NULL,
+  drug_name_map     = NULL,
   drug_concept_ids  = NULL,
   person_ids        = NULL,
   start_date        = NULL,
@@ -938,6 +968,8 @@ OMOP drug_exposure (all drugs, all routes)
   <tr><td>expand_tapers</td><td>FALSE</td><td>When <code>TRUE</code>, taper records with a parseable schedule are expanded into per-step rows. Three new columns added to every row: <code>taper_step</code> (int), <code>step_start_day</code> (num), <code>step_end_day</code> (num). <code>NA</code> for non-taper records and unexpandable tapers.</td></tr>
   <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap. Records above this value are set to NA (<code>parsed_status = "implausible"</code>) with a warning. Pass <code>NULL</code> to disable.</td></tr>
   <tr><td>baseline_fallback</td><td>FALSE</td><td>If <code>TRUE</code> and <code>daily_dose_mg_orig</code> column exists, use it to fill NAs after parsing.</td></tr>
+  <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table (data frame with <code>drug_name_std</code> and <code>equiv_factor</code>). Determines the allowed-drug allow-list when <code>filter_oral = TRUE</code>. Pass <code>NULL</code> to use the built-in 7-steroid table.</td></tr>
+  <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>User-supplied drug name overrides. A data frame with columns <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after the built-in mapping.</td></tr>
   <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
 </table>
 </div>
@@ -1031,9 +1063,10 @@ nlp_df |>
 
 <div class="fn-sig">convert_pred_equiv(
   drug_df,
-  drug_col    = "drug_name_std",
-  dose_col    = "daily_dose_mg_imputed",
-  equiv_table = NULL
+  drug_col      = "drug_name_std",
+  dose_col      = "daily_dose_mg_imputed",
+  equiv_table   = NULL,
+  drug_name_map = NULL
 )</div>
 
 <p>Multiplies each record's daily dose by the appropriate prednisone-equivalency factor:</p>
@@ -1157,7 +1190,10 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
   gold_id_col        = "patient_id",
   gold_start_col     = "episode_start",
   gold_end_col       = "episode_end",
-  gold_dose_col      = "median_daily_dose"
+  gold_dose_col      = "median_daily_dose",
+  dose_breaks        = c(0, 10, 20, 40, Inf),
+  dose_labels        = c("Low (<=10mg)", "Medium (10-20mg)",
+                         "High (20-40mg)", "Very High (>40mg)")
 )</div>
 
 <p>
@@ -1165,6 +1201,17 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
   (any overlap ≥ <code>min_overlap_days</code>). For each gold episode the
   computed episode with the most overlap is selected.
 </p>
+
+<h3>Key parameters</h3>
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>min_overlap_days</td><td>1L</td><td>Minimum calendar-day overlap required to match a computed episode to a gold episode.</td></tr>
+  <tr><td>computed_dose_col</td><td>"median_daily_dose"</td><td>Dose column in <code>computed_df</code>. Can also be <code>"min_daily_dose"</code>, <code>"max_daily_dose"</code>, or <code>"mean_daily_dose"</code> to change the metric compared against gold.</td></tr>
+  <tr><td>dose_breaks <span class="badge badge-new">v0.1.6</span></td><td>c(0, 10, 20, 40, Inf)</td><td>Cut-point boundaries for dose-range stratification in <code>$stratified$by_dose_range</code>. Must have exactly one more element than <code>dose_labels</code>. Default bins are tuned for typical myositis maintenance doses.</td></tr>
+  <tr><td>dose_labels <span class="badge badge-new">v0.1.6</span></td><td>c("Low (≤10mg)", …)</td><td>Labels for the dose ranges defined by <code>dose_breaks</code>. Change both parameters together to customize stratification for other diseases or dose ranges.</td></tr>
+</table>
+</div>
 
 <h3>Return value</h3>
 <p>A named list with three elements:</p>
@@ -1209,18 +1256,18 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
   <tr><td><code>detect_capabilities()</code></td><td>—</td><td>Probe which <code>drug_exposure</code> fields are populated at this site.</td></tr>
   <tr><td><code>fetch_drug_exposure()</code></td><td>Yes</td><td>Fetch raw <code>drug_exposure</code> rows filtered by date / concept / person.</td></tr>
   <tr><td><code>run_pipeline()</code></td><td>Yes</td><td>One-call fetch → impute → convert → episodes.</td></tr>
-  <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; <code>max_daily_dose_mg</code> cap.</td></tr>
-  <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback.</td></tr>
-  <tr><td><code>calc_daily_dose_nlp_advanced()</code></td><td>Yes</td><td><span class="badge badge-new">v0.1.2</span> Enhanced NLP: extended vocabulary, taper decomposition (<code>expand_tapers</code>), plausibility cap (<code>max_daily_dose_mg</code>).</td></tr>
+  <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; <code>max_daily_dose_mg</code> cap. <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code> and <code>drug_name_map</code> for multi-site generalisation.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback. <span class="badge badge-new">v0.1.6</span> <code>max_daily_dose_mg</code> cap, <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp_advanced()</code></td><td>Yes</td><td><span class="badge badge-new">v0.1.2</span> Enhanced NLP: extended vocabulary, taper decomposition (<code>expand_tapers</code>), plausibility cap (<code>max_daily_dose_mg</code>). <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
   <tr><td><code>parse_sig()</code></td><td>No</td><td>Vectorised SIG parser, standard vocabulary (data-frame in, data-frame out).</td></tr>
   <tr><td><code>parse_sig_one()</code></td><td>No</td><td>Parse a single SIG string; returns a 1-row tibble of all parsed components (standard vocabulary).</td></tr>
   <tr><td><code>parse_sig_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Vectorised enhanced SIG parser with word-forms, weekly/monthly, every-N patterns.</td></tr>
   <tr><td><code>parse_sig_one_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Single-record enhanced parser; same output columns as <code>parse_sig_one()</code>.</td></tr>
   <tr><td><code>parse_taper_schedule()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Decompose a taper SIG into a per-step dose schedule tibble. Returns <code>NULL</code> when ≥ 2 steps cannot be extracted.</td></tr>
-  <tr><td><code>standardize_drug_name()</code></td><td>No</td><td>Normalise free-form drug names to canonical lowercase generic form.</td></tr>
-  <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors.</td></tr>
+  <tr><td><code>standardize_drug_name()</code></td><td>No</td><td>Normalise free-form drug names to canonical lowercase generic form. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code> for user-supplied overrides.</td></tr>
+  <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code>.</td></tr>
   <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
-  <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard.</td></tr>
+  <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard. <span class="badge badge-new">v0.1.6</span> <code>dose_breaks</code> / <code>dose_labels</code> for customisable stratification bins.</td></tr>
 </table>
 </div>
 
@@ -1307,6 +1354,20 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.1.6 <span class="badge badge-new">Generalisation for other OMOP sites</span></h3>
+<ul>
+  <li><strong>feat: <code>drug_name_map</code> parameter</strong> — <code>standardize_drug_name()</code>, <code>convert_pred_equiv()</code>, and all three imputation functions now accept a user-supplied <code>drug_name_map</code> data frame (<code>pattern</code>, <code>canonical_name</code>). User rules are applied after the built-in mapping, enabling non-English synonyms or local brand names without modifying the package.</li>
+  <li><strong>feat: <code>equiv_table</code> in imputation functions</strong> — <code>calc_daily_dose_baseline()</code>, <code>calc_daily_dose_nlp()</code>, and <code>calc_daily_dose_nlp_advanced()</code> now derive the allowed-drug list from the user-supplied <code>equiv_table</code> when <code>filter_oral = TRUE</code>, making it straightforward to study corticosteroids beyond the built-in 7-drug table.</li>
+  <li><strong>feat: <code>max_daily_dose_mg</code> in <code>calc_daily_dose_nlp()</code></strong> — dose plausibility cap (default 2000 mg/day) added to the basic NLP function, matching the behaviour already present in the baseline and advanced-NLP functions.</li>
+  <li><strong>feat: SQL <code>@vocab_schema</code></strong> — vocabulary table joins (<code>concept</code>, <code>drug_strength</code>) in <code>inst/sql/extract_drug_exposure.sql</code> now use <code>@vocab_schema</code> instead of <code>@cdm_schema</code>. The <code>vocab_schema</code> parameter already existed in <code>create_omop_connector()</code> (defaulting to <code>cdm_schema</code>) and is now actually passed to the SQL renderer.</li>
+  <li><strong>feat: <code>dose_breaks</code> / <code>dose_labels</code> in <code>evaluate_against_gold()</code></strong> — dose-range stratification bins are now fully customisable. Defaults (<code>c(0, 10, 20, 40, Inf)</code>) are unchanged for backward compatibility.</li>
+</ul>
+
+<h3>v0.1.5 <span class="badge badge-new">Baseline intermediate columns</span></h3>
+<ul>
+  <li><strong>feat(baseline):</strong> <code>calc_daily_dose_baseline()</code> now retains all four intermediate method columns — <code>dose_from_original</code>, <code>dose_from_tablets_freq</code>, <code>dose_from_supply</code>, <code>dose_from_actual_duration</code> — in its output, matching the Version2 <code>Baseline.qmd</code> column names. Previously these were dropped after cascading.</li>
+</ul>
 
 <h3>v0.1.2 <span class="badge badge-new">Advanced NLP</span></h3>
 <ul>

@@ -74,12 +74,19 @@ safe_as_date <- function(x) {
 #' and trimmed for any name that does not match a known steroid.
 #'
 #' @param x Character vector of drug names.
+#' @param drug_name_map Optional data frame with columns `pattern` (regex
+#'   string, case-insensitive) and `canonical_name` (replacement string).
+#'   User-supplied rows are applied **before** the built-in mapping, so
+#'   site-specific brand names or non-English names can be added without
+#'   modifying the package. Any drug not matched by the user map falls
+#'   through to the built-in rules. Default: `NULL` (built-in only).
 #' @return Character vector with standardised names.
 #' @export
-standardize_drug_name <- function(x) {
+standardize_drug_name <- function(x, drug_name_map = NULL) {
   s <- stringr::str_squish(stringr::str_to_lower(as.character(x)))
 
-  dplyr::case_when(
+  # --- built-in mapping -----------------------------------------------------
+  result <- dplyr::case_when(
     stringr::str_detect(s, "\\bprednisolone\\b") &
       !stringr::str_detect(s, "methyl") ~ "prednisolone",
     stringr::str_detect(s, "methylpred|methyl prednisolone|medrol|solu-medrol|solumedrol") ~ "methylprednisolone",
@@ -90,6 +97,24 @@ standardize_drug_name <- function(x) {
     stringr::str_detect(s, "budesonide|entocort|uceris|pulmicort") ~ "budesonide",
     TRUE ~ s
   )
+
+  # --- user-supplied overrides (applied after; take priority) ---------------
+  if (!is.null(drug_name_map)) {
+    if (!is.data.frame(drug_name_map) ||
+        !all(c("pattern", "canonical_name") %in% names(drug_name_map))) {
+      rlang::warn(
+        "drug_name_map must be a data frame with columns 'pattern' and 'canonical_name'. Ignoring."
+      )
+    } else {
+      for (i in seq_len(nrow(drug_name_map))) {
+        matched <- stringr::str_detect(s, stringr::regex(drug_name_map$pattern[[i]],
+                                                          ignore_case = TRUE))
+        result[matched] <- drug_name_map$canonical_name[[i]]
+      }
+    }
+  }
+
+  result
 }
 
 # ---------------------------------------------------------------------------

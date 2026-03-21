@@ -1,3 +1,54 @@
+# SteroidDoseR 0.1.6
+
+## Enhancements — generalizability for other OMOP sites
+
+* **`standardize_drug_name()`** gains a `drug_name_map` parameter: a data frame
+  with columns `pattern` (regex) and `canonical_name`. User-supplied rules are
+  applied after the built-in mapping and take priority, allowing sites to add
+  non-English synonyms or local brand names without modifying the package.
+
+* **`calc_daily_dose_baseline()`, `calc_daily_dose_nlp()`,
+  `calc_daily_dose_nlp_advanced()`, `convert_pred_equiv()`** all accept
+  `drug_name_map = NULL` and thread it through to `standardize_drug_name()`.
+
+* **`calc_daily_dose_baseline()`, `calc_daily_dose_nlp()`,
+  `calc_daily_dose_nlp_advanced()`** accept `equiv_table = NULL`. When
+  `filter_oral = TRUE`, the drug allow-list is now derived from the
+  user-supplied table rather than always using the built-in 7-steroid table,
+  making it straightforward to study additional corticosteroids.
+
+* **`calc_daily_dose_nlp()`** gains `max_daily_dose_mg = 2000`, matching the
+  cap already present in the baseline and advanced-NLP functions.
+
+* **SQL template** (`inst/sql/extract_drug_exposure.sql`): vocabulary table
+  joins (`concept`, `drug_strength`) now use `@vocab_schema` instead of
+  `@cdm_schema`, enabling sites that store vocabulary tables in a separate
+  schema to connect without modifying the SQL.
+
+* **`connector.R`**: `vocab_schema` is now passed to the SQL renderer.
+  `create_omop_connector(vocab_schema = ...)` already accepted the parameter
+  (defaulting to `cdm_schema`); it is now actually used.
+
+* **`evaluate_against_gold()`** gains `dose_breaks` and `dose_labels`
+  parameters to customise the dose-range stratification bins. The defaults
+  (`c(0, 10, 20, 40, Inf)`) are unchanged.
+
+---
+
+# SteroidDoseR 0.1.5
+
+## Enhancements
+
+* **`calc_daily_dose_baseline()`** now exposes the four intermediate method
+  columns in its output — `dose_from_original` (M1), `dose_from_tablets_freq`
+  (M2), `dose_from_supply` (M3), and `dose_from_actual_duration` (M4) — using
+  the same names as the original Version2 `Baseline.qmd` output. Previously
+  these were computed internally and then dropped; they are now retained so
+  users can audit which method succeeded record-by-record and reproduce the
+  Version2 output format exactly.
+
+---
+
 # SteroidDoseR 0.1.4
 
 ## Bug fixes
