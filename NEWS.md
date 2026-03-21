@@ -1,5 +1,21 @@
 # SteroidDoseR 0.1.6
 
+## Bug fixes
+
+* **`calc_daily_dose_baseline()` — concept-0 unit sentinel** (`baseline.R`):
+  `amount_unit_concept_id = 0` (the OMOP "No matching concept" sentinel used
+  by many production CDMs in place of NULL) is now treated identically to `NA`
+  (unknown unit) when deciding whether to accept `amount_value` as milligrams.
+  Previously, concept 0 was rejected as a non-mg unit, silently setting
+  `strength_mg = NA` for every record at affected sites and causing all
+  imputation methods to return `"missing"`. (#BUG-8)
+
+* **`calc_daily_dose_baseline()` — diagnostic warning** (`baseline.R`):
+  When `strength_mg` is NA for every row after the `amount_value` + string
+  fallback steps, a descriptive warning now reports the count of usable
+  `amount_value` rows and `drug_source_value` mg matches so the root cause
+  can be identified quickly.
+
 ## Enhancements — generalizability for other OMOP sites
 
 * **`standardize_drug_name()`** gains a `drug_name_map` parameter: a data frame

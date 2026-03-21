@@ -189,8 +189,14 @@ calc_daily_dose_baseline <- function(connector_or_df,
   # against the string extraction and warn when they differ by > 100×.
   av      <- if ("amount_value" %in% names(drug_df)) safe_as_numeric(drug_df$amount_value) else rep(NA_real_, nrow(drug_df))
   av_unit <- if ("amount_unit_concept_id" %in% names(drug_df)) drug_df$amount_unit_concept_id else rep(NA_integer_, nrow(drug_df))
-  # Accept only when unit is mg (8576) or unknown (NA).
-  av_mg   <- dplyr::if_else(is.na(av_unit) | as.integer(av_unit) == 8576L, av, NA_real_)
+  # Accept when unit is mg (8576), unknown/absent (NA), or unmapped concept 0.
+  # Many production CDMs store 0 rather than NULL when the unit concept is not
+  # mapped — treating 0 identically to NA avoids silently discarding all
+  # amount_value rows at sites that use the OMOP "no matching concept" sentinel.
+  av_mg   <- dplyr::if_else(
+    is.na(av_unit) | as.integer(av_unit) == 0L | as.integer(av_unit) == 8576L,
+    av, NA_real_
+  )
 
   sv <- if ("drug_source_value" %in% names(drug_df)) drug_df$drug_source_value else rep(NA_character_, nrow(drug_df))
 
@@ -203,6 +209,24 @@ calc_daily_dose_baseline <- function(connector_or_df,
 
   drug_df <- drug_df |>
     dplyr::mutate(strength_mg = dplyr::coalesce(av_mg, str_from_source))
+
+  if (all(is.na(drug_df$strength_mg))) {
+    n_av_na   <- sum(is.na(av))
+    n_unit_ok <- sum(!is.na(av_unit) & as.integer(av_unit) %in% c(0L, 8576L),
+                     na.rm = TRUE)
+    rlang::warn(sprintf(
+      paste0(
+        "strength_mg is NA for all %d records — no dose can be imputed.\n",
+        "  amount_value: %d NA, %d non-NA (unit accepted as mg/unknown)\n",
+        "  drug_source_value string fallback: %d non-NA mg values found\n",
+        "  Check: is amount_unit_concept_id mostly a non-mg concept (not 8576/0/NA)?\n",
+        "  Check: does drug_source_value contain 'X mg' patterns?"
+      ),
+      nrow(drug_df),
+      n_av_na, sum(!is.na(av_mg)),
+      sum(!is.na(str_from_source))
+    ))
+  }
 
   # --- 3. numeric coercions (check column existence OUTSIDE mutate) ----------
   has_qty  <- "quantity"     %in% names(drug_df)
