@@ -535,7 +535,8 @@ con<span class="op">$</span>capabilities
   end_date          = NULL,
   sig_source        = "sig",
   m2_sig_parse      = c("warn", "auto", "none"),
-  max_daily_dose_mg = 2000
+  max_daily_dose_mg = 2000,
+  filter_oral       = FALSE
 )</div>
 
 <div class="table-wrap">
@@ -555,6 +556,7 @@ con<span class="op">$</span>capabilities
     <code>"none"</code> — silently skip M2
   </td></tr>
   <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.1</span></td><td>2000</td><td>Records exceeding this threshold are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>filter_oral <span class="badge badge-new">v0.1.1</span></td><td>FALSE</td><td>If <code>TRUE</code>, restrict to oral-route records and drugs in the steroid equivalency table before imputing — matches <code>calc_daily_dose_nlp(filter_oral = TRUE)</code>. Default <code>FALSE</code> preserves backward compatibility.</td></tr>
 </table>
 </div>
 

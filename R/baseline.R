@@ -45,6 +45,10 @@
 #'   a warning, because doses that large almost always indicate data-quality
 #'   problems (non-mg `amount_value`, quantity in total-mg, near-zero
 #'   `days_supply`, etc.). Default: `2000`. Set to `NULL` to disable the cap.
+#' @param filter_oral `logical(1)`. If `TRUE`, restrict to oral-route records
+#'   and to drugs present in the prednisone-equivalency table before imputing,
+#'   matching the default behaviour of [calc_daily_dose_nlp()]. Default:
+#'   `FALSE` (no filtering) to preserve backward compatibility.
 #' @param m2_sig_parse `character(1)`. Controls behaviour when `tablets` and
 #'   `freq_per_day` columns are absent but a `sig` column is present:
 #'   \describe{
@@ -92,7 +96,8 @@ calc_daily_dose_baseline <- function(connector_or_df,
                                      end_date          = NULL,
                                      sig_source        = "sig",
                                      m2_sig_parse      = c("warn", "auto", "none"),
-                                     max_daily_dose_mg = 2000) {
+                                     max_daily_dose_mg = 2000,
+                                     filter_oral       = FALSE) {
 
   m2_sig_parse <- match.arg(m2_sig_parse)
 
@@ -100,6 +105,42 @@ calc_daily_dose_baseline <- function(connector_or_df,
                                start_date, end_date, sig_source)
 
   assert_required_cols(drug_df, "drug_exposure_start_date", "drug_df")
+
+  # --- 0. optional oral-route / drug-class filter ---------------------------
+  # Mirrors calc_daily_dose_nlp(filter_oral = TRUE): keeps only oral-route
+  # records and drugs present in the prednisone-equivalency table.
+  # Default FALSE preserves backward-compatible behaviour (no filtering).
+  if (filter_oral) {
+    # Standardise drug names if not already present so the steroid list can
+    # be applied.  Prefer drug_concept_name, fall back to drug_source_value.
+    if (!"drug_name_std" %in% names(drug_df)) {
+      name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(drug_df))
+      if (length(name_col) > 0L) {
+        drug_df <- drug_df |>
+          dplyr::mutate(drug_name_std = standardize_drug_name(.data[[name_col[[1L]]]]))
+      }
+    }
+
+    rc <- if ("route_concept_name" %in% names(drug_df)) drug_df$route_concept_name else NULL
+    rs <- if ("route_source_value" %in% names(drug_df)) drug_df$route_source_value else NULL
+
+    if (is.null(rc) && is.null(rs)) {
+      rlang::warn("No route column found; skipping oral-route filter.")
+    } else {
+      route_class <- classify_route(rc, rs)
+      drug_df <- drug_df[route_class == "oral" | is.na(route_class), ]
+    }
+
+    if ("drug_name_std" %in% names(drug_df)) {
+      known_steroids <- .pred_equiv_table$drug_name_std[!is.na(.pred_equiv_table$drug_name_std)]
+      drug_df <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
+    }
+
+    if (nrow(drug_df) == 0L) {
+      rlang::warn("No oral corticosteroid records found after filtering.")
+      return(drug_df)
+    }
+  }
 
   # --- 1. actual duration (always compute; needed for M4) -------------------
   # drug_exposure_end_date is optional. When absent, substitute today so that

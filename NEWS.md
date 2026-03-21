@@ -1,5 +1,13 @@
 # SteroidDoseR 0.1.1
 
+## New parameters
+
+* **`filter_oral`** added to `calc_daily_dose_baseline()` (default `FALSE`).
+  When set to `TRUE`, restricts to oral-route records and to drugs present in
+  the prednisone-equivalency table before imputing — identical to the behaviour
+  of `calc_daily_dose_nlp(filter_oral = TRUE)`. Default `FALSE` preserves
+  backward compatibility for callers that pre-filter upstream.
+
 ## Bug fixes
 
 * **Baseline — unit-safe `amount_value`** (`calc_daily_dose_baseline()`):

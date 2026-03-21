@@ -83,9 +83,10 @@ message("\n=== Baseline method ===")
 
 baseline_df <- calc_daily_dose_baseline(
   drug_df,
-  m2_sig_parse     = "auto",  # parse sig automatically to enable M2
-  max_daily_dose_mg = 2000    # cap implausible doses (unit mismatch, bad days_supply, etc.)
-                              # raise or set NULL if you expect high-dose pulse therapy > 2000 mg
+  m2_sig_parse      = "none",  # skip M2 (no tablets/freq_per_day columns)
+  max_daily_dose_mg = 2000,    # cap implausible doses (unit mismatch, bad days_supply, etc.)
+                               # raise or set NULL if you expect high-dose pulse therapy > 2000 mg
+  filter_oral       = TRUE     # restrict to oral corticosteroids — matches NLP method scope
 )
 
 cat("\nImputation method breakdown:\n")
