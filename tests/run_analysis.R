@@ -4,6 +4,15 @@
 # Gold-standard evaluation uses the overlapping time window between each
 # method's raw records and each gold-standard episode.
 #
+# Analysis workflow
+# -----------------
+# STEP 1 — Cohort selection : define COHORT_PERSON_IDS (ICD-10, phenotype, etc.)
+#                              Default NULL = all patients in the database.
+# STEP 2 — Medication filter : restrict to steroid concept IDs (SQL) and oral
+#                              route + known steroids (filter_oral = TRUE in R).
+# STEP 3 — Dose calculation  : Baseline (M1-M4), NLP, Advanced NLP.
+# STEP 4 — Evaluation        : compare to gold standard per overlapping window.
+#
 # Usage
 # -----
 #   Source this file interactively in RStudio, or run:
@@ -37,6 +46,29 @@ END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 0L
 
 GOLD_STD_PATH  <- "H:/Myositis/DoseCalculation/Version2/GoldStandard/qc_gold_standard/corticosteroids_metrics_per_record.csv"
+
+# ---------------------------------------------------------------------------
+# STEP 1 of the analysis workflow: Patient cohort selection
+# ---------------------------------------------------------------------------
+# Default NULL = all patients in the database (no patient-level pre-filter).
+# Replace NULL with a vector of integer person_ids to restrict the analysis
+# to a specific cohort. Common approaches:
+#
+#   ICD-10 / computable phenotype (run after connect, Section 1):
+#     cohort_sql        <- "SELECT DISTINCT person_id
+#                             FROM @cdm_schema.condition_occurrence
+#                            WHERE condition_concept_id IN (80809, ...)"
+#     COHORT_PERSON_IDS <- as.integer(DatabaseConnector::querySql(
+#                            con$connection, cohort_sql)$PERSON_ID)
+#
+#   Gold-standard patients only (validation mode):
+#     gold_std          <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
+#     COHORT_PERSON_IDS <- unique(as.integer(gold_std$patient_id))
+#
+#   Medication data file (all reviewed myositis patients):
+#     med_data          <- readr::read_csv(MED_DATA_PATH, show_col_types = FALSE)
+#     COHORT_PERSON_IDS <- unique(as.integer(med_data$myositis_omop_person_id))
+COHORT_PERSON_IDS <- NULL   # NULL = no filter (entire database)
 
 # Steroid drug_concept_id allow-list (matches Version2 Baseline extraction).
 # Loaded from the bundled CSV; each row is one integer concept ID.
@@ -76,13 +108,18 @@ drug_df <- with_connector(con, function(active) {
   fetch_drug_exposure(
     active,
     drug_concept_ids = STEROID_CONCEPT_IDS,
+    person_ids       = COHORT_PERSON_IDS,   # STEP 1: cohort filter at SQL level
     start_date       = START_DATE,
     end_date         = END_DATE
   )
 })
 message(sprintf(
-  "Fetched %d rows | %d unique persons | concept filter: %d steroid concept IDs",
-  nrow(drug_df), length(unique(drug_df$person_id)), length(STEROID_CONCEPT_IDS)
+  "Fetched %d rows | %d unique persons | %s | concept filter: %d steroid concept IDs",
+  nrow(drug_df),
+  length(unique(drug_df$person_id)),
+  if (is.null(COHORT_PERSON_IDS)) "cohort: all patients in DB"
+  else sprintf("cohort: %d pre-specified person_ids", length(COHORT_PERSON_IDS)),
+  length(STEROID_CONCEPT_IDS)
 ))
 
 drug_df <- drug_df |>
