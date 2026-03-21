@@ -459,7 +459,7 @@ con<span class="op">$</span>capabilities
   <tr><td><code>drug_concept_name</code></td><td>chr</td><td>NLP, Baseline fallback</td><td>Drug name for standardisation and mg extraction</td></tr>
   <tr><td><code>drug_source_value</code></td><td>chr</td><td>Baseline strength fallback</td><td>Source drug string; mg extracted via regex</td></tr>
   <tr><td><code>amount_value</code></td><td>num</td><td>Baseline M2–M4, NLP fallback</td><td>Per-tablet strength from <code>drug_strength</code> JOIN</td></tr>
-  <tr><td><code>amount_unit_concept_id</code></td><td>int</td><td>Baseline unit check</td><td>OMOP concept for unit; 8576 = mg. Non-mg units are discarded.</td></tr>
+  <tr><td><code>amount_unit_concept_id</code></td><td>int</td><td>Baseline unit check</td><td>OMOP concept for unit; 8576 = mg, 0 = unmapped (treated as unknown). Non-mg units are discarded.</td></tr>
   <tr><td><code>quantity</code></td><td>num</td><td>Baseline M3, M4</td><td>Tablets dispensed</td></tr>
   <tr><td><code>days_supply</code></td><td>num</td><td>Baseline M3</td><td>Days of supply</td></tr>
   <tr><td><code>sig</code></td><td>chr</td><td>NLP</td><td>Free-text SIG instruction</td></tr>
@@ -526,7 +526,7 @@ OMOP drug_exposure (all drugs, all routes)
           │
           ▼
   strength_mg
-  ├─ amount_value  (amount_unit_concept_id == 8576 mg only)
+  ├─ amount_value  (amount_unit_concept_id == 8576, 0, or NA)
   └─ fallback: mg regex on drug_source_value
           │
           ▼
@@ -554,13 +554,19 @@ OMOP drug_exposure (all drugs, all routes)
 </p>
 
 <div class="callout callout-warn">
-  <strong>Unit safety (v0.1.1)</strong>
-  <code>amount_value</code> is only accepted when <code>amount_unit_concept_id</code>
-  is the OMOP mg concept (8576) or is absent/unknown. If the unit is mcg (9655),
-  g (8504), or any other non-mg concept, the value is discarded and the function
-  falls back to extracting mg from the <code>drug_source_value</code> string
-  (e.g. "PREDNISONE 5 MG TABLET"). Before v0.1.1, non-mg <code>amount_value</code>
-  records were treated as mg, producing doses in the billions.
+  <strong>Unit safety (v0.1.1 / v0.1.6)</strong>
+  <code>amount_value</code> is accepted when <code>amount_unit_concept_id</code>
+  is the OMOP mg concept (<strong>8576</strong>), is absent/unknown
+  (<strong>NA</strong>), or is the OMOP "No matching concept" sentinel
+  (<strong>0</strong>). Many production CDMs write 0 instead of NULL for an
+  unmapped unit; this is treated identically to NA (unknown). If the unit is
+  mcg (9655), g (8504), or any other explicit non-mg concept, the value is
+  discarded and the function falls back to extracting mg from the
+  <code>drug_source_value</code> string (e.g. "PREDNISONE 5 MG TABLET").
+  Before v0.1.1, non-mg values were treated as mg, producing doses in the
+  billions. Before v0.1.6, concept 0 was incorrectly rejected as non-mg,
+  silently setting <code>strength_mg = NA</code> for every record at sites
+  that use the 0 sentinel.
 </div>
 
 <h3>Plausibility cap</h3>
@@ -1256,7 +1262,7 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
   <tr><td><code>detect_capabilities()</code></td><td>—</td><td>Probe which <code>drug_exposure</code> fields are populated at this site.</td></tr>
   <tr><td><code>fetch_drug_exposure()</code></td><td>Yes</td><td>Fetch raw <code>drug_exposure</code> rows filtered by date / concept / person.</td></tr>
   <tr><td><code>run_pipeline()</code></td><td>Yes</td><td>One-call fetch → impute → convert → episodes.</td></tr>
-  <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; <code>max_daily_dose_mg</code> cap. <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code> and <code>drug_name_map</code> for multi-site generalisation.</td></tr>
+  <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; <code>max_daily_dose_mg</code> cap. <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code> and <code>drug_name_map</code> for multi-site generalisation. <span class="badge badge-fix">v0.1.6</span> Accept <code>amount_unit_concept_id = 0</code> as unknown unit.</td></tr>
   <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback. <span class="badge badge-new">v0.1.6</span> <code>max_daily_dose_mg</code> cap, <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
   <tr><td><code>calc_daily_dose_nlp_advanced()</code></td><td>Yes</td><td><span class="badge badge-new">v0.1.2</span> Enhanced NLP: extended vocabulary, taper decomposition (<code>expand_tapers</code>), plausibility cap (<code>max_daily_dose_mg</code>). <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
   <tr><td><code>parse_sig()</code></td><td>No</td><td>Vectorised SIG parser, standard vocabulary (data-frame in, data-frame out).</td></tr>
@@ -1281,6 +1287,11 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
     <td>Non-mg <code>amount_value</code></td>
     <td>M3/M4 produces doses in billions (mcg treated as mg)</td>
     <td><span class="badge badge-fix">v0.1.1</span> Unit concept ID checked; non-mg values discarded; string fallback used</td>
+  </tr>
+  <tr>
+    <td><code>amount_unit_concept_id = 0</code></td>
+    <td>All methods return <code>"missing"</code> — <code>strength_mg = NA</code> for every record; no dose can be imputed</td>
+    <td><span class="badge badge-fix">v0.1.6</span> Concept 0 (OMOP "No matching concept" sentinel) now treated as unknown unit, identical to NA. A diagnostic warning is emitted if <code>strength_mg</code> is still all-NA after both fallbacks.</td>
   </tr>
   <tr>
     <td>SIG omits mg</td>
@@ -1333,7 +1344,7 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 <h3>Baseline doses are implausibly high</h3>
 <ol>
   <li>Check <code>table(baseline_df$imputation_method)</code> — which method is producing the high values?</li>
-  <li>For M3/M4: inspect <code>amount_unit_concept_id</code> — non-mg units are now discarded (v0.1.1), but verify via <code>table(drug_df$amount_unit_concept_id, useNA = "ifany")</code>.</li>
+  <li>For M3/M4: inspect <code>amount_unit_concept_id</code> — concept 8576 (mg), 0, and NA are accepted; all others are discarded (v0.1.1/v0.1.6). Verify via <code>table(drug_df$amount_unit_concept_id, useNA = "ifany")</code>. If the dominant value is 0, the fix in v0.1.6 resolves this automatically.</li>
   <li>Check <code>days_supply</code> distribution: <code>summary(drug_df$days_supply)</code> — very small values inflate M3.</li>
   <li>The default <code>max_daily_dose_mg = 2000</code> cap will warn and NA out obvious outliers. The warning message will tell you how many records were affected.</li>
 </ol>
@@ -1355,8 +1366,9 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
 
-<h3>v0.1.6 <span class="badge badge-new">Generalisation for other OMOP sites</span></h3>
+<h3>v0.1.6 <span class="badge badge-new">Generalisation for other OMOP sites</span> <span class="badge badge-fix">Bug fixes</span></h3>
 <ul>
+  <li><strong>fix(baseline): <code>amount_unit_concept_id = 0</code> now accepted as unknown</strong> — many production CDMs write concept ID 0 ("No matching concept") instead of NULL when a unit is unmapped. Previously this caused <code>amount_value</code> to be rejected as non-mg, setting <code>strength_mg = NA</code> for every record and returning <code>"missing"</code> for all imputation methods. Concept 0 is now treated identically to NA. A diagnostic warning is also emitted when <code>strength_mg</code> is all-NA after both fallbacks, showing the counts of usable <code>amount_value</code> rows and <code>drug_source_value</code> mg matches. (#BUG-8)</li>
   <li><strong>feat: <code>drug_name_map</code> parameter</strong> — <code>standardize_drug_name()</code>, <code>convert_pred_equiv()</code>, and all three imputation functions now accept a user-supplied <code>drug_name_map</code> data frame (<code>pattern</code>, <code>canonical_name</code>). User rules are applied after the built-in mapping, enabling non-English synonyms or local brand names without modifying the package.</li>
   <li><strong>feat: <code>equiv_table</code> in imputation functions</strong> — <code>calc_daily_dose_baseline()</code>, <code>calc_daily_dose_nlp()</code>, and <code>calc_daily_dose_nlp_advanced()</code> now derive the allowed-drug list from the user-supplied <code>equiv_table</code> when <code>filter_oral = TRUE</code>, making it straightforward to study corticosteroids beyond the built-in 7-drug table.</li>
   <li><strong>feat: <code>max_daily_dose_mg</code> in <code>calc_daily_dose_nlp()</code></strong> — dose plausibility cap (default 2000 mg/day) added to the basic NLP function, matching the behaviour already present in the baseline and advanced-NLP functions.</li>
