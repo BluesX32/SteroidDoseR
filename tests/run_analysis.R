@@ -320,7 +320,53 @@ if (nrow(epi_cmp) > 0) {
 }
 
 # ---------------------------------------------------------------------------
-# 9. (Optional) Gold standard evaluation
+# 9. Patient-level visualization
+# ---------------------------------------------------------------------------
+message("\n=== Patient-level visualization ===")
+
+# Build advanced NLP episodes for comparison
+adv_nlp_episodes <- run_pipeline(
+  drug_df,
+  method       = "nlp",           # uses calc_daily_dose_nlp_advanced internally
+  return_level = "episode",
+  gap_days     = GAP_DAYS
+)
+# Note: to use calc_daily_dose_nlp_advanced() in run_pipeline(), call
+# calc_daily_dose_nlp_advanced() first and pass the result as a data frame.
+
+# Collect all episode dfs into a named list
+episode_list <- list(
+  Baseline       = baseline_episodes,
+  NLP            = nlp_episodes,
+  "Advanced NLP" = adv_nlp_episodes
+)
+
+# Pick up to 5 patients with at least one episode across any method
+sample_patients <- sort(unique(unlist(lapply(
+  episode_list, function(df) unique(df$person_id)
+))))[seq_len(min(5L, length(unique(unlist(lapply(
+  episode_list, function(df) unique(df$person_id)
+))))))]
+
+cat(sprintf("\nPlotting %d sample patients: %s\n",
+            length(sample_patients), paste(sample_patients, collapse = ", ")))
+
+p_static <- plot_patient_episodes(
+  episode_list = episode_list,
+  patient_ids  = sample_patients,
+  dose_col     = "median_daily_dose",
+  title        = "Dose episodes — Baseline vs NLP vs Advanced NLP"
+)
+print(p_static)
+
+# Save to file (optional)
+# ggplot2::ggsave("dose_review.pdf", p_static, width = 12, height = 8)
+
+# Interactive dashboard (uncomment to launch in browser)
+# launch_dose_dashboard(episode_list)
+
+# ---------------------------------------------------------------------------
+# 10. (Optional) Gold standard evaluation — patient-level, multiple metrics
 # ---------------------------------------------------------------------------
 if (USE_SYNTHETIC) {
   message("\n=== Gold standard evaluation (synthetic data) ===")
@@ -330,17 +376,42 @@ if (USE_SYNTHETIC) {
     show_col_types = FALSE
   )
 
-  cat("\n--- Baseline vs gold ---\n")
-  eval_b <- evaluate_against_gold(baseline_episodes, gold_std)
-  print(eval_b$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")])
+  # --- Three dose aggregation choices (all available from build_episodes) ---
+  dose_metrics <- c(
+    "Median"          = "median_daily_dose",
+    "Mean (dur.-wt.)" = "mean_daily_dose",
+    "Min"             = "min_daily_dose",
+    "Max"             = "max_daily_dose"
+  )
 
-  cat("\n--- NLP vs gold ---\n")
-  eval_n <- evaluate_against_gold(nlp_episodes, gold_std)
-  print(eval_n$summary[, c("coverage_pct", "MAE", "MBE", "RMSE")])
+  for (method_name in c("Baseline", "NLP")) {
+    epi_df <- if (method_name == "Baseline") baseline_episodes else nlp_episodes
+    cat(sprintf("\n--- %s vs gold --- \n", method_name))
+    for (lbl in names(dose_metrics)) {
+      col <- dose_metrics[[lbl]]
+      if (!col %in% names(epi_df)) next
+      ev <- evaluate_against_gold(epi_df, gold_std, computed_dose_col = col)
+      cat(sprintf("  %-18s  coverage=%.1f%%  MAE=%.1f  MBE=%.1f  RMSE=%.1f\n",
+                  lbl,
+                  ev$summary$coverage_pct, ev$summary$MAE,
+                  ev$summary$MBE,          ev$summary$RMSE))
+    }
+  }
+
+  # Visualization with gold standard overlay
+  p_gold <- plot_patient_episodes(
+    episode_list = episode_list,
+    patient_ids  = sample_patients,
+    gold_std     = gold_std,
+    gold_id_col  = "patient_id",
+    dose_col     = "median_daily_dose",
+    title        = "Dose episodes vs gold standard"
+  )
+  print(p_gold)
 }
 
 # ---------------------------------------------------------------------------
-# 10. Disconnect (live DB only)
+# 12. Disconnect (live DB only)
 # ---------------------------------------------------------------------------
 if (!USE_SYNTHETIC) {
   disconnect_connector(con)

@@ -1,3 +1,34 @@
+# SteroidDoseR 0.1.3
+
+## New functions
+
+* **`plot_patient_episodes(episode_list, patient_ids, ...)`** — static
+  `ggplot2` timeline overlaying Baseline, NLP, Advanced NLP, and gold-standard
+  episodes as horizontal step segments, faceted by patient × drug. Supports
+  `dose_col` choice (median / min / max / mean), optional gold standard, and
+  custom colours. Save with `ggplot2::ggsave()`.
+
+* **`launch_dose_dashboard(episode_list, ...)`** — interactive Shiny review
+  dashboard. Controls: patient multi-select, drug filter, dose metric selector,
+  method toggles, line-width slider, PDF/CSV download. Requires `shiny` and
+  `DT` packages.
+
+## Enhancements
+
+* **`build_episodes()`** now returns a `mean_daily_dose` column — the
+  duration-weighted mean daily dose within each episode
+  (`sum(dose_i × days_i) / sum(days_i)` for non-NA records). Use
+  `computed_dose_col = "mean_daily_dose"` in `evaluate_against_gold()` to
+  weight longer prescription periods more heavily than short ones.
+
+* **`evaluate_against_gold()`** — `computed_dose_col` can now be set to
+  `"min_daily_dose"`, `"max_daily_dose"`, or `"mean_daily_dose"` to change
+  the dose metric used for comparison (previously only `"median_daily_dose"`
+  was documented). The `episode_list`-style multi-method comparison is
+  demonstrated in `tests/run_analysis.R` section 10.
+
+---
+
 # SteroidDoseR 0.1.2
 
 ## New functions

@@ -48,6 +48,11 @@
 #'   \item{median_daily_dose}{Median of `dose_col` across merged records.}
 #'   \item{min_daily_dose}{Minimum daily dose across merged records.}
 #'   \item{max_daily_dose}{Maximum daily dose across merged records.}
+#'   \item{mean_daily_dose}{Duration-weighted mean daily dose:
+#'     `sum(dose_i × days_i) / sum(days_i)` across non-NA records in the
+#'     episode. Use this (via `computed_dose_col = "mean_daily_dose"` in
+#'     [evaluate_against_gold()]) to weight longer prescriptions more heavily
+#'     than short ones.}
 #' }
 #'
 #' @export
@@ -95,7 +100,7 @@ build_episodes <- function(connector_or_df,
   # Resolve dose column: accept explicit argument, then try common names
   if (is.null(dose_col)) {
     candidates <- c("daily_dose_mg_imputed", "daily_dose_mg",
-                     "pred_equiv_mg", "median_daily_dose")
+                     "pred_equiv_mg", "median_daily_dose", "mean_daily_dose")
     found_dose <- intersect(candidates, names(drug_df))
     dose_col   <- if (length(found_dose) > 0L) found_dose[[1L]] else NA_character_
   }
@@ -112,9 +117,11 @@ build_episodes <- function(connector_or_df,
       # guard: end must be >= start
       .end    = dplyr::if_else(is.na(.data$.end) | .data$.end < .data$.start,
                                .data$.start, .data$.end),
-      .dose   = if (!is.na(dose_col) && dose_col %in% names(drug_df))
-                  safe_as_numeric(.data[[dose_col]])
-                else NA_real_
+      .dose     = if (!is.na(dose_col) && dose_col %in% names(drug_df))
+                    safe_as_numeric(.data[[dose_col]])
+                  else NA_real_,
+      # record duration in days — used for duration-weighted mean dose
+      .rec_days = as.integer(.data$.end - .data$.start) + 1L
     ) |>
     dplyr::filter(!is.na(.data$.person), !is.na(.data$.start)) |>
     dplyr::arrange(.data$.person, .data$.drug, .data$.start, .data$.end)
@@ -149,6 +156,13 @@ build_episodes <- function(connector_or_df,
       median_daily_dose = stats::median(.data$.dose, na.rm = TRUE),
       min_daily_dose    = suppressWarnings(min(.data$.dose, na.rm = TRUE)),
       max_daily_dose    = suppressWarnings(max(.data$.dose, na.rm = TRUE)),
+      # duration-weighted mean: sum(dose_i * days_i) / sum(days_i for non-NA records)
+      mean_daily_dose   = dplyr::if_else(
+        any(!is.na(.data$.dose)),
+        sum(.data$.dose * .data$.rec_days, na.rm = TRUE) /
+          sum(dplyr::if_else(!is.na(.data$.dose), .data$.rec_days, 0L)),
+        NA_real_
+      ),
       .groups = "drop"
     ) |>
     dplyr::mutate(
@@ -164,7 +178,7 @@ build_episodes <- function(connector_or_df,
     dplyr::select(
       "person_id", "drug_name_std", "episode_id",
       "episode_start", "episode_end", "n_days", "n_records",
-      "median_daily_dose", "min_daily_dose", "max_daily_dose"
+      "median_daily_dose", "min_daily_dose", "max_daily_dose", "mean_daily_dose"
     ) |>
     dplyr::arrange(.data$person_id, .data$drug_name_std, .data$episode_start)
 
@@ -182,6 +196,7 @@ build_episodes <- function(connector_or_df,
     n_records         = integer(0),
     median_daily_dose = numeric(0),
     min_daily_dose    = numeric(0),
-    max_daily_dose    = numeric(0)
+    max_daily_dose    = numeric(0),
+    mean_daily_dose   = numeric(0)
   )
 }

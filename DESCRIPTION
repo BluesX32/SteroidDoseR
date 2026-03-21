@@ -1,6 +1,6 @@
 Package: SteroidDoseR
 Title: Corticosteroid Daily Dose Calculation from OMOP CDM Data
-Version: 0.1.2
+Version: 0.1.3
 Authors@R:
     person("Minqi", "Xiong", , "mxiong5@jhu.edu", role = c("aut", "cre"))
 Description: Provides Baseline (structured OMOP fields) and Rule-based NLP
@@ -29,6 +29,8 @@ Suggests:
     gt (>= 0.9.0),
     patchwork (>= 1.1.0),
     testthat (>= 3.0.0),
+    shiny (>= 1.7.0),
+    DT (>= 0.28),
     knitr,
     rmarkdown
 Config/testthat/edition: 3
