@@ -30,7 +30,10 @@
 #   below to run against the bundled 29-record synthetic dataset.
 
 
-devtools::install_local("./SteroidDoseR/", force = TRUE)
+# This script is designed for interactive use in RStudio.
+# R CMD check runs every .R file in tests/ via R CMD BATCH (non-interactive).
+# Exit immediately and cleanly when not in an interactive session.
+if (!interactive()) quit(status = 0L, save = "no")
 
 library(SteroidDoseR)
 library(dplyr)

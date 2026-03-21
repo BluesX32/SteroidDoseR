@@ -1,0 +1,7 @@
+^\.github$
+^package-test\.qmd$
+^test_package\.R$
+^bug\.md$
+^data-raw$
+^jdbc_drivers$
+^docs$
