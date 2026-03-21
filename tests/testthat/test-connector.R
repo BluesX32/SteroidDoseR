@@ -307,7 +307,7 @@ test_that("SQL includes amount_value from drug_strength join", {
 
 test_that("calc_daily_dose_baseline accepts df_connector", {
   con <- create_df_connector(.make_test_df())
-  out <- calc_daily_dose_baseline(con)
+  out <- calc_daily_dose_baseline(con, m2_sig_parse = "none")
   expect_true("daily_dose_mg_imputed" %in% names(out))
   expect_true("imputation_method"     %in% names(out))
   expect_equal(nrow(out), 5L)
@@ -317,14 +317,14 @@ test_that("calc_daily_dose_baseline connector result equals data.frame result", 
   df  <- .make_test_df()
   con <- create_df_connector(df)
   expect_equal(
-    calc_daily_dose_baseline(con),
-    calc_daily_dose_baseline(df)
+    calc_daily_dose_baseline(con, m2_sig_parse = "none"),
+    calc_daily_dose_baseline(df,  m2_sig_parse = "none")
   )
 })
 
 test_that("calc_daily_dose_baseline connector respects person_ids filter", {
   con <- create_df_connector(.make_test_df())
-  out <- calc_daily_dose_baseline(con, person_ids = 1L)
+  out <- calc_daily_dose_baseline(con, person_ids = 1L, m2_sig_parse = "none")
   expect_equal(nrow(out), 2L)
   expect_true(all(out$person_id == 1L))
 })
@@ -371,7 +371,7 @@ test_that("build_episodes accepts df_connector", {
 
 test_that("run_pipeline baseline returns episodes by default", {
   con <- create_df_connector(.make_test_df())
-  out <- run_pipeline(con, method = "baseline")
+  out <- run_pipeline(con, method = "baseline", m2_sig_parse = "none")
   expect_s3_class(out, "data.frame")
   expect_true("episode_start" %in% names(out))
   expect_true("median_daily_dose" %in% names(out))
@@ -379,7 +379,8 @@ test_that("run_pipeline baseline returns episodes by default", {
 
 test_that("run_pipeline return_level='exposure' returns drug-exposure rows", {
   con <- create_df_connector(.make_test_df())
-  out <- run_pipeline(con, method = "baseline", return_level = "exposure")
+  out <- run_pipeline(con, method = "baseline", return_level = "exposure",
+                      m2_sig_parse = "none")
   expect_equal(nrow(out), 5L)
   expect_true("daily_dose_mg_imputed" %in% names(out))
   expect_true("pred_equiv_mg"         %in% names(out))
@@ -394,7 +395,7 @@ test_that("run_pipeline nlp method returns episodes", {
 
 test_that("run_pipeline filters by person_ids", {
   con <- create_df_connector(.make_test_df())
-  out <- run_pipeline(con, method = "baseline",
+  out <- run_pipeline(con, method = "baseline", m2_sig_parse = "none",
                       person_ids = 1L, return_level = "exposure")
   expect_true(all(out$person_id == 1L))
 })
