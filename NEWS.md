@@ -14,6 +14,13 @@
   common case). M2 now automatically parses the `sig` column when present before
   falling through to the M3 Burkard formula or M4 supply-based fallback.
 
+* **`.resolve_drug_df()` — `sig_source` now applied on the data-frame path** (`connector.R`):
+  When `connector_or_df` is a plain data frame, `.resolve_drug_df()` previously
+  returned it immediately without calling `.apply_sig_source()`, silently ignoring
+  `sig_source = "drug_source_value"`. The alias from `drug_source_value` into `sig`
+  is now applied consistently on all three input paths (data frame, df_connector,
+  omop_connector).
+
 * **`calc_daily_dose_baseline()` — M2 SIG-parse guard checks usable values, not column existence** (`baseline.R`):
   The guard that triggers `parse_sig()` previously checked whether `tablets` and
   `freq_per_day` *columns existed*. A column that exists but is entirely NA (common

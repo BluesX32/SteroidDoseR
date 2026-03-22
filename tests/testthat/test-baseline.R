@@ -78,6 +78,28 @@ test_that("M2 auto-parse fires when tablets/freq_per_day columns exist but are a
   expect_equal(out$imputation_method, "tablets_freq")
 })
 
+# Regression: sig_source = "drug_source_value" must work on the data-frame path.
+# Root cause: .resolve_drug_df() returned plain data frames immediately without
+# calling .apply_sig_source(), so sig_source was silently ignored and
+# drug_source_value content was never aliased into the sig column.
+test_that("sig_source = 'drug_source_value' works on data-frame path", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_source_value        = "PREDNISONE 5 MG TABLET Take 2 tablets (10 mg total) daily",
+    amount_value             = 5,
+    quantity                 = NA_real_,
+    days_supply              = NA_real_,
+    daily_dose               = NA_real_,
+    drug_exposure_start_date = "2023-01-01",
+    drug_exposure_end_date   = "2023-03-31"
+    # no sig column — drug_source_value should be aliased into sig
+  )
+  out <- calc_daily_dose_baseline(df, sig_source = "drug_source_value",
+                                  m2_sig_parse = "auto")
+  expect_equal(out$daily_dose_mg_imputed, 10)
+  expect_equal(out$imputation_method, "tablets_freq")
+})
+
 test_that("'missing' when no method can provide a dose", {
   df  <- make_row(daily_dose = NA, quantity = NA, days_supply = NA, amount_value = NA,
                   tablets = NA, freq_per_day = NA)

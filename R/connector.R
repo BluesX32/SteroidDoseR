@@ -577,7 +577,8 @@ fetch_drug_exposure <- function(connector,
                               sig_source       = "sig") {
 
   if (is.data.frame(connector_or_df)) {
-    return(tibble::as_tibble(connector_or_df))
+    df <- tibble::as_tibble(connector_or_df)
+    return(.apply_sig_source(df, sig_source))
   }
 
   if (!inherits(connector_or_df, "steroid_connector")) {
