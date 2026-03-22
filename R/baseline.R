@@ -21,15 +21,17 @@ utils::globalVariables(c(".m1", ".m2", ".m3", ".m4"))
 #' |--------|-------|-------|
 #' | M1 | `"original"` | Use `daily_dose` or `daily_dose_mg` column if numeric and > 0. |
 #' | M2 | `"tablets_freq"` | `tablets * freq_per_day * strength_mg`. Requires `sig` column to be parsed first, or pre-parsed `tablets` and `freq_per_day` columns. |
-#' | M3 | `"supply_based"` | `(quantity * strength_mg) / days_supply`. |
-#' | M4 | `"actual_duration"` | `(quantity * strength_mg) / actual_duration_days`, where `actual_duration_days` is derived from the date columns. |
+#' | M3 | `"actual_duration"` | `(quantity * strength_mg) / actual_duration_days`, where `actual_duration_days = end_date − start_date + 1`. This is the Burkard (2024) standard formula for fixed-amount oral formulations. |
+#' | M4 | `"supply_based"` | `(quantity * strength_mg) / days_supply`. Fallback when date range is unavailable. |
 #'
 #' @param connector_or_df A `steroid_connector` (from [create_omop_connector()]
 #'   or [create_df_connector()]) **or** a data frame. When a connector is
 #'   supplied the function fetches data from the source; when a data frame is
 #'   supplied the legacy in-memory path is used unchanged.
 #' @param methods `character` vector. Ordered list of methods to attempt.
-#'   Defaults to `c("original", "tablets_freq", "supply_based", "actual_duration")`.
+#'   Defaults to `c("original", "tablets_freq", "actual_duration", "supply_based")`.
+#'   `"actual_duration"` (Burkard formula) is tried before `"supply_based"` because
+#'   the date-range denominator is the OHDSI standard for fixed-amount oral formulations.
 #'   Each method is only tried if the required columns are present; missing
 #'   columns cause a graceful skip (not an error).
 #' @param drug_concept_ids Integer vector of OMOP `drug_concept_id` values to
@@ -71,10 +73,11 @@ utils::globalVariables(c(".m1", ".m2", ".m3", ".m4"))
 #'     `daily_dose_mg` column cast to numeric (NA if absent or non-positive).}
 #'   \item{dose_from_tablets_freq}{M2 value: `tablets * freq_per_day *
 #'     strength_mg` (NA if any component is missing).}
-#'   \item{dose_from_supply}{M3 value: `(quantity * strength_mg) / days_supply`
-#'     (NA if any component is missing or `days_supply` is 0).}
-#'   \item{dose_from_actual_duration}{M4 value: `(quantity * strength_mg) /
-#'     actual_duration_days` (NA if any component is missing or duration <= 0).}
+#'   \item{dose_from_actual_duration}{M3 value: `(quantity * strength_mg) /
+#'     actual_duration_days` (NA if any component is missing or duration <= 0).
+#'     This is the Burkard (2024) formula for fixed-amount oral formulations.}
+#'   \item{dose_from_supply}{M4 value: `(quantity * strength_mg) / days_supply`
+#'     (NA if any component is missing or `days_supply` is 0). Fallback only.}
 #'   \item{daily_dose_mg_imputed}{Best-estimate daily dose in mg: the first
 #'     non-NA value across M1-M4 in cascade order.}
 #'   \item{imputation_method}{One of `"original"`, `"tablets_freq"`,
@@ -101,7 +104,7 @@ utils::globalVariables(c(".m1", ".m2", ".m3", ".m4"))
 #' calc_daily_dose_baseline(con)
 calc_daily_dose_baseline <- function(connector_or_df,
                                      methods       = c("original", "tablets_freq",
-                                                       "supply_based", "actual_duration"),
+                                                       "actual_duration", "supply_based"),
                                      drug_concept_ids  = NULL,
                                      person_ids        = NULL,
                                      start_date        = NULL,

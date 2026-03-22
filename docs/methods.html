@@ -116,8 +116,8 @@
   <tr><th>Step</th><th>Label</th><th>Formula</th><th>Requires</th></tr>
   <tr><td><strong>M1</strong></td><td><code>original</code></td><td>Pre-existing <code>daily_dose</code> or <code>daily_dose_mg</code> if numeric and &gt; 0</td><td><code>daily_dose</code> or <code>daily_dose_mg</code></td></tr>
   <tr><td><strong>M2</strong></td><td><code>tablets_freq</code></td><td><code>tablets × freq_per_day × strength_mg</code></td><td><code>tablets</code>, <code>freq_per_day</code>, <code>strength_mg</code> — requires SIG parsing first</td></tr>
-  <tr><td><strong>M3</strong></td><td><code>supply_based</code></td><td><code>(quantity × strength_mg) / days_supply</code></td><td><code>quantity</code>, <code>days_supply</code> &gt; 0, <code>strength_mg</code></td></tr>
-  <tr><td><strong>M4</strong></td><td><code>actual_duration</code></td><td><code>(quantity × strength_mg) / actual_duration_days</code></td><td><code>quantity</code>, date columns, <code>strength_mg</code></td></tr>
+  <tr><td><strong>M3</strong></td><td><code>actual_duration</code></td><td><code>(quantity × strength_mg) / (end_date − start_date + 1)</code> — Burkard (2024) standard for oral tablets <span class="badge badge-fix">v0.1.7</span></td><td><code>quantity</code>, date columns, <code>strength_mg</code></td></tr>
+  <tr><td><strong>M4</strong></td><td><code>supply_based</code></td><td><code>(quantity × strength_mg) / days_supply</code> — fallback only <span class="badge badge-fix">v0.1.7</span></td><td><code>quantity</code>, <code>days_supply</code> &gt; 0, <code>strength_mg</code></td></tr>
 </table>
 </div>
 
@@ -151,8 +151,8 @@ OMOP drug_exposure (all drugs, all routes)
   Imputation cascade  (first non-NA wins)
   ├── M1  original       pre-existing daily_dose / daily_dose_mg
   ├── M2  tablets_freq   tablets × freq_per_day × strength_mg
-  ├── M3  supply_based   (quantity × strength_mg) / days_supply
-  └── M4  actual_dur     (quantity × strength_mg) / actual_duration_days
+  ├── M3  actual_dur     (quantity × strength_mg) / (end_date − start_date + 1)  ← Burkard formula
+  └── M4  supply_based   (quantity × strength_mg) / days_supply                  ← fallback
           │
           ▼
   Plausibility cap: doses &gt; 2000 mg/day → NA + warning
@@ -196,7 +196,7 @@ OMOP drug_exposure (all drugs, all routes)
 
 <div class="fn-sig">calc_daily_dose_baseline(
   connector_or_df,
-  methods           = c("original", "tablets_freq", "supply_based", "actual_duration"),
+  methods           = c("original", "tablets_freq", "actual_duration", "supply_based"),
   drug_concept_ids  = NULL,
   person_ids        = NULL,
   start_date        = NULL,

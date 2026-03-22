@@ -1,3 +1,17 @@
+# SteroidDoseR 0.1.7
+
+## Changes
+
+* **`calc_daily_dose_baseline()` — Burkard formula cascade reorder** (`baseline.R`):
+  The default `methods` cascade now places `"actual_duration"` before
+  `"supply_based"`, changing the default from
+  `c("original", "tablets_freq", "supply_based", "actual_duration")` to
+  `c("original", "tablets_freq", "actual_duration", "supply_based")`.
+  For oral tablet formulations the OHDSI-standard Burkard (2024) formula is
+  `(amount_value × quantity) / (end_date − start_date + 1)`, which corresponds
+  to `"actual_duration"`. Using `days_supply` as the denominator (`"supply_based"`)
+  is now a fallback only, applied when date range is unavailable.
+
 # SteroidDoseR 0.1.6
 
 ## Bug fixes
