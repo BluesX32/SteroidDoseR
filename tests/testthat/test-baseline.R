@@ -1,10 +1,12 @@
 make_row <- function(daily_dose = NA, amount_value = 5, quantity = 90,
                      days_supply = 90, tablets = NA, freq_per_day = NA,
                      start = "2023-01-01", end = "2023-03-31",
-                     drug_source_value = "PREDNISONE 5 MG TABLET") {
+                     drug_source_value = "PREDNISONE 5 MG TABLET",
+                     route_concept_name = "Oral") {
   tibble::tibble(
     person_id                = 1L,
     drug_source_value        = drug_source_value,
+    route_concept_name       = route_concept_name,
     amount_value             = amount_value,
     quantity                 = quantity,
     days_supply              = days_supply,
