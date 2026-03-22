@@ -224,6 +224,14 @@
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
 
+<h3>v0.1.8 <span class="badge badge-fix">Bug fixes — defaults corrected</span></h3>
+<ul>
+  <li><strong>fix(baseline): <code>filter_oral</code> now defaults to <code>TRUE</code></strong> — previously defaulted to <code>FALSE</code>, allowing injectables, inhalationals, and non-corticosteroids through unchecked. Now matches <code>calc_daily_dose_nlp()</code> and <code>calc_daily_dose_nlp_advanced()</code>. Pass <code>filter_oral = FALSE</code> if your input is already pre-filtered to oral steroids.</li>
+  <li><strong>fix(baseline): <code>m2_sig_parse</code> now defaults to <code>"auto"</code></strong> — previously defaulted to <code>"warn"</code>, which silently skipped SIG-based M2 for all real-world OMOP data where <code>tablets</code> and <code>freq_per_day</code> columns are absent. SIG text is now parsed automatically when the <code>sig</code> column is present, enabling M2 before falling through to M3/M4.</li>
+  <li><strong>fix(baseline/pipeline): <code>run_pipeline(m2_sig_parse)</code> default changed to <code>"auto"</code></strong> — consistent with the above.</li>
+  <li><strong>fix(baseline): cascade reorder — <code>actual_duration</code> (M3) before <code>supply_based</code> (M4)</strong> — Burkard (2024) formula <code>(quantity × strength_mg) / (end_date − start_date + 1)</code> is now the primary quantity-based method; <code>days_supply</code>-based computation is the fallback.</li>
+</ul>
+
 <h3>v0.1.6 <span class="badge badge-new">Generalisation</span> <span class="badge badge-fix">Bug fixes</span></h3>
 <ul>
   <li><strong>fix(baseline): <code>amount_unit_concept_id = 0</code> accepted as unknown</strong> — many production CDMs write concept 0 ("No matching concept") instead of NULL. Previously this caused <code>strength_mg = NA</code> for every record and returned <code>"missing"</code> for all methods. Concept 0 now treated identically to NA. A diagnostic warning is emitted when <code>strength_mg</code> is still all-NA after both fallbacks. (#BUG-8)</li>

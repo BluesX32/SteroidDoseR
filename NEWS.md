@@ -1,3 +1,19 @@
+# SteroidDoseR 0.1.8
+
+## Bug fixes
+
+* **`calc_daily_dose_baseline()` — `filter_oral` default changed to `TRUE`** (`baseline.R`):
+  Previously defaulted to `FALSE`, causing baseline to return all drug routes
+  (injectables, inhalationals, topicals) alongside oral tablets. Now matches the
+  NLP method default. Pass `filter_oral = FALSE` only when the input is already
+  pre-filtered to oral corticosteroids.
+
+* **`calc_daily_dose_baseline()` / `run_pipeline()` — `m2_sig_parse` default changed to `"auto"`** (`baseline.R`, `pipeline.R`):
+  Previously defaulted to `"warn"`, which silently skipped SIG-based M2 for all
+  real-world OMOP data where `tablets` and `freq_per_day` columns are absent (the
+  common case). M2 now automatically parses the `sig` column when present before
+  falling through to the M3 Burkard formula or M4 supply-based fallback.
+
 # SteroidDoseR 0.1.7
 
 ## Changes

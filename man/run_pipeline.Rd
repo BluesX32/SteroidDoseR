@@ -7,7 +7,7 @@
 run_pipeline(
   connector_or_df,
   method = c("baseline", "nlp"),
-  m2_sig_parse = c("warn", "auto", "nlp_first", "none"),
+  m2_sig_parse = c("auto", "warn", "nlp_first", "none"),
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -29,8 +29,9 @@ selected dose method.}
 Controls how M2 (\code{tablets_freq}) is handled when \code{tablets} and
 \code{freq_per_day} are absent:
 \describe{
-\item{\code{"warn"} (default)}{Warn and skip M2.}
-\item{\code{"auto"}}{Parse the \code{sig} column inside \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}.}
+\item{\code{"auto"} (default)}{Parse the \code{sig} column inside \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}
+to populate \code{tablets} and \code{freq_per_day}. Recommended for real-world OMOP data.}
+\item{\code{"warn"}}{Warn and skip M2.}
 \item{\code{"nlp_first"}}{Run \code{\link[=parse_sig]{parse_sig()}} on the full data frame \emph{before}
 calling \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}, so NLP-derived \code{tablets} and
 \code{freq_per_day} are available for M2.}

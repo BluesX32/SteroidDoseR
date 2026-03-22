@@ -50,20 +50,21 @@ utils::globalVariables(c(".m1", ".m2", ".m3", ".m4"))
 #'   a warning, because doses that large almost always indicate data-quality
 #'   problems (non-mg `amount_value`, quantity in total-mg, near-zero
 #'   `days_supply`, etc.). Default: `2000`. Set to `NULL` to disable the cap.
-#' @param filter_oral `logical(1)`. If `TRUE`, restrict to oral-route records
-#'   and to drugs present in the prednisone-equivalency table before imputing,
-#'   matching the default behaviour of [calc_daily_dose_nlp()]. Default:
-#'   `FALSE` (no filtering) to preserve backward compatibility.
+#' @param filter_oral `logical(1)`. If `TRUE` (default), restrict to oral-route
+#'   records and to drugs present in the prednisone-equivalency table before
+#'   imputing — matching the default behaviour of [calc_daily_dose_nlp()].
+#'   Set to `FALSE` only if the input is already pre-filtered to oral steroids.
 #' @param m2_sig_parse `character(1)`. Controls behaviour when `tablets` and
 #'   `freq_per_day` columns are absent but a `sig` column is present:
 #'   \describe{
-#'     \item{`"warn"` (default)}{Emit a warning and skip M2.}
-#'     \item{`"auto"`}{Call [parse_sig()] internally to populate `tablets` and
-#'       `freq_per_day` before running M2.}
+#'     \item{`"auto"` (default)}{Call [parse_sig()] internally to populate
+#'       `tablets` and `freq_per_day` before running M2. This is the recommended
+#'       setting for real-world OMOP data where these columns are not pre-populated.}
+#'     \item{`"warn"`}{Emit a warning and skip M2.}
 #'     \item{`"none"`}{Silently skip M2 without any message.}
 #'   }
-#'   Ignored when `tablets` and `freq_per_day` are already present, or when
-#'   `"tablets_freq"` is not in `methods`.
+#'   Ignored when `tablets` and `freq_per_day` columns already exist in the
+#'   data (even if all NA), or when `"tablets_freq"` is not in `methods`.
 #'
 #' @return The input data frame (or the fetched data frame) with seven
 #' additional columns:
@@ -110,9 +111,9 @@ calc_daily_dose_baseline <- function(connector_or_df,
                                      start_date        = NULL,
                                      end_date          = NULL,
                                      sig_source        = "sig",
-                                     m2_sig_parse      = c("warn", "auto", "none"),
+                                     m2_sig_parse      = c("auto", "warn", "none"),
                                      max_daily_dose_mg = 2000,
-                                     filter_oral       = FALSE,
+                                     filter_oral       = TRUE,
                                      equiv_table       = NULL,
                                      drug_name_map     = NULL) {
 
@@ -123,10 +124,11 @@ calc_daily_dose_baseline <- function(connector_or_df,
 
   assert_required_cols(drug_df, "drug_exposure_start_date", "drug_df")
 
-  # --- 0. optional oral-route / drug-class filter ---------------------------
+  # --- 0. oral-route / drug-class filter ------------------------------------
   # Mirrors calc_daily_dose_nlp(filter_oral = TRUE): keeps only oral-route
   # records and drugs present in the prednisone-equivalency table.
-  # Default FALSE preserves backward-compatible behaviour (no filtering).
+  # Default TRUE ensures baseline, like NLP, targets oral steroids only.
+  # Pass filter_oral = FALSE when the input is already pre-filtered.
   if (filter_oral) {
     # Standardise drug names if not already present so the steroid list can
     # be applied.  Prefer drug_concept_name, fall back to drug_source_value.

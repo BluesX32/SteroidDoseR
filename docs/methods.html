@@ -202,9 +202,9 @@ OMOP drug_exposure (all drugs, all routes)
   start_date        = NULL,
   end_date          = NULL,
   sig_source        = "sig",
-  m2_sig_parse      = c("warn", "auto", "none"),
+  m2_sig_parse      = c("auto", "warn", "none"),
   max_daily_dose_mg = 2000,
-  filter_oral       = FALSE,
+  filter_oral       = TRUE,
   equiv_table       = NULL,
   drug_name_map     = NULL
 )</div>
@@ -218,9 +218,9 @@ OMOP drug_exposure (all drugs, all routes)
   <tr><td>person_ids</td><td>NULL</td><td>Filter to specific patients. Connector path only.</td></tr>
   <tr><td>start_date / end_date</td><td>NULL</td><td>Date bounds on <code>drug_exposure_start_date</code>. Connector path only.</td></tr>
   <tr><td>sig_source</td><td>"sig"</td><td>Column to use as SIG text when the native <code>sig</code> field is absent.</td></tr>
-  <tr><td>m2_sig_parse</td><td>"warn"</td><td>How to handle M2 when <code>tablets</code>/<code>freq_per_day</code> are absent: <code>"warn"</code> = emit warning and skip; <code>"auto"</code> = call <code>parse_sig()</code> internally; <code>"none"</code> = silently skip.</td></tr>
+  <tr><td>m2_sig_parse <span class="badge badge-fix">v0.1.8</span></td><td>"auto"</td><td>How to handle M2 when <code>tablets</code>/<code>freq_per_day</code> columns are absent: <code>"auto"</code> (default) = call <code>parse_sig()</code> internally; <code>"warn"</code> = emit warning and skip; <code>"none"</code> = silently skip.</td></tr>
   <tr><td>max_daily_dose_mg <span class="badge badge-new">v0.1.1</span></td><td>2000</td><td>Records exceeding this are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
-  <tr><td>filter_oral <span class="badge badge-new">v0.1.1</span></td><td>FALSE</td><td>If <code>TRUE</code>, restrict to oral-route records and drugs in the equivalency table before imputing.</td></tr>
+  <tr><td>filter_oral <span class="badge badge-fix">v0.1.8</span></td><td>TRUE</td><td>If <code>TRUE</code> (default), restrict to oral-route records and drugs in the equivalency table — matching NLP default. Set <code>FALSE</code> if input is already pre-filtered.</td></tr>
   <tr><td>equiv_table <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Custom equivalency table (<code>drug_name_std</code>, <code>equiv_factor</code>). When <code>filter_oral = TRUE</code>, the allowed-drug list derives from this table. Pass <code>NULL</code> for the built-in 7-steroid table.</td></tr>
   <tr><td>drug_name_map <span class="badge badge-new">v0.1.6</span></td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in drug name mapping for site-specific synonyms or non-English brand names.</td></tr>
 </table>

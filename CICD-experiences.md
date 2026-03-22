@@ -89,10 +89,11 @@ behaviour at all.
 
 **Root cause**
 
-`calc_daily_dose_baseline()` defaults to `m2_sig_parse = "warn"`. When the
-test data has a `sig` column but no pre-parsed `tablets`/`freq_per_day`
-columns, the function emits a warning on every call — including calls whose
-only purpose is to verify the connector dispatch path.
+`calc_daily_dose_baseline()` previously defaulted to `m2_sig_parse = "warn"` (now
+changed to `"auto"` in v0.1.8). When the test data has a `sig` column but no
+pre-parsed `tablets`/`freq_per_day` columns, the old default emitted a warning on
+every call — including calls whose only purpose is to verify the connector dispatch
+path.
 
 **Fix**
 

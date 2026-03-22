@@ -58,8 +58,10 @@ NULL
 #'   Controls how M2 (`tablets_freq`) is handled when `tablets` and
 #'   `freq_per_day` are absent:
 #'   \describe{
-#'     \item{`"warn"` (default)}{Warn and skip M2.}
-#'     \item{`"auto"`}{Parse the `sig` column inside [calc_daily_dose_baseline()].}
+#'     \item{`"auto"` (default)}{Parse the `sig` column inside
+#'       [calc_daily_dose_baseline()] to populate `tablets` and `freq_per_day`.
+#'       Recommended for real-world OMOP data where these columns are absent.}
+#'     \item{`"warn"`}{Warn and skip M2.}
 #'     \item{`"nlp_first"`}{Run [parse_sig()] on the full data frame *before*
 #'       calling [calc_daily_dose_baseline()], so NLP-derived `tablets` and
 #'       `freq_per_day` are available for M2.}
@@ -96,7 +98,7 @@ NULL
 #'              "episode_end", "median_daily_dose")]
 run_pipeline <- function(connector_or_df,
                          method           = c("baseline", "nlp"),
-                         m2_sig_parse     = c("warn", "auto", "nlp_first", "none"),
+                         m2_sig_parse     = c("auto", "warn", "nlp_first", "none"),
                          drug_concept_ids = NULL,
                          person_ids       = NULL,
                          start_date       = NULL,

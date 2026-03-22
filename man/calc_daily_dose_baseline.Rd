@@ -12,9 +12,9 @@ calc_daily_dose_baseline(
   start_date = NULL,
   end_date = NULL,
   sig_source = "sig",
-  m2_sig_parse = c("warn", "auto", "none"),
+  m2_sig_parse = c("auto", "warn", "none"),
   max_daily_dose_mg = 2000,
-  filter_oral = FALSE,
+  filter_oral = TRUE,
   equiv_table = NULL,
   drug_name_map = NULL
 )
@@ -51,21 +51,22 @@ native \code{sig} field is absent. One of \code{"sig"} (default) or
 \item{m2_sig_parse}{\code{character(1)}. Controls behaviour when \code{tablets} and
 \code{freq_per_day} columns are absent but a \code{sig} column is present:
 \describe{
-\item{\code{"warn"} (default)}{Emit a warning and skip M2.}
-\item{\code{"auto"}}{Call \code{\link[=parse_sig]{parse_sig()}} internally to populate \code{tablets} and
-\code{freq_per_day} before running M2.}
+\item{\code{"auto"} (default)}{Call \code{\link[=parse_sig]{parse_sig()}} internally to populate \code{tablets} and
+\code{freq_per_day} before running M2. Recommended for real-world OMOP data.}
+\item{\code{"warn"}}{Emit a warning and skip M2.}
 \item{\code{"none"}}{Silently skip M2 without any message.}
 }
-Ignored when \code{tablets} and \code{freq_per_day} are already present, or when
-\code{"tablets_freq"} is not in \code{methods}.}
+Ignored when \code{tablets} and \code{freq_per_day} columns already exist in the data
+(even if all NA), or when \code{"tablets_freq"} is not in \code{methods}.}
 
 \item{max_daily_dose_mg}{\code{numeric(1)} or \code{NULL}. Upper plausibility bound in
 mg/day. Records whose imputed dose exceeds this value are set to \code{NA} with
 a warning. Default: \code{2000}. Set to \code{NULL} to disable the cap.}
 
-\item{filter_oral}{\code{logical(1)}. If \code{TRUE}, restrict to oral-route records
-and to drugs present in the prednisone-equivalency table before imputing.
-Default: \code{FALSE}.}
+\item{filter_oral}{\code{logical(1)}. If \code{TRUE} (default), restrict to oral-route
+records and to drugs present in the prednisone-equivalency table before
+imputing — matching \code{calc_daily_dose_nlp()}. Set to \code{FALSE} only if the
+input is already pre-filtered to oral steroids.}
 
 \item{equiv_table}{A data frame with columns \code{drug_name_std} and
 \code{equiv_factor} used when \code{filter_oral = TRUE}. If \code{NULL}, the built-in

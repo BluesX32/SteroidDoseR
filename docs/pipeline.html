@@ -181,7 +181,7 @@
 <div class="fn-sig">run_pipeline(
   connector_or_df,
   method           = c("baseline", "nlp"),
-  m2_sig_parse     = c("warn", "auto", "nlp_first", "none"),
+  m2_sig_parse     = c("auto", "warn", "nlp_first", "none"),
   drug_concept_ids = NULL,
   person_ids       = NULL,
   start_date       = NULL,
@@ -196,9 +196,9 @@
 <table class="param-table">
   <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
   <tr><td>method</td><td>"baseline"</td><td>Imputation method. Use <code>"nlp"</code> for SIG-text parsing.</td></tr>
-  <tr><td>m2_sig_parse</td><td>"warn"</td><td>M2 SIG-parse strategy for Baseline method:<br>
+  <tr><td>m2_sig_parse <span class="badge badge-fix">v0.1.8</span></td><td>"auto"</td><td>M2 SIG-parse strategy for Baseline method:<br>
+    <code>"auto"</code> (default) — call <code>parse_sig()</code> internally to populate tablets/freq_per_day<br>
     <code>"warn"</code> — emit warning and skip M2<br>
-    <code>"auto"</code> — call <code>parse_sig()</code> internally<br>
     <code>"nlp_first"</code> — run full NLP pass before baseline (NLP columns retained)<br>
     <code>"none"</code> — silently skip M2</td></tr>
   <tr><td>gap_days</td><td>30L</td><td>Gap threshold for episode building.</td></tr>

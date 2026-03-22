@@ -102,8 +102,9 @@ vignettes/
 - **Never throw errors** — malformed input returns NA with a warning, not a stop().
   `parse_sig_one()` is the canonical example: wrap `.parse_sig_one_impl()` in
   `tryCatch` and return `.empty_parse_row()` on failure.
-- **No filtering without an explicit opt-in parameter** — `filter_oral = FALSE`
-  is the safe default for baseline; `filter_oral = TRUE` matches NLP scope.
+- **Oral filter defaults to TRUE** — `filter_oral = TRUE` is the default for all
+  three imputation functions (baseline, NLP, advanced NLP). Pass `filter_oral = FALSE`
+  only when the input is already pre-filtered to oral corticosteroids.
 - **Unit-safe `amount_value`** — always check `amount_unit_concept_id == 8576`
   (mg) before treating `amount_value` as milligrams. Other units (mcg = 9655,
   g = 8504) must be discarded and the `drug_source_value` string fallback used.
