@@ -55,6 +55,29 @@ test_that("actual_duration (M3 default, Burkard): uses date diff when days_suppl
   expect_equal(out$imputation_method, "actual_duration")
 })
 
+# Regression: all-NA tablets/freq_per_day columns must NOT suppress SIG auto-parse.
+# Root cause: guard previously checked column *existence*, so an all-NA column
+# suppressed parse_sig() exactly like a fully-populated one, silently killing M2.
+test_that("M2 auto-parse fires when tablets/freq_per_day columns exist but are all NA", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_source_value        = "PREDNISONE 5 MG TABLET",
+    amount_value             = 5,
+    quantity                 = NA_real_,
+    days_supply              = NA_real_,
+    daily_dose               = NA_real_,
+    tablets                  = NA_real_,   # column exists but all NA
+    freq_per_day             = NA_real_,   # column exists but all NA
+    sig                      = "Take 2 tablets (10 mg total) daily",
+    drug_exposure_start_date = "2023-01-01",
+    drug_exposure_end_date   = "2023-03-31"
+  )
+  out <- calc_daily_dose_baseline(df, m2_sig_parse = "auto")
+  # SIG must be parsed: 2 tablets * 1/day * 5 mg = 10 mg
+  expect_equal(out$daily_dose_mg_imputed, 10)
+  expect_equal(out$imputation_method, "tablets_freq")
+})
+
 test_that("'missing' when no method can provide a dose", {
   df  <- make_row(daily_dose = NA, quantity = NA, days_supply = NA, amount_value = NA,
                   tablets = NA, freq_per_day = NA)

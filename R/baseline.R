@@ -237,27 +237,38 @@ calc_daily_dose_baseline <- function(connector_or_df,
   }
 
   # --- 3. numeric coercions (check column existence OUTSIDE mutate) ----------
-  has_qty  <- "quantity"     %in% names(drug_df)
-  has_sup  <- "days_supply"  %in% names(drug_df)
-  has_tab  <- "tablets"      %in% names(drug_df)
-  has_freq <- "freq_per_day" %in% names(drug_df)
+  has_qty      <- "quantity"     %in% names(drug_df)
+  has_sup      <- "days_supply"  %in% names(drug_df)
+  # Column existence (used by the mutate block to reference columns safely).
+  has_tab_col  <- "tablets"      %in% names(drug_df)
+  has_freq_col <- "freq_per_day" %in% names(drug_df)
+  # Value-aware flags (used by the SIG-parse guard).
+  # A column that exists but is entirely NA provides no information and must
+  # NOT suppress auto-parsing -- this is the root cause of the silent M2
+  # failure when callers (or the CDM extract) pre-create these columns as
+  # all-NA placeholders.
+  has_tab_vals  <- has_tab_col  && any(!is.na(drug_df[["tablets"]]))
+  has_freq_vals <- has_freq_col && any(!is.na(drug_df[["freq_per_day"]]))
 
   # --- M2 SIG-parse guard -------------------------------------------------------
-  # When tablets/freq_per_day are absent but a sig column is present, apply
-  # the strategy chosen by m2_sig_parse before the imputation block runs.
-  if ("tablets_freq" %in% methods && !has_tab && !has_freq) {
+  # Trigger when tablets/freq_per_day have no usable values AND sig is present.
+  if ("tablets_freq" %in% methods && !has_tab_vals && !has_freq_vals) {
     sig_present <- "sig" %in% names(drug_df) &&
       any(!is.na(drug_df[["sig"]]) & nzchar(trimws(drug_df[["sig"]])))
 
     if (sig_present) {
       if (m2_sig_parse == "auto") {
-        message("M2: `tablets`/`freq_per_day` absent -- parsing `sig` column automatically.")
-        drug_df  <- parse_sig(drug_df, sig_col = "sig")
-        has_tab  <- "tablets"      %in% names(drug_df)
-        has_freq <- "freq_per_day" %in% names(drug_df)
+        message("M2: parsing `sig` column automatically to populate tablets/freq_per_day.")
+        # Drop any existing all-NA tablets/freq_per_day columns BEFORE calling
+        # parse_sig() to avoid a duplicate-column crash from bind_cols().
+        drug_df <- drug_df |>
+          dplyr::select(-dplyr::any_of(c("tablets", "freq_per_day")))
+        drug_df      <- parse_sig(drug_df, sig_col = "sig")
+        has_tab_col  <- "tablets"      %in% names(drug_df)
+        has_freq_col <- "freq_per_day" %in% names(drug_df)
       } else if (m2_sig_parse == "warn") {
         rlang::warn(paste0(
-          "M2 (tablets_freq) skipped: `tablets` and `freq_per_day` are absent ",
+          "M2 (tablets_freq) skipped: `tablets` and `freq_per_day` have no usable values ",
           "but a `sig` column is present.\n",
           "  Use m2_sig_parse = 'auto' to parse it automatically, or\n",
           "  use m2_sig_parse = 'nlp_first' in run_pipeline() to run NLP before baseline."
@@ -273,12 +284,12 @@ calc_daily_dose_baseline <- function(connector_or_df,
 
   drug_df <- drug_df |>
     dplyr::mutate(
-      .quantity    = if (has_qty)  safe_as_numeric(.data$quantity)      else NA_real_,
-      .days_supply = if (has_sup)  safe_as_numeric(.data$days_supply)   else NA_real_,
-      .tablets     = if (has_tab)  safe_as_numeric(.data$tablets)       else NA_real_,
-      .freq        = if (has_freq) safe_as_numeric(.data$freq_per_day)  else NA_real_,
+      .quantity    = if (has_qty)      safe_as_numeric(.data$quantity)      else NA_real_,
+      .days_supply = if (has_sup)      safe_as_numeric(.data$days_supply)   else NA_real_,
+      .tablets     = if (has_tab_col)  safe_as_numeric(.data$tablets)       else NA_real_,
+      .freq        = if (has_freq_col) safe_as_numeric(.data$freq_per_day)  else NA_real_,
       # Evaluate outside mutate to avoid reference to absent column.
-      .dd          = if (has_dd)   safe_as_numeric(.data[[dd_col]])     else NA_real_
+      .dd          = if (has_dd)       safe_as_numeric(.data[[dd_col]])     else NA_real_
     )
 
   # --- 4. candidate estimates -----------------------------------------------

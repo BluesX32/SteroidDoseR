@@ -14,6 +14,15 @@
   common case). M2 now automatically parses the `sig` column when present before
   falling through to the M3 Burkard formula or M4 supply-based fallback.
 
+* **`calc_daily_dose_baseline()` — M2 SIG-parse guard checks usable values, not column existence** (`baseline.R`):
+  The guard that triggers `parse_sig()` previously checked whether `tablets` and
+  `freq_per_day` *columns existed*. A column that exists but is entirely NA (common
+  in CDM extracts and any caller that pre-initialises these columns) caused the guard
+  to evaluate FALSE, silently suppressing auto-parsing even with `m2_sig_parse = "auto"`.
+  The guard now uses value-aware flags (`any(!is.na(...))`) so all-NA columns are
+  treated identically to absent columns. Existing all-NA columns are also dropped
+  before `parse_sig()` is called to prevent a `bind_cols` duplicate-column crash.
+
 # SteroidDoseR 0.1.7
 
 ## Changes
