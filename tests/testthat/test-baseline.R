@@ -37,10 +37,12 @@ test_that("M2 uses tablets × freq × strength correctly", {
   expect_equal(out$imputation_method, "tablets_freq")
 })
 
-test_that("supply_based (M4 default): quantity × strength / days_supply", {
+test_that("supply_based: quantity × strength / days_supply (method tested in isolation)", {
   df  <- make_row(daily_dose = NA, quantity = 90, days_supply = 90, amount_value = 10,
                   tablets = NA, freq_per_day = NA)
-  out <- calc_daily_dose_baseline(df)
+  # actual_duration now precedes supply_based in the default cascade; pass an
+  # explicit methods vector to isolate supply_based behaviour.
+  out <- calc_daily_dose_baseline(df, methods = c("supply_based"))
   expect_equal(out$daily_dose_mg_imputed, 10)   # 90 * 10 / 90
   expect_equal(out$imputation_method, "supply_based")
 })
