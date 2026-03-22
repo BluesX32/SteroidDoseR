@@ -113,6 +113,8 @@
     # ---- monthly -----------------------------------------------------------
     stringr::str_detect(s,
       "once\\s*(?:a\\s*)?month|monthly|\\bq30d\\b|every\\s*30\\s*days?|every\\s*month") ~ 1 / 30,
+    # ---- oral/nightly/evening shortcuts ------------------------------------
+    stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
     TRUE ~ NA_real_
   )
 }
@@ -144,6 +146,8 @@
 
   # ---- Tablets (enhanced) --------------------------------------------------
   tablets <- .extract_tablets_adv(s)
+  # Default to 1 when SIG contains no explicit tablet count.
+  tablets <- dplyr::if_else(is.na(tablets), 1, tablets)
 
   # ---- Frequency (enhanced) ------------------------------------------------
   freq <- .extract_freq_adv(s)

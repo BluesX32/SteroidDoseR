@@ -1,3 +1,18 @@
+# SteroidDoseR 0.1.9
+
+## Enhancements
+
+* **`parse_sig_one()` / `parse_sig_one_advanced()` — new once-daily SIG patterns** (`nlp.R`, `nlp_advanced.R`):
+  Three common real-world SIG strings that previously returned `freq_per_day = NA` now
+  parse correctly as `freq_per_day = 1`: `"Once Oral"`, `"Every evening Oral"`, and
+  `"Nightly Oral"` (leading whitespace is normalised before matching).
+
+* **`parse_sig_one()` / `parse_sig_one_advanced()` — `tablets` defaults to 1** (`nlp.R`, `nlp_advanced.R`):
+  When a SIG string is parseable (freq detected, mg detected) but contains no explicit
+  tablet count, `tablets` is set to 1 rather than `NA`. This allows baseline M2
+  (`tablets × freq × strength`) to complete for SIG strings such as `"5 mg daily"` or
+  `"Once Oral"` where the prescriber omitted the tablet count.
+
 # SteroidDoseR 0.1.8
 
 ## Bug fixes

@@ -133,3 +133,30 @@ test_that("calc_daily_dose_nlp: computes dose for simple oral SIG", {
   out <- calc_daily_dose_nlp(df)
   expect_equal(out$daily_dose_mg, 10)
 })
+
+# New frequency patterns: "Once Oral", "Every evening Oral", "Nightly Oral" → freq = 1
+# Tablets default to 1 when not specified in SIG.
+test_that("parse_sig_one: 'Once Oral' parses as freq = 1, tablets default = 1", {
+  out <- parse_sig_one("    Once Oral")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$tablets, 1)
+})
+
+test_that("parse_sig_one: 'Every evening Oral' parses as freq = 1", {
+  out <- parse_sig_one("    Every evening Oral")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$tablets, 1)
+})
+
+test_that("parse_sig_one: 'Nightly Oral' parses as freq = 1", {
+  out <- parse_sig_one("    Nightly Oral")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$tablets, 1)
+})
+
+test_that("parse_sig_one: tablets default = 1 when SIG gives no count (bare mg + freq)", {
+  out <- parse_sig_one("5 mg daily")
+  expect_equal(out$tablets, 1)
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$daily_dose_mg, 5)
+})

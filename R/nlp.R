@@ -100,8 +100,13 @@ parse_sig_one <- function(sig_text) {
     stringr::str_detect(s, "three\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b|\\bq8h\\b|every\\s*8\\s*hours?") ~ 3,
     stringr::str_detect(s, "twice\\s*(?:daily|a\\s*day)|two\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b|\\bq12h\\b|every\\s*12\\s*hours?") ~ 2,
     stringr::str_detect(s, "once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|every\\s*morning|with\\s*breakfast|q\\s*am|qam|every\\s*24\\s*hours?") ~ 1,
+    stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
     TRUE ~ NA_real_
   )
+
+  # Default tablets to 1 when SIG contains no explicit tablet count.
+  # "Once Oral", "Nightly", "Every evening" prescriptions typically mean 1 tablet.
+  tablets <- dplyr::if_else(is.na(tablets), 1, tablets)
 
   # ---- Duration -------------------------------------------------------------
   dur_match <- stringr::str_match(
