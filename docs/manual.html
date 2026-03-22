@@ -277,7 +277,7 @@
   <tr><th>Method</th><th>Approach</th><th>Best when</th></tr>
   <tr>
     <td><strong>Baseline</strong></td>
-    <td>Four-step cascade (M1–M4) using structured OMOP fields: pre-existing dose value, tablets×freq×strength, quantity/days_supply, quantity/actual_duration</td>
+    <td>Four-step cascade (M1–M4) using structured OMOP fields: pre-existing dose value, tablets×freq×strength, quantity/actual_duration [Burkard formula, M3], quantity/days_supply [fallback, M4]</td>
     <td>OMOP fields are well-populated; SIG text is absent or unreliable</td>
   </tr>
   <tr>
@@ -461,8 +461,8 @@ con<span class="op">$</span>capabilities
   <tr><td><code>drug_source_value</code></td><td>chr</td><td>Baseline strength fallback</td><td>Source drug string; mg extracted via regex</td></tr>
   <tr><td><code>amount_value</code></td><td>num</td><td>Baseline M2–M4, NLP fallback</td><td>Per-tablet strength from <code>drug_strength</code> JOIN</td></tr>
   <tr><td><code>amount_unit_concept_id</code></td><td>int</td><td>Baseline unit check</td><td>OMOP concept for unit; 8576 = mg, 0 = unmapped (treated as unknown). Non-mg units are discarded.</td></tr>
-  <tr><td><code>quantity</code></td><td>num</td><td>Baseline M3, M4</td><td>Tablets dispensed</td></tr>
-  <tr><td><code>days_supply</code></td><td>num</td><td>Baseline M3</td><td>Days of supply</td></tr>
+  <tr><td><code>quantity</code></td><td>num</td><td>Baseline M3 (actual_duration), M4 (supply_based)</td><td>Tablets dispensed</td></tr>
+  <tr><td><code>days_supply</code></td><td>num</td><td>Baseline M4 (supply_based, fallback)</td><td>Days of supply</td></tr>
   <tr><td><code>sig</code></td><td>chr</td><td>NLP</td><td>Free-text SIG instruction</td></tr>
   <tr><td><code>route_concept_name</code></td><td>chr</td><td>NLP oral filter</td><td>Route standardised name; used to restrict to oral records</td></tr>
   <tr><td><code>route_concept_id</code></td><td>int</td><td>NLP oral filter fallback</td><td>Used when <code>route_concept_name</code> is absent</td></tr>
@@ -492,14 +492,14 @@ con<span class="op">$</span>capabilities
     <td><code>tablets</code>, <code>freq_per_day</code>, <code>strength_mg</code> — requires SIG parsing first</td>
   </tr>
   <tr>
-    <td><strong>M3</strong></td><td><code>supply_based</code></td>
-    <td><code>(quantity × strength_mg) / days_supply</code></td>
-    <td><code>quantity</code>, <code>days_supply</code> &gt; 0, <code>strength_mg</code></td>
+    <td><strong>M3</strong></td><td><code>actual_duration</code></td>
+    <td><code>(quantity × strength_mg) / (end_date − start_date + 1)</code> — Burkard (2024) standard <span class="badge badge-fix">v0.1.7</span></td>
+    <td><code>quantity</code>, date columns, <code>strength_mg</code></td>
   </tr>
   <tr>
-    <td><strong>M4</strong></td><td><code>actual_duration</code></td>
-    <td><code>(quantity × strength_mg) / actual_duration_days</code></td>
-    <td><code>quantity</code>, date columns, <code>strength_mg</code></td>
+    <td><strong>M4</strong></td><td><code>supply_based</code></td>
+    <td><code>(quantity × strength_mg) / days_supply</code> — fallback only <span class="badge badge-fix">v0.1.7</span></td>
+    <td><code>quantity</code>, <code>days_supply</code> &gt; 0, <code>strength_mg</code></td>
   </tr>
 </table>
 </div>
@@ -534,8 +534,8 @@ OMOP drug_exposure (all drugs, all routes)
   Imputation cascade  (first non-NA wins)
   ├── M1  original       pre-existing daily_dose / daily_dose_mg
   ├── M2  tablets_freq   tablets × freq_per_day × strength_mg
-  ├── M3  supply_based   (quantity × strength_mg) / days_supply
-  └── M4  actual_dur     (quantity × strength_mg) / actual_duration_days
+  ├── M3  actual_dur     (quantity × strength_mg) / (end_date − start_date + 1)  ← Burkard formula
+  └── M4  supply_based   (quantity × strength_mg) / days_supply                  ← fallback
           │
           ▼
   Plausibility cap: doses &gt; 2000 mg/day → NA + warning
@@ -596,7 +596,7 @@ OMOP drug_exposure (all drugs, all routes)
 
 <div class="fn-sig">calc_daily_dose_baseline(
   connector_or_df,
-  methods           = c("original", "tablets_freq", "supply_based", "actual_duration"),
+  methods           = c("original", "tablets_freq", "actual_duration", "supply_based"),
   drug_concept_ids  = NULL,
   person_ids        = NULL,
   start_date        = NULL,
@@ -639,8 +639,8 @@ OMOP drug_exposure (all drugs, all routes)
   <tr><td><code>strength_mg</code></td><td>Per-tablet strength in mg (unit-checked from <code>amount_value</code>, then from <code>drug_source_value</code> string)</td></tr>
   <tr><td><code>dose_from_original</code></td><td><span class="badge badge-new">v0.1.5</span> M1 raw value: original <code>daily_dose</code> / <code>daily_dose_mg</code> column cast to numeric (NA if absent or ≤ 0)</td></tr>
   <tr><td><code>dose_from_tablets_freq</code></td><td><span class="badge badge-new">v0.1.5</span> M2 raw value: <code>tablets × freq_per_day × strength_mg</code> (NA if any component missing)</td></tr>
-  <tr><td><code>dose_from_supply</code></td><td><span class="badge badge-new">v0.1.5</span> M3 raw value: <code>(quantity × strength_mg) / days_supply</code> (NA if any component missing or days_supply = 0)</td></tr>
-  <tr><td><code>dose_from_actual_duration</code></td><td><span class="badge badge-new">v0.1.5</span> M4 raw value: <code>(quantity × strength_mg) / actual_duration_days</code> (NA if any component missing or duration ≤ 0)</td></tr>
+  <tr><td><code>dose_from_actual_duration</code></td><td><span class="badge badge-new">v0.1.5</span> M3 raw value (Burkard formula): <code>(quantity × strength_mg) / (end_date − start_date + 1)</code> (NA if any component missing or duration ≤ 0) <span class="badge badge-fix">v0.1.7</span></td></tr>
+  <tr><td><code>dose_from_supply</code></td><td><span class="badge badge-new">v0.1.5</span> M4 raw value (fallback): <code>(quantity × strength_mg) / days_supply</code> (NA if any component missing or days_supply = 0) <span class="badge badge-fix">v0.1.7</span></td></tr>
   <tr><td><code>daily_dose_mg_imputed</code></td><td>Best-estimate daily dose in mg — first non-NA across M1–M4 in cascade order</td></tr>
   <tr><td><code>imputation_method</code></td><td>Which step succeeded: <code>"original"</code>, <code>"tablets_freq"</code>, <code>"supply_based"</code>, <code>"actual_duration"</code>, or <code>"missing"</code></td></tr>
 </table>
@@ -1301,12 +1301,12 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
   </tr>
   <tr>
     <td>Large quantity × small days_supply</td>
-    <td>M3 dose explosion (e.g. 90-day supply with days_supply = 1)</td>
+    <td>supply_based (M4) dose explosion (e.g. 90-day supply with days_supply = 1)</td>
     <td><code>max_daily_dose_mg</code> cap (default 2000 mg/day) NAs out outliers with a warning</td>
   </tr>
   <tr>
     <td>Same-day start and end date</td>
-    <td>M4 uses actual_duration = 1 day → high dose</td>
+    <td>actual_duration (M3) uses date range = 1 day → high dose</td>
     <td>Caught by <code>max_daily_dose_mg</code> cap</td>
   </tr>
   <tr>

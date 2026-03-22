@@ -21,10 +21,10 @@
 #' | `drug_concept_id` | int | Concept-set filtering |
 #' | `drug_source_concept_id` | int | Unmapped-concept fallback |
 #' | `drug_concept_name` | chr | Drug name standardisation |
-#' | `drug_source_value` | chr | Strength extraction (Baseline M3/M4) |
-#' | `drug_exposure_end_date` | Date | Duration (Baseline M4, episodes) |
-#' | `quantity` | num | Baseline M3/M4 |
-#' | `days_supply` | num | Baseline M3 |
+#' | `drug_source_value` | chr | Strength extraction (Baseline supply_based/actual_duration) |
+#' | `drug_exposure_end_date` | Date | Duration (Baseline actual_duration [M3], episodes) |
+#' | `quantity` | num | Baseline actual_duration (M3), supply_based (M4) |
+#' | `days_supply` | num | Baseline supply_based (M4, fallback) |
 #' | `sig` | chr | NLP method |
 #' | `route_concept_id` | int | Oral-route filter |
 #' | `dose_unit_source_value` | chr | Unit context |

@@ -152,12 +152,12 @@
   </tr>
   <tr>
     <td>Large quantity × small days_supply</td>
-    <td>M3 dose explosion (e.g. 90-day supply with days_supply = 1)</td>
+    <td>supply_based (M4) dose explosion (e.g. 90-day supply with days_supply = 1)</td>
     <td><code>max_daily_dose_mg</code> cap (default 2000 mg/day) NAs out outliers with a warning</td>
   </tr>
   <tr>
     <td>Same-day start and end date</td>
-    <td>M4 uses actual_duration = 1 day → high dose</td>
+    <td>actual_duration (M3) uses date range = 1 day → high dose</td>
     <td>Caught by <code>max_daily_dose_mg</code> cap</td>
   </tr>
   <tr>

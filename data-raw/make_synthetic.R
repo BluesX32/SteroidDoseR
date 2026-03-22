@@ -49,7 +49,7 @@ synthetic_drug_exposure <- tribble(
   103L, "dexamethasone 4 MG oral tablet", "DEXAMETHASONE 4 MG TABLET",
   "2023-06-01", "2023-08-31", 46, 91, 4, 8576L, NA, "Take 0.5 tablet (2 mg total) daily.",
 
-  # --- Patient 103: missing SIG + missing daily_dose → M3 fallback -------
+  # --- Patient 103: missing SIG + missing daily_dose → actual_duration (M3) or supply_based (M4) fallback ---
   103L, "dexamethasone 4 MG oral tablet", "DEXAMETHASONE 4 MG TABLET",
   "2023-09-01", "2023-11-30", 45, 90, 4, 8576L, NA, NA,
 
@@ -83,7 +83,7 @@ synthetic_drug_exposure <- tribble(
   101L, "prednisone 20 MG oral tablet", "PREDNISONE 20 MG TABLET",
   "2024-07-01", "2024-09-30", 90, 91, 20, 8576L, NA, "Take 1 tab (20 mg per dose) QD for 3 months.",
 
-  # --- M4 actual_duration fallback (no days_supply) -----------------------
+  # --- actual_duration (M3 Burkard formula, no days_supply) ---------------
   103L, "dexamethasone 2 MG oral tablet", "DEXAMETHASONE 2 MG TABLET",
   "2024-01-01", "2024-01-30", 30, NA, 2, 8576L, NA, NA,
 

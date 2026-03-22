@@ -6,7 +6,7 @@
 \usage{
 calc_daily_dose_baseline(
   connector_or_df,
-  methods = c("original", "tablets_freq", "supply_based", "actual_duration"),
+  methods = c("original", "tablets_freq", "actual_duration", "supply_based"),
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -26,7 +26,9 @@ supplied the function fetches data from the source; when a data frame is
 supplied the legacy in-memory path is used unchanged.}
 
 \item{methods}{\code{character} vector. Ordered list of methods to attempt.
-Defaults to \code{c("original", "tablets_freq", "supply_based", "actual_duration")}.
+Defaults to \code{c("original", "tablets_freq", "actual_duration", "supply_based")}.
+\code{"actual_duration"} (Burkard formula) is tried before \code{"supply_based"} because
+the date-range denominator is the OHDSI standard for fixed-amount oral formulations.
 Each method is only tried if the required columns are present; missing
 columns cause a graceful skip (not an error).}
 
@@ -97,8 +99,8 @@ The first argument accepts either a \strong{connector} (created by
    Method \tab Label \tab Logic \cr
    M1 \tab \code{"original"} \tab Use \code{daily_dose} or \code{daily_dose_mg} column if numeric and > 0. \cr
    M2 \tab \code{"tablets_freq"} \tab \verb{tablets * freq_per_day * strength_mg}. Requires \code{sig} column to be parsed first, or pre-parsed \code{tablets} and \code{freq_per_day} columns. \cr
-   M3 \tab \code{"supply_based"} \tab \verb{(quantity * strength_mg) / days_supply}. \cr
-   M4 \tab \code{"actual_duration"} \tab \verb{(quantity * strength_mg) / actual_duration_days}, where \code{actual_duration_days} is derived from the date columns. \cr
+   M3 \tab \code{"actual_duration"} \tab \verb{(quantity * strength_mg) / (end_date - start_date + 1)}. Burkard (2024) standard for oral tablets. \cr
+   M4 \tab \code{"supply_based"} \tab \verb{(quantity * strength_mg) / days_supply}. Fallback when date range is unavailable. \cr
 }
 
 }

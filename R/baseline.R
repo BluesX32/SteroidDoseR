@@ -296,7 +296,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
         TRUE ~ NA_real_
       ),
 
-      # M3: (quantity * strength) / days_supply
+      # supply_based (M4 in default cascade): (quantity * strength) / days_supply
       .m3 = dplyr::case_when(
         "supply_based" %in% methods &
           !is.na(.data$.quantity) & !is.na(.data$.days_supply) &
@@ -305,7 +305,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
         TRUE ~ NA_real_
       ),
 
-      # M4: (quantity * strength) / actual_duration
+      # actual_duration (M3 in default cascade, Burkard formula): (quantity * strength) / (end - start + 1)
       .m4 = dplyr::case_when(
         "actual_duration" %in% methods &
           !is.na(.data$.quantity) & !is.na(.data$.actual_dur) &

@@ -33,7 +33,7 @@ episodes[, c("person_id", "drug_name_std", "episode_start",
 
 | Method | Approach | Best when |
 |--------|----------|-----------|
-| **Baseline** | 4-step cascade (M1–M4) using structured OMOP fields (original dose, tablets×freq×strength, quantity/days_supply, quantity/actual_duration) | OMOP structured fields well-populated |
+| **Baseline** | 4-step cascade (M1–M4) using structured OMOP fields (original dose, tablets×freq×strength, quantity/actual_duration [Burkard], quantity/days_supply) | OMOP structured fields well-populated |
 | **NLP** | Rule-based SIG string parsing; falls back to `amount_value` when SIG omits mg | `sig` column populated with QD/BID/TID abbreviations |
 | **Advanced NLP** | NLP + word-form tablet counts, weekly/monthly frequencies, taper decomposition | Taper schedules need per-step expansion |
 

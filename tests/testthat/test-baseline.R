@@ -37,7 +37,7 @@ test_that("M2 uses tablets × freq × strength correctly", {
   expect_equal(out$imputation_method, "tablets_freq")
 })
 
-test_that("M3 supply_based: quantity × strength / days_supply", {
+test_that("supply_based (M4 default): quantity × strength / days_supply", {
   df  <- make_row(daily_dose = NA, quantity = 90, days_supply = 90, amount_value = 10,
                   tablets = NA, freq_per_day = NA)
   out <- calc_daily_dose_baseline(df)
@@ -45,7 +45,7 @@ test_that("M3 supply_based: quantity × strength / days_supply", {
   expect_equal(out$imputation_method, "supply_based")
 })
 
-test_that("M4 actual_duration: uses date diff when days_supply absent", {
+test_that("actual_duration (M3 default, Burkard): uses date diff when days_supply absent", {
   df  <- make_row(daily_dose = NA, quantity = 30, days_supply = NA, amount_value = 5,
                   tablets = NA, freq_per_day = NA,
                   start = "2023-01-01", end = "2023-01-30")
@@ -131,7 +131,7 @@ test_that("daily_dose takes precedence over daily_dose_mg when both present", {
 
 # BUG-2: methods order controls cascade priority
 test_that("methods order is respected: supply_based before tablets_freq", {
-  # Both M2 and M3 are computable; supply_based listed first -> should win
+  # Both tablets_freq and supply_based are computable; supply_based listed first -> should win
   df <- make_row(
     daily_dose = NA, tablets = 2, freq_per_day = 1, amount_value = 5,
     quantity = 90, days_supply = 90
@@ -140,7 +140,7 @@ test_that("methods order is respected: supply_based before tablets_freq", {
     df,
     methods = c("supply_based", "tablets_freq")
   )
-  # M3: 90 * 5 / 90 = 5  (not M2: 2 * 1 * 5 = 10)
+  # supply_based: 90 * 5 / 90 = 5  (not tablets_freq: 2 * 1 * 5 = 10)
   expect_equal(out$daily_dose_mg_imputed, 5)
   expect_equal(out$imputation_method, "supply_based")
 })
@@ -158,7 +158,7 @@ test_that("methods order: actual_duration before supply_based", {
     tablets = NA, freq_per_day = NA,
     start = "2023-01-01", end = "2023-01-30"
   )
-  # M4: 30*10/30 = 10;  M3: 30*10/90 = 3.33
+  # actual_duration (M3): 30*10/30 = 10;  supply_based (M4): 30*10/90 = 3.33
   out_default <- calc_daily_dose_baseline(
     df, methods = c("supply_based", "actual_duration")
   )

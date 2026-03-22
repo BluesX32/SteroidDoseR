@@ -123,7 +123,7 @@
   <tr><th>Method</th><th>Approach</th><th>Best when</th></tr>
   <tr>
     <td><strong>Baseline</strong></td>
-    <td>Four-step cascade (M1–M4) using structured OMOP fields: pre-existing dose value, tablets×freq×strength, quantity/days_supply, quantity/actual_duration</td>
+    <td>Four-step cascade (M1–M4) using structured OMOP fields: pre-existing dose value, tablets×freq×strength, quantity/actual_duration [Burkard formula, M3], quantity/days_supply [fallback, M4]</td>
     <td>OMOP fields well-populated; SIG text absent or unreliable</td>
   </tr>
   <tr>
