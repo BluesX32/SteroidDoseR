@@ -124,6 +124,59 @@ vignettes/
 
 ---
 
+## Test writing rules
+
+1. **Always include a route column in fixtures.** Because `filter_oral = TRUE`
+   is the default, every test fixture — including the `make_row()` helper and all
+   inline tibbles — must have a `route_concept_name` (or `route_source_value`)
+   column. Without it, every imputation call emits a "No route column found"
+   warning regardless of what the test is checking. See CICD-experiences.md #11.
+
+2. **Pin the exact `methods` vector when testing a specific imputation step.**
+   Do not rely on the default cascade order. If you are testing `supply_based`
+   (M4), pass `methods = c("supply_based")` explicitly; otherwise a higher-priority
+   method in the cascade may win and the `imputation_method` assertion fails after
+   any cascade reorder. See CICD-experiences.md #15.
+
+3. **After changing the cascade order, search for all `imputation_method`
+   assertions** (`grep -r "imputation_method"` in `tests/testthat/`) and verify
+   each expected value is still correct.
+
+---
+
+## Vignette writing rules
+
+1. **Never rename `daily_dose_mg_imputed` to `daily_dose_mg`.** `parse_sig()`
+   (called automatically when `m2_sig_parse = "auto"`, the default) adds a
+   `daily_dose_mg` column. Renaming `daily_dose_mg_imputed` to `daily_dose_mg`
+   afterwards causes a "Names must be unique" collision. Use the actual output
+   column names directly in `dose_col` arguments. See CICD-experiences.md #12.
+
+2. **Use `dose_col = "daily_dose_mg_imputed"` in `convert_pred_equiv()` and
+   `dose_col = "pred_equiv_mg"` in `build_episodes()`.** These are the canonical
+   column names produced by the pipeline; do not alias them.
+
+---
+
+## Evaluation rules
+
+1. **Convert the gold standard to prednisone equivalents before calling
+   `evaluate_against_gold()`.** The gold `median_daily_dose` is in the native
+   drug unit. Use an overlap-join to `baseline_df` (oral-filtered) to identify
+   the drug, then apply `convert_pred_equiv()`. See CICD-experiences.md #13.
+
+2. **Always use the oral-filtered data frame as the source for the gold drug
+   map.** Using raw `drug_df` (all routes) risks mapping a gold episode to an
+   injection record, producing wildly wrong conversion factors. See
+   CICD-experiences.md #14.
+
+3. **Use `evaluate_against_gold()` on built episodes, not record-level
+   aggregation.** The function performs an episode-level overlap join — one row
+   per gold episode. Record-level comparison (counting raw prescriptions within
+   gold windows) produces different denominators and is harder to interpret.
+
+---
+
 ## OMOP concept IDs used in code
 
 | Concept | ID | Notes |

@@ -404,6 +404,245 @@ env:
 
 ---
 
+## 11. Test fixtures must include route columns when filter_oral = TRUE is the default
+
+**Symptom**
+
+```
+Warning: No route column found (route_concept_name or route_source_value).
+Oral filter skipped — all records retained.
+```
+
+Appeared for every test (17 warnings), even tests that had nothing to do with
+oral filtering.
+
+**Root cause**
+
+`filter_oral = TRUE` became the default for `calc_daily_dose_baseline()`,
+`calc_daily_dose_nlp()`, and `calc_daily_dose_nlp_advanced()`. The helper
+function that builds test fixtures (`make_row()`) did not include a
+`route_concept_name` column, so the filter could not run and warned on every
+call.
+
+**Fix**
+
+Add a route column to every fixture — including the `make_row()` helper and all
+inline tibbles — even when the test does not exercise oral filtering:
+
+```r
+make_row <- function(..., route_concept_name = "Oral") {
+  tibble::tibble(route_concept_name = route_concept_name, ...)
+}
+```
+
+And in inline tibbles:
+
+```r
+tibble::tibble(
+  route_concept_name      = "Oral",
+  drug_concept_name       = "Prednisone 5 mg oral tablet",
+  ...
+)
+```
+
+**Prevention**: whenever you add a parameter with a new default that requires an
+additional column, immediately update the test fixture helper and every inline
+tibble in the test suite.
+
+---
+
+## 12. parse_sig() adds daily_dose_mg — vignette rename will collide
+
+**Symptom**
+
+```
+Error in `dplyr::rename()`:
+! Names must be unique.
+x These names are duplicated: "daily_dose_mg" [1, 2]
+```
+
+**Root cause**
+
+`m2_sig_parse = "auto"` (the default since v0.1.8) calls `parse_sig()` inside
+`calc_daily_dose_baseline()`. `parse_sig()` adds a `daily_dose_mg` column to
+the data frame. If a downstream step then tries to
+`dplyr::rename(daily_dose_mg = daily_dose_mg_imputed)`, the column name already
+exists and dplyr errors.
+
+This hit the baseline-workflow vignette because Step 2 contained:
+
+```r
+drug_baseline <- drug_baseline |>
+  dplyr::rename(daily_dose_mg = daily_dose_mg_imputed)   # WRONG — collision!
+```
+
+**Fix**
+
+Never rename `daily_dose_mg_imputed` to `daily_dose_mg`. Use the output column
+name as-is throughout downstream steps:
+
+```r
+drug_pe <- convert_pred_equiv(
+  drug_baseline,
+  dose_col = "daily_dose_mg_imputed"   # use the actual output column name
+)
+```
+
+And in `build_episodes()`:
+
+```r
+episodes <- build_episodes(drug_for_episodes, dose_col = "pred_equiv_mg")
+```
+
+**Prevention**: before renaming any column in vignettes or analysis scripts,
+check whether `parse_sig()` or any upstream function already emits that name.
+
+---
+
+## 13. Gold standard must be converted to prednisone equivalents before evaluation
+
+**Symptom**
+
+Systematic large errors when comparing computed doses (in pred-equiv mg) against
+the gold standard: baseline computed ~5 mg pred-equiv for a prednisone record,
+gold showed 5 mg — should match — but methylprednisolone records showed 4 mg
+gold vs 5 mg computed, giving a spurious 25% error.
+
+**Root cause**
+
+The gold standard `median_daily_dose` column stores the dose in the **native
+drug unit** (e.g., 4 mg methylprednisolone, not 5 mg prednisone-equivalent).
+The computed side goes through `convert_pred_equiv()` before episode building.
+Comparing native-unit gold against pred-equiv computed doses produces systematic
+errors for any drug other than prednisone itself.
+
+**Fix**
+
+After loading the gold standard, overlap-join it to the oral-filtered drug data
+frame to identify the drug name for each gold episode, then apply
+`convert_pred_equiv()`:
+
+```r
+# 1. Identify drug for each gold episode via date overlap
+gold_drug_map <- baseline_df |>
+  dplyr::select(person_id, drug_name_std, drug_exposure_start_date,
+                drug_exposure_end_date) |>
+  dplyr::inner_join(
+    gold_std |>
+      dplyr::rename(person_id = patient_id) |>
+      dplyr::select(person_id, episode_start, episode_end, median_daily_dose),
+    by = "person_id"
+  ) |>
+  dplyr::filter(drug_exposure_start_date <= episode_end,
+                drug_exposure_end_date   >= episode_start) |>
+  dplyr::group_by(person_id, episode_start, episode_end) |>
+  dplyr::slice_min(drug_exposure_start_date, n = 1, with_ties = FALSE) |>
+  dplyr::ungroup()
+
+# 2. Convert gold dose to pred-equiv
+gold_drug_conv <- convert_pred_equiv(
+  gold_drug_map,
+  drug_col = "drug_name_std",
+  dose_col = "median_daily_dose"
+)
+
+# 3. Write back; fall back to raw dose if conversion failed
+gold_std <- gold_std |>
+  dplyr::left_join(
+    gold_drug_conv |>
+      dplyr::rename(patient_id = person_id) |>
+      dplyr::select(patient_id, episode_start, episode_end, pred_equiv_mg),
+    by = c("patient_id", "episode_start", "episode_end")
+  ) |>
+  dplyr::mutate(
+    median_daily_dose = dplyr::coalesce(pred_equiv_mg, median_daily_dose)
+  ) |>
+  dplyr::select(-pred_equiv_mg)
+```
+
+**Prevention**: every evaluation pipeline must ensure both sides are on the same
+dose scale. Document the expected unit (pred-equiv mg) in the gold standard
+schema.
+
+---
+
+## 14. Use oral-filtered df as source for gold drug map — not raw drug_df
+
+**Symptom**
+
+Very large errors (>100 mg) for patients who also had IV methylprednisolone
+pulse therapy. Gold episode showed ~5 mg oral prednisone; computed episode
+showed ~1000 mg because the gold drug map identified the drug as
+"methylprednisolone injection" and the conversion factor amplified the native
+dose.
+
+**Root cause**
+
+The overlap-join used to map gold episodes to drug names (see #13 above) was
+sourced from `drug_df` (all routes). When a patient had both oral prednisone
+and IV methylprednisolone pulse therapy on overlapping dates, the join could
+pick the IV record, causing a drastically wrong conversion factor.
+
+Similarly, `calc_daily_dose_nlp_advanced()` was called without
+`filter_oral = TRUE`, so injection records entered the advanced NLP imputation
+and produced implausibly high daily doses.
+
+**Fix**
+
+1. Always use the oral-filtered data frame (`baseline_df`, already filtered) as
+   the source for the gold drug map join.
+2. Pass `filter_oral = TRUE` explicitly to `calc_daily_dose_nlp_advanced()` even
+   though it is the default, to make the intent visible in analysis scripts.
+
+```r
+# Use baseline_df (oral-filtered), not drug_df (all routes)
+gold_drug_map <- baseline_df |> ...
+
+# Explicit filter_oral in advanced NLP
+adv_nlp_df <- calc_daily_dose_nlp_advanced(con, filter_oral = TRUE)
+```
+
+**Prevention**: never source a drug-name lookup from unfiltered data when the
+downstream pipeline is oral-only.
+
+---
+
+## 15. Cascade reorder invalidates tests that rely on default method ordering
+
+**Symptom**
+
+```
+-- Failure: supply_based (M4 default) --
+Expected: 33.3
+  Actual: 33.3   # same value, but imputation_method is "actual_duration", not "supply_based"
+```
+
+**Root cause**
+
+The cascade order in `calc_daily_dose_baseline()` was changed (v0.1.7) so that
+`actual_duration` (M3/Burkard) runs before `supply_based` (M4). A test that
+relied on the default `methods` vector and expected `imputation_method ==
+"supply_based"` silently produced the same numeric result but from M3, so the
+method assertion failed.
+
+**Fix**
+
+Pass an explicit `methods` argument in tests that need to exercise a specific
+imputation step:
+
+```r
+# Test M4 specifically — do not rely on the default cascade
+out <- calc_daily_dose_baseline(make_row(...), methods = c("supply_based"))
+expect_equal(out$imputation_method, "supply_based")
+```
+
+**Prevention**: after any change to the cascade order or `methods` default,
+search for all tests that assert `imputation_method` and verify that their
+expected values still match. Tests should pin the exact `methods` they are
+exercising, not rely on the full default cascade.
+
+---
+
 ## Quick reference
 
 | Check level | Issue | File(s) to edit |
@@ -414,6 +653,11 @@ env:
 | WARNING | Undocumented exported function | Create `man/<fn>.Rd` |
 | WARNING | Codoc mismatch | Update `\usage{}` and `\arguments{}` in Rd |
 | WARNING | Spurious test warnings | Pass a "silent" mode parameter to the function |
+| WARNING | No route column / filter_oral skipped | Add `route_concept_name` to all test fixtures |
 | NOTE | Non-standard top-level files | Add pattern to `.Rbuildignore` |
 | NOTE | Global variable binding | `utils::globalVariables(c("var1", ...))` |
 | GHA warn | Node.js deprecation | `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` in workflow |
+| Logic bug | Rename collision after parse_sig() | Use `dose_col = "daily_dose_mg_imputed"` directly |
+| Logic bug | Gold in native units vs pred-equiv | Convert gold with `convert_pred_equiv()` before eval |
+| Logic bug | Injection contamination in drug map | Use oral-filtered df (not `drug_df`) as join source |
+| Logic bug | Wrong imputation_method in test | Pin explicit `methods = c("supply_based")` in test |
