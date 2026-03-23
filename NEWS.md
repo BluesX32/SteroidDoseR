@@ -1,3 +1,24 @@
+# SteroidDoseR 0.2.0
+
+## Enhancements
+
+* **`classify_route()` — `drug_source_value` used as route fallback** (`utils-validate.R`):
+  When both `route_concept_name` and `route_source_value` are absent or NA, the function
+  now falls back to `drug_source_value` to infer route. Many EHR systems encode route
+  in the drug name string (e.g. `"METHYLPREDNISOLONE 125MG/2ML IV SOL"` or
+  `"PREDNISONE 5MG ORAL TAB"`). All three imputation functions pass `drug_source_value`
+  to `classify_route()` so injections with no route columns are correctly excluded.
+
+* **`classify_route()` — injection pattern now matches "intravenous"** (`utils-validate.R`):
+  The previous pattern `intravein` did not match the string `"intravenous"` (the most
+  common form in EHR drug name strings). Replaced with `intraven` which correctly matches
+  `"intravenous"`, `"intravenously"`, etc. Added `infusion`, `\\bsq\\b`, and `\\binjec\\b`
+  to cover additional common source value patterns.
+
+* **`classify_route()` — oral pattern now matches `\\btab\\b`** (`utils-validate.R`):
+  Shortened form `"TAB"` (common in drug_source_value strings like `"PREDNISONE 5MG ORAL TAB"`)
+  is now recognised as oral route.
+
 # SteroidDoseR 0.1.9
 
 ## Enhancements

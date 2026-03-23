@@ -189,7 +189,7 @@ vignettes/
 
 ## Tracked bugs
 
-See `bug.md` for the full list. All entries through BUG-8 are resolved.
+See `bug.md` for the full list. All entries through BUG-9 are resolved.
 
 ---
 

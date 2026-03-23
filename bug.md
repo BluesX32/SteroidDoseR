@@ -70,6 +70,24 @@ fallback — `amount_value` first, then mg extracted from `drug_concept_name` /
 was already parsed from the SIG, `daily_dose_mg` is computed and
 `parsed_status` is updated to `"ok"`.
 
+### BUG-9 `classify_route()` missed "intravenous" + ignores `drug_source_value` ✅ FIXED
+
+Two separate failures meant injection records could slip through `filter_oral`:
+
+1. **Pattern bug**: the injection regex contained `intravein`, which does *not*
+   match the string `"intravenous"` (the most common form in EHR drug names).
+   The correct prefix is `intraven` (which is a substring of "intravenous").
+2. **Missing column**: `drug_source_value` was never passed to `classify_route()`.
+   Many EHR systems encode route only in the drug name string (e.g.
+   `"METHYLPREDNISOLONE 125MG/2ML IV SOL"` or `"DEXAMETHASONE INJECTION"`).
+   Records with no `route_concept_name` and no `route_source_value` fell through
+   as `"other"` (not `"injection"`) and were retained.
+
+Fixed in v0.2.0: `classify_route()` accepts a third `drug_source` argument;
+all three imputation functions now pass `drug_source_value` as a coalesce
+fallback. Regex updated: `intravein` → `intraven`; added `infusion`, `\\bsq\\b`,
+`\\binjec\\b`; oral pattern extended with `\\btab\\b`.
+
 ### BUG-8 `amount_unit_concept_id = 0` rejected as non-mg unit ✅ FIXED
 Many production CDMs store `0` (the OMOP "no matching concept" sentinel) instead
 of `NULL` when the drug strength unit has not been mapped. The amount_value guard

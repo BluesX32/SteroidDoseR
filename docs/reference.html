@@ -224,6 +224,13 @@
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
 
+<h3>v0.2.0 <span class="badge badge-fix">Bug fix — injection filtering via drug_source_value</span></h3>
+<ul>
+  <li><strong>fix(utils-validate): <code>classify_route()</code> now checks <code>drug_source_value</code> as a third fallback</strong> — when both <code>route_concept_name</code> and <code>route_source_value</code> are absent or NA, the drug name string is now used to infer route. Many EHR systems encode route in the drug name (e.g. <code>"METHYLPREDNISOLONE 125MG/2ML IV SOL"</code>). All three imputation functions pass <code>drug_source_value</code> to the classifier so injections with no route columns are correctly excluded.</li>
+  <li><strong>fix(utils-validate): <code>classify_route()</code> injection pattern now matches "intravenous"</strong> — the previous pattern <code>intravein</code> did not match the string <code>"intravenous"</code>. Replaced with <code>intraven</code> which correctly matches <code>"intravenous"</code>, <code>"intravenously"</code>, etc. Added <code>infusion</code>, <code>\\bsq\\b</code>, and <code>\\binjec\\b</code>.</li>
+  <li><strong>fix(utils-validate): oral pattern now matches <code>\\btab\\b</code></strong> — abbreviated form <code>"TAB"</code> (common in drug name strings like <code>"PREDNISONE 5MG ORAL TAB"</code>) is now recognised as oral route.</li>
+</ul>
+
 <h3>v0.1.9 <span class="badge badge-new">Enhancement — new SIG patterns &amp; tablet default</span></h3>
 <ul>
   <li><strong>feat(nlp): <code>"Once Oral"</code>, <code>"Every evening Oral"</code>, <code>"Nightly Oral"</code> parse as <code>freq_per_day = 1</code></strong> — three common real-world SIG strings that previously returned <code>NA</code> frequency now resolve to once-daily. Leading whitespace is normalised before matching. Applies to both <code>parse_sig_one()</code> and <code>parse_sig_one_advanced()</code>.</li>

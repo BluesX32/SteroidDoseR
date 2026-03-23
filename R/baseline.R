@@ -149,11 +149,13 @@ calc_daily_dose_baseline <- function(connector_or_df,
       drug_df$route_concept_name else NULL
     rs <- if ("route_source_value" %in% names(drug_df))
       drug_df$route_source_value else NULL
+    ds <- if ("drug_source_value" %in% names(drug_df))
+      drug_df$drug_source_value else NULL
 
-    if (is.null(rc) && is.null(rs)) {
+    if (is.null(rc) && is.null(rs) && is.null(ds)) {
       rlang::warn("No route column found; skipping oral-route filter.")
     } else {
-      route_class <- classify_route(rc, rs)
+      route_class <- classify_route(rc, rs, ds)
       drug_df <- drug_df[route_class == "oral" | is.na(route_class), ]
     }
 

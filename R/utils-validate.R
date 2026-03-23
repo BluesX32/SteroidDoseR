@@ -127,29 +127,43 @@ standardize_drug_name <- function(x, drug_name_map = NULL) {
 #'
 #' @param route_concept Character vector. OMOP `route_concept_name` field.
 #' @param route_source  Character vector. `route_source_value` field
-#'   (free text). Used as fallback when `route_concept` is NA.
+#'   (free text). Used as first fallback when `route_concept` is NA.
+#' @param drug_source   Character vector. `drug_source_value` field
+#'   (free text). Used as second fallback when both route columns are NA.
+#'   Many EHR systems encode route in the drug name string (e.g.
+#'   "METHYLPREDNISOLONE 125MG/2ML IV SOL", "PREDNISONE 5MG ORAL TAB").
 #' @return Character vector: one of `"oral"`, `"inhaled"`, `"topical"`,
 #'   `"injection"`, `"ophthalmic"`, or `"other"`.
 #' @noRd
-classify_route <- function(route_concept = NULL, route_source = NULL) {
-  # Build a combined string; prefer concept name, fall back to source value
+classify_route <- function(route_concept = NULL, route_source = NULL,
+                            drug_source = NULL) {
+  # Build a combined string: prefer route_concept_name, then route_source_value,
+  # then drug_source_value.  Lowercased for regex matching.
   n <- max(
     if (!is.null(route_concept)) length(route_concept) else 0L,
-    if (!is.null(route_source))  length(route_source)  else 0L
+    if (!is.null(route_source))  length(route_source)  else 0L,
+    if (!is.null(drug_source))   length(drug_source)   else 0L
   )
 
   rc <- if (!is.null(route_concept)) stringr::str_to_lower(as.character(route_concept)) else rep(NA_character_, n)
   rs <- if (!is.null(route_source))  stringr::str_to_lower(as.character(route_source))  else rep(NA_character_, n)
+  ds <- if (!is.null(drug_source))   stringr::str_to_lower(as.character(drug_source))   else rep(NA_character_, n)
 
-  combined <- dplyr::coalesce(rc, rs)
+  combined <- dplyr::coalesce(rc, rs, ds)
   combined[is.na(combined)] <- ""
 
   dplyr::case_when(
     stringr::str_detect(combined, "inhal|metered|aerosol|dry powder|actuat|nebul|pulmicort") ~ "inhaled",
     stringr::str_detect(combined, "ophthalm|eye|ocular|otic|ear") ~ "ophthalmic",
     stringr::str_detect(combined, "topical|cream|ointment|lotion|gel|patch|transdermal|rectal|nasal") ~ "topical",
-    stringr::str_detect(combined, "inject|intramus|\\bim\\b|intravein|\\biv\\b|subcutane|\\bsc\\b|intraartic|intradermal|epidural") ~ "injection",
-    stringr::str_detect(combined, "oral|mouth|sublingual|buccal|swallow|tablet|capsule|solution|liquid") ~ "oral",
+    # injection: covers INJECT/INJEC, IM, IV, INTRAVENOUS, INTRAMUS,
+    #   SUBCUTANEOUS, SC, INTRAARTIC, INTRADERMAL, EPIDURAL, INFUSION, SQ
+    stringr::str_detect(combined,
+      paste0("inject|intraven|intramus|\\bim\\b|\\biv\\b|\\bsq\\b|",
+             "subcutan|\\bsc\\b|intraartic|intradermal|epidural|",
+             "infusion|\\binjec\\b")) ~ "injection",
+    stringr::str_detect(combined,
+      "oral|mouth|sublingual|buccal|swallow|\\btab\\b|tablet|capsule|solution|liquid") ~ "oral",
     TRUE ~ "other"
   )
 }
