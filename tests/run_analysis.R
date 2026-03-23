@@ -1,8 +1,8 @@
 # run_analysis.R
 # Full SteroidDoseR analysis: Baseline, NLP, Advanced NLP.
-# All comparisons are performed at the PERSON level.
-# Gold-standard evaluation uses the overlapping time window between each
-# method's raw records and each gold-standard episode.
+# All comparisons are performed at the EPISODE level.
+# Gold-standard evaluation matches computed episodes to gold episodes via
+# date-overlap join (evaluate_against_gold), one row per gold episode.
 #
 # Analysis workflow
 # -----------------
@@ -169,157 +169,6 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
   }
 }
 
-# ===========================================================================
-# Helper: record-level comparison to gold standard using overlap window
-#
-# For each gold-standard episode (patient_id, g_start, g_end, gold_dose):
-#   1. Find method records for that patient whose date range overlaps [g_start, g_end]
-#   2. Clip each record to the overlap window and compute its effective days
-#   3. Aggregate: simple median, duration-weighted mean
-#   4. Compare with gold_dose; compute error metrics
-#
-# Returns a list: $comparison (one row per gold episode), $summary (metrics)
-# ===========================================================================
-compare_records_to_gold <- function(method_records,
-                                    gold_df,
-                                    dose_col,
-                                    start_col = "drug_exposure_start_date",
-                                    end_col   = "drug_exposure_end_date") {
-
-  common_pts <- intersect(
-    unique(method_records$person_id),
-    unique(gold_df$patient_id)
-  )
-
-  if (length(common_pts) == 0L) {
-    message("  No overlapping patients between method and gold standard.")
-    return(list(
-      comparison        = tibble::tibble(),
-      n_common_patients = 0L,
-      summary           = tibble::tibble()
-    ))
-  }
-
-  # --- Prepare method records for overlapping patients ----------------------
-  has_end <- end_col %in% names(method_records)
-  m_sub <- method_records |>
-    dplyr::filter(
-      person_id %in% common_pts,
-      !is.na(.data[[dose_col]])
-    ) |>
-    dplyr::mutate(
-      rec_start = as.Date(.data[[start_col]]),
-      rec_end   = if (has_end) as.Date(.data[[end_col]]) else as.Date(.data[[start_col]])
-    ) |>
-    dplyr::select(person_id, rec_start, rec_end, dose = dplyr::all_of(dose_col))
-
-  # --- Prepare gold standard for overlapping patients -----------------------
-  g_sub <- gold_df |>
-    dplyr::filter(patient_id %in% common_pts) |>
-    dplyr::mutate(
-      g_start   = as.Date(episode_start),
-      g_end     = as.Date(episode_end),
-      gold_dose = as.numeric(median_daily_dose)
-    ) |>
-    dplyr::select(patient_id, g_start, g_end, gold_dose)
-
-  # --- Cross join on patient then keep overlapping records ------------------
-  matched <- g_sub |>
-    dplyr::left_join(
-      m_sub,
-      by           = c("patient_id" = "person_id"),
-      relationship = "many-to-many"
-    ) |>
-    dplyr::mutate(
-      ovlp_start   = pmax(g_start, rec_start),
-      ovlp_end     = pmin(g_end,   rec_end),
-      overlap_days = as.integer(ovlp_end - ovlp_start) + 1L,
-      overlap_days = dplyr::if_else(overlap_days < 1L, 0L, overlap_days)
-    ) |>
-    dplyr::filter(overlap_days > 0L)
-
-  # --- Aggregate per gold episode -------------------------------------------
-  # Simple median and duration-weighted mean over the clipped records
-  agg <- matched |>
-    dplyr::group_by(patient_id, g_start, g_end, gold_dose) |>
-    dplyr::summarise(
-      n_method_records      = dplyr::n(),
-      method_median         = stats::median(dose, na.rm = TRUE),
-      method_mean_wtd       = sum(dose * overlap_days, na.rm = TRUE) /
-                              sum(overlap_days[!is.na(dose)]),
-      total_overlap_days    = sum(overlap_days, na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  # Attach unmatched gold episodes
-  comparison <- g_sub |>
-    dplyr::left_join(agg, by = c("patient_id", "g_start", "g_end", "gold_dose")) |>
-    dplyr::mutate(
-      matched = !is.na(method_median),
-
-      # Median-based errors
-      abs_err_median  = abs(method_median - gold_dose),
-      bias_median     = method_median - gold_dose,
-      rel_err_median  = bias_median / gold_dose * 100,
-
-      # Weighted-mean-based errors
-      abs_err_mean    = abs(method_mean_wtd - gold_dose),
-      bias_mean       = method_mean_wtd - gold_dose,
-      rel_err_mean    = bias_mean / gold_dose * 100,
-
-      # Agreement categories (median-based)
-      agreement = dplyr::case_when(
-        abs(rel_err_median) <= 5  ~ "Exact (<=5%)",
-        abs(rel_err_median) <= 20 ~ "Good (<=20%)",
-        abs(rel_err_median) <= 50 ~ "Moderate (<=50%)",
-        !is.na(rel_err_median)    ~ "Poor (>50%)",
-        TRUE                      ~ NA_character_
-      )
-    )
-
-  n_gold    <- nrow(g_sub)
-  n_matched <- sum(comparison$matched, na.rm = TRUE)
-  m_cmp     <- comparison |> dplyr::filter(matched)
-
-  pcor_med <- if (nrow(m_cmp) >= 3L)
-    stats::cor(m_cmp$method_median, m_cmp$gold_dose, use = "complete.obs")
-  else NA_real_
-
-  scor_med <- if (nrow(m_cmp) >= 3L)
-    stats::cor(m_cmp$method_median, m_cmp$gold_dose,
-               use = "complete.obs", method = "spearman")
-  else NA_real_
-
-  pcor_mean <- if (nrow(m_cmp) >= 3L)
-    stats::cor(m_cmp$method_mean_wtd, m_cmp$gold_dose, use = "complete.obs")
-  else NA_real_
-
-  summ <- tibble::tibble(
-    n_gold_episodes   = n_gold,
-    n_matched         = n_matched,
-    n_common_patients = length(common_pts),
-    coverage_pct      = 100 * n_matched / n_gold,
-    # Median-based
-    MAE_median        = mean(m_cmp$abs_err_median,            na.rm = TRUE),
-    MBE_median        = mean(m_cmp$bias_median,               na.rm = TRUE),
-    RMSE_median       = sqrt(mean(m_cmp$bias_median^2,        na.rm = TRUE)),
-    MAPE_median       = mean(abs(m_cmp$rel_err_median),       na.rm = TRUE),
-    pearson_median    = pcor_med,
-    spearman_median   = scor_med,
-    # Weighted-mean-based
-    MAE_mean_wtd      = mean(m_cmp$abs_err_mean,              na.rm = TRUE),
-    MBE_mean_wtd      = mean(m_cmp$bias_mean,                 na.rm = TRUE),
-    RMSE_mean_wtd     = sqrt(mean(m_cmp$bias_mean^2,          na.rm = TRUE)),
-    MAPE_mean_wtd     = mean(abs(m_cmp$rel_err_mean),         na.rm = TRUE),
-    pearson_mean_wtd  = pcor_mean
-  )
-
-  list(
-    comparison        = comparison,
-    n_common_patients = length(common_pts),
-    summary           = summ
-  )
-}
 
 # ===========================================================================
 # 4. BASELINE METHOD
@@ -511,93 +360,100 @@ cat("\nGold standard dose distribution:\n")
 print(summary(gold_std$median_daily_dose))
 
 # ===========================================================================
-# 9. Person-level overlap comparison (each method vs gold standard)
+# 9. Episode-level comparison (each method vs gold standard)
 # ===========================================================================
-message("\n=== Person-level overlap comparisons vs gold standard ===")
+message("\n=== Episode-level comparisons vs gold standard ===")
 
 # --- 9a. Baseline ---
 message("\n  Baseline vs gold standard ...")
-ev_baseline <- compare_records_to_gold(
-  method_records = baseline_df,
-  gold_df        = gold_std,
-  dose_col       = "daily_dose_mg_imputed"
+ev_baseline <- evaluate_against_gold(
+  baseline_episodes,
+  gold_std,
+  gold_id_col = "patient_id"
 )
+ev_baseline$n_common_patients <- length(intersect(
+  unique(baseline_episodes$person_id), unique(gold_std$patient_id)
+))
 
 cat(sprintf(
   "\nBaseline: %d common patients | %d/%d gold episodes matched (%.1f%% coverage)\n",
   ev_baseline$n_common_patients,
-  ev_baseline$summary$n_matched,
-  ev_baseline$summary$n_gold_episodes,
+  ev_baseline$summary$n_matched_periods,
+  ev_baseline$summary$n_gold_periods,
   ev_baseline$summary$coverage_pct
 ))
 cat("\nBaseline summary metrics:\n")
 print(as.data.frame(ev_baseline$summary))
 
-cat("\nBaseline agreement categories (median-based):\n")
+cat("\nBaseline agreement categories:\n")
 ev_baseline$comparison |>
-  dplyr::filter(matched) |>
-  dplyr::count(agreement, sort = TRUE) |>
+  dplyr::filter(!is.na(computed_dose)) |>
+  dplyr::count(agreement_category, sort = TRUE) |>
   dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
   print()
 
 cat("\nBaseline — top-10 largest errors:\n")
 ev_baseline$comparison |>
-  dplyr::filter(matched) |>
-  dplyr::arrange(dplyr::desc(abs_err_median)) |>
-  dplyr::select(patient_id, g_start, g_end, gold_dose,
-                method_median, method_mean_wtd, abs_err_median, bias_median) |>
+  dplyr::filter(!is.na(computed_dose)) |>
+  dplyr::arrange(dplyr::desc(absolute_error)) |>
+  dplyr::select(patient_id, episode_start, episode_end, gold_dose,
+                computed_dose, absolute_error, bias_error) |>
   head(10) |>
   print()
 
 # --- 9b. NLP ---
 message("\n  NLP vs gold standard ...")
-ev_nlp <- compare_records_to_gold(
-  method_records = nlp_df |>
-    dplyr::filter(parsed_status == "ok"),
-  gold_df        = gold_std,
-  dose_col       = "daily_dose_mg"
+ev_nlp <- evaluate_against_gold(
+  nlp_episodes,
+  gold_std,
+  gold_id_col = "patient_id"
 )
+ev_nlp$n_common_patients <- length(intersect(
+  unique(nlp_episodes$person_id), unique(gold_std$patient_id)
+))
 
 cat(sprintf(
   "\nNLP: %d common patients | %d/%d gold episodes matched (%.1f%% coverage)\n",
   ev_nlp$n_common_patients,
-  ev_nlp$summary$n_matched,
-  ev_nlp$summary$n_gold_episodes,
+  ev_nlp$summary$n_matched_periods,
+  ev_nlp$summary$n_gold_periods,
   ev_nlp$summary$coverage_pct
 ))
 cat("\nNLP summary metrics:\n")
 print(as.data.frame(ev_nlp$summary))
 
-cat("\nNLP agreement categories (median-based):\n")
+cat("\nNLP agreement categories:\n")
 ev_nlp$comparison |>
-  dplyr::filter(matched) |>
-  dplyr::count(agreement, sort = TRUE) |>
+  dplyr::filter(!is.na(computed_dose)) |>
+  dplyr::count(agreement_category, sort = TRUE) |>
   dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
   print()
 
 # --- 9c. Advanced NLP ---
 message("\n  Advanced NLP vs gold standard ...")
-ev_adv <- compare_records_to_gold(
-  method_records = adv_nlp_df |>
-    dplyr::filter(parsed_status %in% c("ok", "taper_ok")),
-  gold_df        = gold_std,
-  dose_col       = "daily_dose_mg"
+ev_adv <- evaluate_against_gold(
+  adv_nlp_episodes,
+  gold_std,
+  gold_id_col = "patient_id"
 )
+ev_adv$n_common_patients <- length(intersect(
+  unique(adv_nlp_episodes$person_id), unique(gold_std$patient_id)
+))
 
 cat(sprintf(
   "\nAdvanced NLP: %d common patients | %d/%d gold episodes matched (%.1f%% coverage)\n",
   ev_adv$n_common_patients,
-  ev_adv$summary$n_matched,
-  ev_adv$summary$n_gold_episodes,
+  ev_adv$summary$n_matched_periods,
+  ev_adv$summary$n_gold_periods,
   ev_adv$summary$coverage_pct
 ))
 cat("\nAdvanced NLP summary metrics:\n")
 print(as.data.frame(ev_adv$summary))
 
-cat("\nAdvanced NLP agreement categories (median-based):\n")
+cat("\nAdvanced NLP agreement categories:\n")
 ev_adv$comparison |>
-  dplyr::filter(matched) |>
-  dplyr::count(agreement, sort = TRUE) |>
+  dplyr::filter(!is.na(computed_dose)) |>
+  dplyr::count(agreement_category, sort = TRUE) |>
   dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
   print()
 
@@ -608,11 +464,11 @@ message("\n=== Comparison scatter plots ===")
 
 make_scatter_df <- function(ev_result, method_label) {
   ev_result$comparison |>
-    dplyr::filter(matched) |>
+    dplyr::filter(!is.na(computed_dose)) |>
     dplyr::transmute(
       patient_id,
       gold_dose,
-      method_dose = method_median,
+      method_dose = computed_dose,
       method      = method_label
     )
 }
@@ -676,7 +532,7 @@ episode_counts <- tibble::tibble(
 print(as.data.frame(episode_counts), row.names = FALSE)
 cat("\n")
 
-cat("GOLD STANDARD COMPARISON (overlap-window, median dose)\n")
+cat("GOLD STANDARD COMPARISON (episode-level, median dose)\n")
 cat(strrep("-", 40), "\n")
 metrics_tbl <- tibble::tibble(
   Method           = c("Baseline", "NLP", "Advanced NLP"),
@@ -686,24 +542,24 @@ metrics_tbl <- tibble::tibble(
   Coverage_pct     = round(c(ev_baseline$summary$coverage_pct,
                               ev_nlp$summary$coverage_pct,
                               ev_adv$summary$coverage_pct), 1),
-  MAE_mg           = round(c(ev_baseline$summary$MAE_median,
-                              ev_nlp$summary$MAE_median,
-                              ev_adv$summary$MAE_median), 2),
-  MBE_mg           = round(c(ev_baseline$summary$MBE_median,
-                              ev_nlp$summary$MBE_median,
-                              ev_adv$summary$MBE_median), 2),
-  RMSE_mg          = round(c(ev_baseline$summary$RMSE_median,
-                              ev_nlp$summary$RMSE_median,
-                              ev_adv$summary$RMSE_median), 2),
-  MAPE_pct         = round(c(ev_baseline$summary$MAPE_median,
-                              ev_nlp$summary$MAPE_median,
-                              ev_adv$summary$MAPE_median), 1),
-  Pearson_r        = round(c(ev_baseline$summary$pearson_median,
-                              ev_nlp$summary$pearson_median,
-                              ev_adv$summary$pearson_median), 3),
-  Spearman_rho     = round(c(ev_baseline$summary$spearman_median,
-                              ev_nlp$summary$spearman_median,
-                              ev_adv$summary$spearman_median), 3)
+  MAE_mg           = round(c(ev_baseline$summary$MAE,
+                              ev_nlp$summary$MAE,
+                              ev_adv$summary$MAE), 2),
+  MBE_mg           = round(c(ev_baseline$summary$MBE,
+                              ev_nlp$summary$MBE,
+                              ev_adv$summary$MBE), 2),
+  RMSE_mg          = round(c(ev_baseline$summary$RMSE,
+                              ev_nlp$summary$RMSE,
+                              ev_adv$summary$RMSE), 2),
+  MAPE_pct         = round(c(ev_baseline$summary$MAPE,
+                              ev_nlp$summary$MAPE,
+                              ev_adv$summary$MAPE), 1),
+  Pearson_r        = round(c(ev_baseline$summary$pearson_corr,
+                              ev_nlp$summary$pearson_corr,
+                              ev_adv$summary$pearson_corr), 3),
+  Spearman_rho     = round(c(ev_baseline$summary$spearman_corr,
+                              ev_nlp$summary$spearman_corr,
+                              ev_adv$summary$spearman_corr), 3)
 )
 print(as.data.frame(metrics_tbl), row.names = FALSE)
 
@@ -751,7 +607,7 @@ for (i in seq_len(nrow(metrics_tbl))) {
 cat("\n")
 
 # NLP gain
-nlp_gain <- ev_adv$summary$n_matched - ev_nlp$summary$n_matched
+nlp_gain <- ev_adv$summary$n_matched_periods - ev_nlp$summary$n_matched_periods
 if (!is.na(nlp_gain) && nlp_gain != 0) {
   cat(sprintf(
     paste0(
