@@ -82,7 +82,9 @@ inst/sql/
 
 tests/
   run_analysis.R            — live/synthetic end-to-end analysis script
-  testthat/                 — 112 unit tests across 5 files
+  error_analysis.R          — deep-dive into high-error patients; requires run_analysis.R objects
+  eligibility_analysis.R    — patient/episode funnel from DB and gold standard; requires run_analysis.R objects
+  testthat/                 — unit tests across 5 files
 
 docs/
   manual.html               — self-contained HTML package manual
@@ -134,7 +136,7 @@ vignettes/
 
 ## Tracked bugs
 
-See `bug.md` for the full list. All entries through BUG-6 are resolved.
+See `bug.md` for the full list. All entries through BUG-8 are resolved.
 
 ---
 

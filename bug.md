@@ -70,6 +70,17 @@ fallback — `amount_value` first, then mg extracted from `drug_concept_name` /
 was already parsed from the SIG, `daily_dose_mg` is computed and
 `parsed_status` is updated to `"ok"`.
 
+### BUG-8 `amount_unit_concept_id = 0` rejected as non-mg unit ✅ FIXED
+Many production CDMs store `0` (the OMOP "no matching concept" sentinel) instead
+of `NULL` when the drug strength unit has not been mapped. The amount_value guard
+previously only accepted concept 8576 (mg) or `NA`; concept 0 fell through to the
+string-extraction fallback, silently setting `strength_mg = NA` for every record
+at such sites and causing all imputation methods to return `"missing"`.
+
+Fixed in v0.1.6: concept ID `0` is now treated identically to `NA` (unknown unit)
+and `amount_value` is accepted as milligrams in that case, matching the behaviour
+sites that have not mapped the unit concept.
+
 ## connector / SQL
 
 ### BUG-7 SQL template not found when package is loaded via devtools::load_all() or stale install ✅ FIXED

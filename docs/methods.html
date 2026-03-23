@@ -253,7 +253,7 @@ OMOP drug_exposure (all drugs, all routes)
 <ol>
   <li><strong>Flag detection</strong> — free-text ("as directed"), taper language, PRN ("as needed")</li>
   <li><strong>Tablet count</strong> — "2 tablets", "2 tabs", "2 caps", etc.</li>
-  <li><strong>Frequency</strong> — QD/daily/once daily (1×), BID/twice daily (2×), TID (3×), QID (4×), QOD (0.5×), q6h, q8h, q12h</li>
+  <li><strong>Frequency</strong> — QD/daily/once daily/nightly/every evening/Once Oral (1×), BID/twice daily (2×), TID (3×), QID (4×), QOD (0.5×), q6h, q8h, q12h. When no tablet count appears in the SIG, <code>tablets</code> defaults to 1. <span class="badge badge-new">v0.1.9</span></li>
   <li><strong>mg extraction</strong> (priority order):
     <ol type="a">
       <li><code>(X mg total)</code> — explicit daily total in parentheses</li>
@@ -488,6 +488,7 @@ adv_df |>
 <table>
   <tr><th>SIG text</th><th>freq_per_day</th><th>Source</th></tr>
   <tr><td>daily, QD, once daily, every day, every morning, QAM, every 24 hours</td><td>1</td><td>Standard</td></tr>
+  <tr><td>Once Oral, nightly, every evening <span class="badge badge-new">v0.1.9</span></td><td>1</td><td>Standard</td></tr>
   <tr><td>BID, twice daily, two times daily, Q12H, every 12 hours</td><td>2</td><td>Standard</td></tr>
   <tr><td>TID, three times daily, Q8H, every 8 hours</td><td>3</td><td>Standard</td></tr>
   <tr><td>QID, four times daily, Q6H, every 6 hours</td><td>4</td><td>Standard</td></tr>
