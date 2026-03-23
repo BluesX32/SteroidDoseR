@@ -34,12 +34,6 @@
 # R CMD check runs every .R file in tests/ via R CMD BATCH (non-interactive).
 # Exit immediately and cleanly when not in an interactive session.
 if (!interactive()) quit(status = 0L, save = "no")
-setwd("H:/Myositis/DoseCalculation/SteroidDoseR")
-devtools::install_local("./SteroidDoseR/", force = TRUE)
-
-devtools::load_all()
-devtools::document()
-devtools::test()
 
 
 library(SteroidDoseR)
@@ -137,6 +131,27 @@ drug_df <- drug_df |>
 
 if (!"drug_exposure_id" %in% names(drug_df)) {
   drug_df <- drug_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
+}
+
+# ===========================================================================
+# Helper: print agreement summary as a compact single line
+# ===========================================================================
+print_agreement <- function(comparison_df, label) {
+  lvls <- c("Exact (<=5%)", "Good (<=20%)", "Moderate (<=50%)", "Poor (>50%)")
+  tbl  <- comparison_df |>
+    dplyr::filter(!is.na(computed_dose)) |>
+    dplyr::count(agreement_category) |>
+    dplyr::mutate(pct = round(100 * n / sum(n), 1))
+  total <- sum(tbl$n)
+  parts <- vapply(lvls, function(lv) {
+    row <- tbl[tbl$agreement_category == lv, ]
+    if (nrow(row) == 0L) return(sprintf("%s: 0%% (0)", lv))
+    sprintf("%s: %.1f%% (%d)", lv, row$pct, row$n)
+  }, character(1L))
+  cat(sprintf(
+    "\n%s agreement (n=%d):  %s\n",
+    label, total, paste(parts, collapse = "  |  ")
+  ))
 }
 
 # ===========================================================================
@@ -385,12 +400,7 @@ cat(sprintf(
 cat("\nBaseline summary metrics:\n")
 print(as.data.frame(ev_baseline$summary))
 
-cat("\nBaseline agreement categories:\n")
-ev_baseline$comparison |>
-  dplyr::filter(!is.na(computed_dose)) |>
-  dplyr::count(agreement_category, sort = TRUE) |>
-  dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
-  print()
+print_agreement(ev_baseline$comparison, "Baseline")
 
 cat("\nBaseline — top-10 largest errors:\n")
 ev_baseline$comparison |>
@@ -422,12 +432,7 @@ cat(sprintf(
 cat("\nNLP summary metrics:\n")
 print(as.data.frame(ev_nlp$summary))
 
-cat("\nNLP agreement categories:\n")
-ev_nlp$comparison |>
-  dplyr::filter(!is.na(computed_dose)) |>
-  dplyr::count(agreement_category, sort = TRUE) |>
-  dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
-  print()
+print_agreement(ev_nlp$comparison, "NLP")
 
 # --- 9c. Advanced NLP ---
 message("\n  Advanced NLP vs gold standard ...")
@@ -450,12 +455,7 @@ cat(sprintf(
 cat("\nAdvanced NLP summary metrics:\n")
 print(as.data.frame(ev_adv$summary))
 
-cat("\nAdvanced NLP agreement categories:\n")
-ev_adv$comparison |>
-  dplyr::filter(!is.na(computed_dose)) |>
-  dplyr::count(agreement_category, sort = TRUE) |>
-  dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
-  print()
+print_agreement(ev_adv$comparison, "Advanced NLP")
 
 # ===========================================================================
 # 10. Comparison scatter plots (method dose vs gold dose)
