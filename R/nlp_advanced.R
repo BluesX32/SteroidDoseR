@@ -115,6 +115,16 @@
       "once\\s*(?:a\\s*)?month|monthly|\\bq30d\\b|every\\s*30\\s*days?|every\\s*month") ~ 1 / 30,
     # ---- oral/nightly/evening shortcuts ------------------------------------
     stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
+    # "in am" / "in the morning" / "every morning"
+    stringr::str_detect(s,
+      "\\bin\\s+(?:the\\s+)?(?:am\\b|morning)|every\\s+(?:am\\b|morning)|each\\s+morning") ~ 1,
+    # "once for X dose(s)"
+    stringr::str_detect(s, "\\bonce\\b.*\\bfor\\s+\\d+\\s+doses?") ~ 1,
+    # Bare "X mg." with nothing else
+    stringr::str_detect(s, "^\\d+(?:\\.\\d+)?\\s*mg\\.?$") ~ 1,
+    # "by mouth" / "po" / "orally" without time qualifier
+    stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &
+      !stringr::str_detect(s, "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery") ~ 1,
     TRUE ~ NA_real_
   )
 }
@@ -132,6 +142,7 @@
   }
 
   s <- .norm_sig(sig_text)
+  s <- .preprocess_sig(s)
 
   # ---- Flags ----------------------------------------------------------------
   prn_flag <- stringr::str_detect(
@@ -724,7 +735,7 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
     result <- .expand_taper_records(result, sig_col = sig_col)
   }
 
-  # --- optional baseline fallback --------------------------------------------
+  # --- optional baseline fallback (legacy: use pre-existing column) ----------
   if (baseline_fallback && "daily_dose_mg_orig" %in% names(drug_df)) {
     result <- result |>
       dplyr::mutate(
@@ -733,6 +744,25 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
           safe_as_numeric(.data$daily_dose_mg_orig)
         )
       )
+  }
+
+  # --- structural fallback: baseline M1/M3/M4 for records still NA ----------
+  still_na <- is.na(result$daily_dose_mg) &
+              result$parsed_status %in% c("no_parse", "empty")
+  if (any(still_na, na.rm = TRUE)) {
+    bl <- calc_daily_dose_baseline(
+      result[still_na, ],
+      filter_oral       = FALSE,
+      m2_sig_parse      = "none",
+      max_daily_dose_mg = max_daily_dose_mg,
+      equiv_table       = equiv_table,
+      drug_name_map     = drug_name_map,
+      methods           = c("original", "actual_duration", "supply_based")
+    )
+    result$daily_dose_mg[still_na] <- bl$daily_dose_mg_imputed
+    fb_label <- paste0("fallback_", bl$imputation_method)
+    fb_label[bl$imputation_method == "missing"] <- "no_parse"
+    result$parsed_status[still_na] <- fb_label
   }
 
   result

@@ -160,3 +160,80 @@ test_that("parse_sig_one: tablets default = 1 when SIG gives no count (bare mg +
   expect_equal(out$freq_per_day, 1)
   expect_equal(out$daily_dose_mg, 5)
 })
+
+# ── New SIG patterns added in v0.2.1 ──────────────────────────────────────────
+
+test_that("parse_sig_one: 'in am' parses as freq = 1", {
+  out <- parse_sig_one("3 tabs in am for 5 days.")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$tablets, 3)
+})
+
+test_that("parse_sig_one: 'once for 1 dose' parses as freq = 1", {
+  out <- parse_sig_one("Take 1 tablet (1 mg per dose) by mouth once for 1 dose.")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$mg_per_admin, 1)
+})
+
+test_that("parse_sig_one: 'every 12 (twelve) hours' strips word parenthetical and gives freq = 2", {
+  out <- parse_sig_one("Take 1 tablet (10 mg per dose) by mouth every 12 (twelve) hours for 14 days.")
+  expect_equal(out$freq_per_day, 2)
+  expect_equal(out$mg_per_admin, 10)
+  expect_equal(out$daily_dose_mg, 20)
+})
+
+test_that("parse_sig_one: bare 'X mg.' gives freq = 1", {
+  out <- parse_sig_one("10 mg.")
+  expect_equal(out$freq_per_day, 1)
+})
+
+test_that("parse_sig_one: 'Take X mg by mouth' without time qualifier gives freq = 1", {
+  out <- parse_sig_one("Take 40 mg by mouth.")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$daily_dose_mg, 40)
+})
+
+test_that("parse_sig_one: Spanish SIG translated before parsing", {
+  # CUATRO→4 tablets, DIARIO→daily, TABLETAS→tablet
+  out <- parse_sig_one("TOME CUATRO TABLETAS POR VIA ORAL A DIARIO")
+  expect_equal(out$freq_per_day, 1)
+  expect_equal(out$tablets, 4)
+})
+
+# ── Baseline cascade fallback in NLP ──────────────────────────────────────────
+
+test_that("calc_daily_dose_nlp: baseline fallback fills NA when SIG is empty but quantity present", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_concept_name        = "prednisone 5 MG oral tablet",
+    route_concept_name       = "Oral",
+    sig                      = NA_character_,
+    quantity                 = 28,
+    amount_value             = 5,
+    amount_unit_concept_id   = 8576L,
+    days_supply              = 28,
+    drug_exposure_start_date = as.Date("2023-01-01"),
+    drug_exposure_end_date   = as.Date("2023-01-28")
+  )
+  out <- calc_daily_dose_nlp(df)
+  expect_false(is.na(out$daily_dose_mg))
+  expect_true(grepl("^fallback_", out$parsed_status))
+})
+
+test_that("calc_daily_dose_nlp: baseline fallback uses actual_duration when available", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_concept_name        = "prednisone 5 MG oral tablet",
+    route_concept_name       = "Oral",
+    sig                      = NA_character_,
+    quantity                 = 28,
+    amount_value             = 5,
+    amount_unit_concept_id   = 8576L,
+    days_supply              = 28,
+    drug_exposure_start_date = as.Date("2023-01-01"),
+    drug_exposure_end_date   = as.Date("2023-01-28")
+  )
+  out <- calc_daily_dose_nlp(df)
+  # 28 tablets * 5 mg / 28 days = 5 mg/day
+  expect_equal(out$daily_dose_mg, 5)
+})

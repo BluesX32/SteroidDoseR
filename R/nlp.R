@@ -11,6 +11,32 @@
 
 .norm_sig <- function(x) stringr::str_squish(stringr::str_to_lower(as.character(x)))
 
+# Pre-processing applied to a normalised SIG string before pattern matching.
+# 1. Translates common Spanish number words and tablet terms to English.
+# 2. Strips parenthetical word-only clarifications such as "(twelve)" or
+#    "(oral)" that would otherwise block frequency regex matches, while
+#    preserving parenthetical dose info like "(10 mg per dose)" or "(1 mg)".
+.preprocess_sig <- function(s) {
+  # Spanish number words → digits; tablet/frequency synonyms → English
+  s <- stringr::str_replace_all(s, c(
+    "\\buno\\b"       = "1",
+    "\\bdos\\b"       = "2",
+    "\\btres\\b"      = "3",
+    "\\bcuatro\\b"    = "4",
+    "\\bcinco\\b"     = "5",
+    "\\bseis\\b"      = "6",
+    "\\bsiete\\b"     = "7",
+    "\\bdiez\\b"      = "10",
+    "\\btabletas?\\b" = "tablet",
+    "\\bdiario\\b"    = "daily",
+    "\\bpor\\s+via\\b" = "by route"
+  ))
+  # Strip pure-word parentheticals: "(twelve)", "(oral)" etc.
+  # Negative lookahead preserves anything containing a digit or "mg"/"mcg"
+  s <- stringr::str_remove_all(s, "\\s*\\((?![^)]*(?:mg|mcg|\\d))[^)]+\\)")
+  stringr::str_squish(s)
+}
+
 # ---------------------------------------------------------------------------
 # Single-record SIG parser
 # ---------------------------------------------------------------------------
@@ -80,6 +106,7 @@ parse_sig_one <- function(sig_text) {
   }
 
   s <- .norm_sig(sig_text)
+  s <- .preprocess_sig(s)
 
   # ---- Flags ----------------------------------------------------------------
   prn_flag       <- stringr::str_detect(s, "\\bprn\\b|as needed|when needed|if needed")
@@ -101,6 +128,16 @@ parse_sig_one <- function(sig_text) {
     stringr::str_detect(s, "twice\\s*(?:daily|a\\s*day)|two\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b|\\bq12h\\b|every\\s*12\\s*hours?") ~ 2,
     stringr::str_detect(s, "once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|every\\s*morning|with\\s*breakfast|q\\s*am|qam|every\\s*24\\s*hours?") ~ 1,
     stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
+    # "in am" / "in the morning" / "every morning"
+    stringr::str_detect(s,
+      "\\bin\\s+(?:the\\s+)?(?:am\\b|morning)|every\\s+(?:am\\b|morning)|each\\s+morning") ~ 1,
+    # "once for X dose(s)" — single-administration instruction
+    stringr::str_detect(s, "\\bonce\\b.*\\bfor\\s+\\d+\\s+doses?") ~ 1,
+    # Bare "X mg." with nothing else — treat as once-daily dose
+    stringr::str_detect(s, "^\\d+(?:\\.\\d+)?\\s*mg\\.?$") ~ 1,
+    # "by mouth" / "po" / "orally" without any time qualifier — implicit QD
+    stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &
+      !stringr::str_detect(s, "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery") ~ 1,
     TRUE ~ NA_real_
   )
 
@@ -367,13 +404,36 @@ calc_daily_dose_nlp <- function(connector_or_df,
       dplyr::select(-"needs_mg_fb")
   }
 
-  # --- optional baseline fallback -----------------------------------------------
+  # --- optional baseline fallback (legacy: use pre-existing column) -------------
   if (baseline_fallback && "daily_dose_mg_orig" %in% names(drug_df)) {
     result <- result |>
       dplyr::mutate(
         daily_dose_mg = dplyr::coalesce(.data$daily_dose_mg,
                                         safe_as_numeric(.data$daily_dose_mg_orig))
       )
+  }
+
+  # --- structural fallback: baseline M1/M3/M4 for records still NA -----------
+  # Guarantees NLP coverage >= baseline: anything computable from structured
+  # OMOP fields (original daily_dose, Burkard formula, quantity/days_supply)
+  # is carried through even when SIG parsing fails entirely.
+  still_na <- is.na(result$daily_dose_mg) &
+              result$parsed_status %in% c("no_parse", "empty")
+  if (any(still_na, na.rm = TRUE)) {
+    bl <- calc_daily_dose_baseline(
+      result[still_na, ],
+      filter_oral       = FALSE,   # already filtered above
+      m2_sig_parse      = "none",  # M2 = SIG-based; already attempted
+      max_daily_dose_mg = max_daily_dose_mg,
+      equiv_table       = equiv_table,
+      drug_name_map     = drug_name_map,
+      methods           = c("original", "actual_duration", "supply_based")
+    )
+    result$daily_dose_mg[still_na] <- bl$daily_dose_mg_imputed
+    # Label with which baseline method was used; keep "no_parse" for missing
+    fb_label <- paste0("fallback_", bl$imputation_method)
+    fb_label[bl$imputation_method == "missing"] <- "no_parse"
+    result$parsed_status[still_na] <- fb_label
   }
 
   # --- dose plausibility cap ---------------------------------------------------

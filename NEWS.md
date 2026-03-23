@@ -1,3 +1,31 @@
+# SteroidDoseR 0.2.1
+
+## Enhancements
+
+* **NLP/Advanced NLP — baseline cascade fallback** (`nlp.R`, `nlp_advanced.R`):
+  After SIG parsing, records still with `daily_dose_mg = NA` (status `"no_parse"` or
+  `"empty"`) are now passed through the Baseline M1/M3/M4 cascade
+  (`original`, `actual_duration`, `supply_based`). This ensures NLP coverage is
+  always ≥ Baseline — anything Baseline can calculate, NLP now also returns.
+  Imputation label is set to `"fallback_<method>"` in `parsed_status`.
+
+* **`parse_sig_one()` / `parse_sig_one_advanced()` — new `.preprocess_sig()` helper**
+  (`nlp.R`, `nlp_advanced.R`):
+  Applied before pattern matching to (1) translate Spanish number words
+  (`uno`→`1`, `dos`→`2`, `tres`→`3`, `cuatro`→`4`, `cinco`→`5`, `seis`→`6`,
+  `siete`→`7`, `diez`→`10`) and tablet synonyms (`tabletas`→`tablet`,
+  `diario`→`daily`), and (2) strip pure-word parentheticals such as `(twelve)`
+  that were blocking numeric patterns while preserving dose parentheticals like
+  `(10 mg per dose)`.
+
+* **`parse_sig_one()` / `parse_sig_one_advanced()` — additional frequency patterns**
+  (`nlp.R`, `nlp_advanced.R`):
+  Four new patterns now return `freq_per_day = 1`:
+  - `"in am"` / `"in the morning"` / `"each morning"` — morning-dose SIGs
+  - `"once for N dose(s)"` — single-dispense records
+  - Bare `"X mg."` strings with no frequency keyword
+  - `"by mouth"` / `"po"` / `"orally"` with no time qualifier (hours/before/after/procedure)
+
 # SteroidDoseR 0.2.0
 
 ## Enhancements
