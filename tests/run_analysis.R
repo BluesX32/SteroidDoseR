@@ -285,13 +285,17 @@ cat(sprintf(
   sum(ok_mask, na.rm = TRUE) - sum(nlp_df$parsed_status == "ok", na.rm = TRUE)
 ))
 
-# Advanced NLP episodes — build directly from the adv_nlp_df result.
-# build_episodes() accepts a plain data frame; dose_col = "daily_dose_mg"
-# is the column produced by calc_daily_dose_nlp_advanced().
+# Advanced NLP episodes — convert to pred-equiv first (same as run_pipeline),
+# then build episodes so the dose scale matches baseline and NLP episodes.
+adv_nlp_df <- convert_pred_equiv(
+  adv_nlp_df,
+  drug_col = "drug_name_std",
+  dose_col = "daily_dose_mg"
+)
 adv_nlp_episodes <- build_episodes(
   adv_nlp_df,
   end_col  = "drug_exposure_end_date",
-  dose_col = "daily_dose_mg",
+  dose_col = "pred_equiv_mg",
   gap_days = GAP_DAYS
 )
 
@@ -367,11 +371,56 @@ cat(sprintf(
   "Gold standard: %d episodes from %d patients\n",
   nrow(gold_std), dplyr::n_distinct(gold_std$patient_id)
 ))
-cat("\nGold standard preview:\n")
+
+# --- Convert gold standard doses to prednisone-equivalent -------------------
+# The gold standard records doses in the native drug unit (e.g., methylpred
+# 8 mg ≠ 10 mg pred-equiv). We identify each gold episode's drug by finding
+# the most-frequent drug in drug_df that overlaps the gold episode window,
+# then apply the same convert_pred_equiv() used on the computed side.
+gold_drug_map <- drug_df |>
+  dplyr::select(person_id, drug_name_std,
+                drug_exposure_start_date, drug_exposure_end_date) |>
+  dplyr::rename(patient_id = person_id) |>
+  dplyr::inner_join(
+    gold_std |> dplyr::select(patient_id, episode_start, episode_end),
+    by = "patient_id", relationship = "many-to-many"
+  ) |>
+  dplyr::filter(
+    as.Date(drug_exposure_start_date) <= as.Date(episode_end),
+    as.Date(drug_exposure_end_date)   >= as.Date(episode_start),
+    !is.na(drug_name_std)
+  ) |>
+  dplyr::group_by(patient_id, episode_start, episode_end, drug_name_std) |>
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
+  dplyr::group_by(patient_id, episode_start, episode_end) |>
+  dplyr::slice_max(n, n = 1L, with_ties = FALSE) |>   # most common drug
+  dplyr::ungroup() |>
+  dplyr::select(patient_id, episode_start, episode_end, drug_name_std)
+
+gold_std <- gold_std |>
+  dplyr::left_join(gold_drug_map,
+                   by = c("patient_id", "episode_start", "episode_end")) |>
+  convert_pred_equiv(
+    drug_col = "drug_name_std",
+    dose_col = "median_daily_dose",
+    out_col  = "gold_pred_equiv_mg"
+  ) |>
+  dplyr::mutate(
+    median_daily_dose_raw = median_daily_dose,
+    median_daily_dose     = dplyr::coalesce(gold_pred_equiv_mg, median_daily_dose)
+  )
+
+cat(sprintf(
+  "Gold std drug mapping: %d episodes converted to pred-equiv | %d drug unknown (kept raw)\n",
+  sum(gold_std$pred_equiv_status == "ok",        na.rm = TRUE),
+  sum(gold_std$pred_equiv_status != "ok"| is.na(gold_std$pred_equiv_status), na.rm = TRUE)
+))
+cat("\nGold standard preview (with pred-equiv dose):\n")
 print(head(gold_std[, c("patient_id", "episode_start", "episode_end",
+                         "drug_name_std", "median_daily_dose_raw",
                          "median_daily_dose", "days_covered")]))
 
-cat("\nGold standard dose distribution:\n")
+cat("\nGold standard dose distribution (pred-equiv):\n")
 print(summary(gold_std$median_daily_dose))
 
 # ===========================================================================
