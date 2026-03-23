@@ -62,5 +62,5 @@ Or use `run_pipeline()` for steps 2–5 in a single call.
 
 ## Citation
 
-Xiong M et al. *AgentDose: Automated Steroid Dose Calculation from EHR Data.*
+Xiong C et al. *AgentDose: Automated Steroid Dose Calculation from EHR Data.*
 OHDSI Global Symposium 2025. Abstract 205.

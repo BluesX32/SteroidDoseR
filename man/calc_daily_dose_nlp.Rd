@@ -38,19 +38,6 @@ records are kept. Set to \code{FALSE} if route filtering was done upstream.}
 carry through an existing \code{daily_dose_mg} column (e.g. from the Baseline
 method) for records where NLP parsing fails. Default: \code{FALSE}.}
 
-\item{max_daily_dose_mg}{\code{numeric(1)} or \code{NULL}. Upper plausibility bound in
-mg/day. Records whose computed dose exceeds this value are set to \code{NA} with
-\code{parsed_status = "implausible"} and a warning. Default: \code{2000}.
-Pass \code{NULL} to disable the cap.}
-
-\item{equiv_table}{Data frame with columns \code{drug_name_std} and \code{equiv_factor}.
-When \code{filter_oral = TRUE}, the allowed-drug list is derived from this table.
-Pass \code{NULL} (default) to use the built-in 7-steroid prednisone-equivalency table.}
-
-\item{drug_name_map}{Data frame with columns \code{pattern} (regex) and
-\code{canonical_name}. Applied after built-in drug name standardisation for
-site-specific synonyms. Pass \code{NULL} (default) to use only the built-in mapping.}
-
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}
 }
