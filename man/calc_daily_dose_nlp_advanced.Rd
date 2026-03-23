@@ -45,6 +45,14 @@ disable. Default: \code{2000}.}
 \item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, carries through an
 existing \code{daily_dose_mg_orig} column for failed records. Default: \code{FALSE}.}
 
+\item{equiv_table}{Data frame with columns \code{drug_name_std} and \code{equiv_factor}.
+When \code{filter_oral = TRUE}, the allowed-drug list is derived from this table.
+Pass \code{NULL} (default) to use the built-in 7-steroid prednisone-equivalency table.}
+
+\item{drug_name_map}{Data frame with columns \code{pattern} (regex) and
+\code{canonical_name}. Applied after built-in drug name standardisation for
+site-specific synonyms. Pass \code{NULL} (default) to use only the built-in mapping.}
+
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame.}
 }
@@ -89,7 +97,8 @@ df_taper <- tibble::tibble(
   person_id              = 1L,
   drug_concept_name      = "prednisone 10 MG oral tablet",
   route_concept_name     = "oral",
-  sig                    = "60 mg daily for 2 weeks, then 40 mg daily for 2 weeks, then 20 mg daily for 2 weeks",
+  sig = paste("60 mg daily for 2 weeks, then 40 mg daily for 2 weeks,",
+              "then 20 mg daily for 2 weeks"),
   drug_exposure_start_date = as.Date("2023-01-01"),
   drug_exposure_end_date   = as.Date("2023-07-01")
 )
