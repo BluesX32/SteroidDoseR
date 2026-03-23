@@ -1,3 +1,30 @@
+# SteroidDoseR 0.2.3
+
+## Enhancements
+
+* **Generalised frequency parsing** (`nlp.R`, `nlp_advanced.R`):
+  Replaced all hardcoded `case_when` frequency tables with a unified
+  `.extract_freq()` function that computes `24/N`, `1/N`, and `N/7`
+  dynamically for any N captured from the SIG string. This covers
+  previously unsupported intervals such as `"every 5 hours"` (4.8/day),
+  `"5 times a day"` (5/day), `"every 10 days"` (0.1/day),
+  `"4 times a week"` (4/7/day), and `"every 2 weeks"` (1/14/day). All
+  existing patterns remain backward-compatible.
+
+* **English number words six–ten in preprocessing** (`nlp.R`):
+  `.preprocess_sig()` now translates `six`→`6`, `seven`→`7`, `eight`→`8`,
+  `nine`→`9`, and `ten`→`10`, completing the one-through-ten vocabulary.
+
+* **`mg_per_day` dose tier** (`nlp.R`, `nlp_advanced.R`):
+  A new tier 3.5 recognises `"X mg/day"`, `"X mg per day"`, and
+  `"X mg a day"` as an explicit daily total. These strings no longer
+  multiply by tablet count, fixing `"Take 2 tablets 60 mg per day"` which
+  previously returned `120 mg/day` instead of `60 mg/day`.
+
+* **Unified frequency helper** (`nlp.R`, `nlp_advanced.R`):
+  `.extract_freq_adv()` deleted; both parsers now call the single
+  `.extract_freq()` defined in `nlp.R`, eliminating code duplication.
+
 # SteroidDoseR 0.2.2
 
 ## Enhancements

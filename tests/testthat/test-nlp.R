@@ -237,3 +237,117 @@ test_that("calc_daily_dose_nlp: baseline fallback uses actual_duration when avai
   # 28 tablets * 5 mg / 28 days = 5 mg/day
   expect_equal(out$daily_dose_mg, 5)
 })
+
+# ── Generalised every-N-hours (v0.2.3) ────────────────────────────────────────
+
+test_that("parse_sig_one: every 5 hours → freq = 24/5", {
+  out <- parse_sig_one("Take 1 tablet (10 mg) every 5 hours.")
+  expect_equal(out$freq_per_day, 24 / 5)
+  expect_equal(out$daily_dose_mg, 10 * 24 / 5)
+})
+
+test_that("parse_sig_one: every 4 hours → freq = 6 (regression)", {
+  out <- parse_sig_one("Take 1 tablet (5 mg) every 4 hours.")
+  expect_equal(out$freq_per_day, 6)
+  expect_equal(out$daily_dose_mg, 30)
+})
+
+test_that("parse_sig_one: q5h → freq = 24/5", {
+  out <- parse_sig_one("Take 10 mg q5h.")
+  expect_equal(out$freq_per_day, 24 / 5)
+})
+
+# ── Generalised N-times-daily (v0.2.3) ────────────────────────────────────────
+
+test_that("parse_sig_one: 5 times a day → freq = 5", {
+  out <- parse_sig_one("Take 1 tab (4 mg) 5 times a day.")
+  expect_equal(out$freq_per_day, 5)
+  expect_equal(out$daily_dose_mg, 20)
+})
+
+test_that("parse_sig_one: 6 times daily → freq = 6", {
+  out <- parse_sig_one("Take 1 tab (5 mg) 6 times daily.")
+  expect_equal(out$freq_per_day, 6)
+  expect_equal(out$daily_dose_mg, 30)
+})
+
+# ── Generalised every-N-days (v0.2.3) ─────────────────────────────────────────
+
+test_that("parse_sig_one: every 10 days → freq = 0.1", {
+  out <- parse_sig_one("Take 2 tablets (20 mg per dose) every 10 days.")
+  expect_equal(out$freq_per_day, 1 / 10)
+})
+
+test_that("parse_sig_one: every 5 days → freq = 0.2", {
+  out <- parse_sig_one("Take 1 tab (5 mg) every 5 days.")
+  expect_equal(out$freq_per_day, 1 / 5)
+})
+
+test_that("parse_sig_one: q3d → freq = 1/3 (regression)", {
+  out <- parse_sig_one("Take 10 mg q3d.")
+  expect_equal(out$freq_per_day, 1 / 3)
+})
+
+# ── Generalised N-times-weekly (v0.2.3) ───────────────────────────────────────
+
+test_that("parse_sig_one: 4 times a week → freq = 4/7", {
+  out <- parse_sig_one("Take 1 tab (5 mg) 4 times a week.")
+  expect_equal(out$freq_per_day, 4 / 7)
+})
+
+test_that("parse_sig_one: 5 times per week → freq = 5/7", {
+  out <- parse_sig_one("Take 1 tab (10 mg) 5 times per week.")
+  expect_equal(out$freq_per_day, 5 / 7)
+})
+
+# ── Generalised every-N-weeks (v0.2.3) ────────────────────────────────────────
+
+test_that("parse_sig_one: every 2 weeks → freq = 1/14", {
+  out <- parse_sig_one("Take 4 tablets (20 mg per dose) every 2 weeks.")
+  expect_equal(out$freq_per_day, 1 / 14)
+})
+
+test_that("parse_sig_one: every 3 weeks → freq = 1/21", {
+  out <- parse_sig_one("Take 1 tab (10 mg) every 3 weeks.")
+  expect_equal(out$freq_per_day, 1 / 21)
+})
+
+# ── mg_per_day tier (v0.2.3) ──────────────────────────────────────────────────
+
+test_that("parse_sig_one: 'X mg/day' treats as daily total, not per-tablet", {
+  out <- parse_sig_one("Take 2 tablets 60 mg/day.")
+  expect_equal(out$daily_dose_mg, 60)
+  expect_true(out$mg_total_flag)
+})
+
+test_that("parse_sig_one: 'X mg per day' treats as daily total", {
+  out <- parse_sig_one("Take 2 tablets 60 mg per day.")
+  expect_equal(out$daily_dose_mg, 60)
+})
+
+test_that("parse_sig_one: '60 mg a day by mouth' parses as daily total", {
+  out <- parse_sig_one("60 mg a day by mouth.")
+  expect_equal(out$daily_dose_mg, 60)
+})
+
+test_that("parse_sig_one: bare mg * tablets unchanged when no /day suffix (regression)", {
+  out <- parse_sig_one("Take 2 tabs 10 mg daily.")
+  expect_equal(out$daily_dose_mg, 20)
+})
+
+# ── preprocess_sig: six–ten number words (v0.2.3) ────────────────────────────
+
+test_that("parse_sig_one: 'six tablets daily' → tablets = 6", {
+  out <- parse_sig_one("Take six tablets (5 mg) daily.")
+  expect_equal(out$tablets, 6)
+})
+
+test_that("parse_sig_one: 'seven times a day' → freq = 7", {
+  out <- parse_sig_one("Take 1 tab (1 mg) seven times a day.")
+  expect_equal(out$freq_per_day, 7)
+})
+
+test_that("parse_sig_one: 'eight tablets daily' → tablets = 8", {
+  out <- parse_sig_one("Take eight tablets (5 mg) daily.")
+  expect_equal(out$tablets, 8)
+})

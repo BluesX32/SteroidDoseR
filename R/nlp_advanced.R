@@ -75,63 +75,6 @@
 }
 
 # ---------------------------------------------------------------------------
-# Internal helper: enhanced frequency extraction
-# ---------------------------------------------------------------------------
-
-# Adds weekly / monthly / every-N-days / every-N-hours patterns to the
-# existing QD/BID/TID/QID/QOD hierarchy.
-#' @noRd
-.extract_freq_adv <- function(s) {
-  dplyr::case_when(
-    # ---- sub-daily (every N hours) ----------------------------------------
-    stringr::str_detect(s, "every\\s*4\\s*hours?|\\bq4h\\b")  ~ 6,
-    stringr::str_detect(s, "every\\s*6\\s*hours?|\\bq6h\\b")  ~ 4,
-    stringr::str_detect(s, "every\\s*8\\s*hours?|\\bq8h\\b")  ~ 3,
-    stringr::str_detect(s, "every\\s*12\\s*hours?|\\bq12h\\b") ~ 2,
-    # ---- QID / TID / BID ---------------------------------------------------
-    stringr::str_detect(s,
-      "(?:four|4)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bqid\\b") ~ 4,
-    stringr::str_detect(s,
-      "(?:three|3)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b") ~ 3,
-    stringr::str_detect(s,
-      "twice\\s*(?:daily|a\\s*day)|(?:two|2)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b") ~ 2,
-    # ---- once daily --------------------------------------------------------
-    stringr::str_detect(s,
-      "once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|every\\s*morning|q\\s*am|qam|every\\s*24\\s*hours?|with\\s*breakfast") ~ 1,
-    # ---- every N days ------------------------------------------------------
-    stringr::str_detect(s,
-      "every\\s*other\\s*day|\\bqod\\b|alternate\\s*day|every\\s*2\\s*days?|\\bq48h\\b") ~ 0.5,
-    stringr::str_detect(s, "every\\s*3\\s*days?|\\bq72h\\b|\\bq3d\\b") ~ 1 / 3,
-    stringr::str_detect(s, "every\\s*4\\s*days?") ~ 0.25,
-    # ---- weekly-based ------------------------------------------------------
-    stringr::str_detect(s,
-      "three\\s*(?:times?\\s*(?:a\\s*)?)?week|3\\s*(?:times?\\s*(?:a\\s*)?)?(?:per\\s*)?week") ~ 3 / 7,
-    stringr::str_detect(s,
-      "twice\\s*(?:a\\s*)?week|two\\s*(?:times?\\s*(?:a\\s*)?)?week|2\\s*(?:times?\\s*(?:a\\s*)?)?(?:per\\s*)?week") ~ 2 / 7,
-    stringr::str_detect(s,
-      "once\\s*(?:a\\s*)?week|once\\s*weekly|\\bqweek\\b|\\bq7d\\b|every\\s*7\\s*days?|\\bweekly\\b") ~ 1 / 7,
-    # ---- monthly -----------------------------------------------------------
-    stringr::str_detect(s,
-      "once\\s*(?:a\\s*)?month|monthly|\\bq30d\\b|every\\s*30\\s*days?|every\\s*month") ~ 1 / 30,
-    # ---- oral/nightly/evening shortcuts ------------------------------------
-    stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
-    # "in am" / "in the morning" / "every morning"
-    stringr::str_detect(s,
-      "\\bin\\s+(?:the\\s+)?(?:am\\b|morning)|every\\s+(?:am\\b|morning)|each\\s+morning") ~ 1,
-    # "once for X dose(s)"
-    stringr::str_detect(s, "\\bonce\\b.*\\bfor\\s+\\d+\\s+doses?") ~ 1,
-    # Bare "X mg." with nothing else
-    stringr::str_detect(s, "^\\d+(?:\\.\\d+)?\\s*mg\\.?$") ~ 1,
-    # "by mouth" / "po" / "orally" without time qualifier
-    stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &
-      !stringr::str_detect(s, "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery") ~ 1,
-    # "a day" / "per day" — common shorthand for once-daily
-    stringr::str_detect(s, "\\ba\\s+day\\b|\\bper\\s+day\\b|\\bper\\s+d\\b") ~ 1,
-    TRUE ~ NA_real_
-  )
-}
-
-# ---------------------------------------------------------------------------
 # Internal: implementation of the advanced single-record parser
 # ---------------------------------------------------------------------------
 
@@ -163,7 +106,7 @@
   tablets <- dplyr::if_else(is.na(tablets), 1, tablets)
 
   # ---- Frequency (enhanced) ------------------------------------------------
-  freq <- .extract_freq_adv(s)
+  freq <- .extract_freq(s)
 
   # ---- Duration ------------------------------------------------------------
   dur_match <- stringr::str_match(
@@ -194,7 +137,17 @@
       safe_as_numeric()
   } else NA_real_
 
-  mg_bare <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain)) {
+  # 3.5. Bare "X mg/day", "X mg per day", "X mg a day" — explicit daily total.
+  #      Must precede mg_bare so these strings don't get per-tablet treatment.
+  mg_per_day <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain)) {
+    stringr::str_match(
+      s,
+      "(?<!\\()\\b(\\d+(?:\\.\\d+)?)\\s*mg\\s*(?:/\\s*day|per\\s*day|a\\s*day)\\b"
+    )[, 2L] |> safe_as_numeric()
+  } else NA_real_
+
+  mg_bare <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain) &&
+                 is.na(mg_per_day)) {
     stringr::str_match(s, "(?<!\\()\\b(\\d+(?:\\.\\d+)?)\\s*mg\\b")[, 2L] |>
       safe_as_numeric()
   } else NA_real_
@@ -202,6 +155,7 @@
   # ---- per-administration mg -----------------------------------------------
   mg_per_admin <- dplyr::case_when(
     !is.na(mg_total)                              ~ NA_real_,
+    !is.na(mg_per_day)                            ~ NA_real_,
     !is.na(mg_per_dose)                           ~ mg_per_dose,
     !is.na(mg_paren_plain) & !is.na(tablets)     ~ mg_paren_plain * tablets,
     !is.na(mg_paren_plain)                        ~ mg_paren_plain,
@@ -212,7 +166,8 @@
 
   # ---- daily dose mg -------------------------------------------------------
   daily_mg <- dplyr::case_when(
-    !is.na(mg_total) ~ mg_total,
+    !is.na(mg_total)    ~ mg_total,
+    !is.na(mg_per_day)  ~ mg_per_day,
     !is.na(mg_per_admin) & !is.na(freq) ~ mg_per_admin * freq,
     !is.na(mg_per_admin) & is.na(freq) &
       stringr::str_detect(s,
@@ -234,7 +189,7 @@
     tablets        = tablets,
     freq_per_day   = freq,
     mg_per_admin   = mg_per_admin,
-    mg_total_flag  = !is.na(mg_total),
+    mg_total_flag  = !is.na(mg_total) | !is.na(mg_per_day),
     duration_days  = duration_days,
     taper_flag     = taper_flag,
     prn_flag       = prn_flag,
@@ -407,7 +362,7 @@ parse_taper_schedule <- function(sig_text) {
     dur_num  <- safe_as_numeric(m[1L, 3L])
     dur_unit <- m[1L, 4L]
 
-    freq <- .extract_freq_adv(p)
+    freq <- .extract_freq(p)
     if (is.na(freq)) freq <- 1  # taper steps are assumed daily unless stated
 
     dur_days <- dplyr::case_when(

@@ -25,6 +25,11 @@
     "\\bthree\\b"     = "3",
     "\\bfour\\b"      = "4",
     "\\bfive\\b"      = "5",
+    "\\bsix\\b"       = "6",
+    "\\bseven\\b"     = "7",
+    "\\beight\\b"     = "8",
+    "\\bnine\\b"      = "9",
+    "\\bten\\b"       = "10",
     # Spanish number words
     "\\buno\\b"       = "1",
     "\\bdos\\b"       = "2",
@@ -42,6 +47,101 @@
   # Negative lookahead preserves anything containing a digit or "mg"/"mcg"
   s <- stringr::str_remove_all(s, "\\s*\\((?![^)]*(?:mg|mcg|\\d))[^)]+\\)")
   stringr::str_squish(s)
+}
+
+# Unified frequency extractor used by both the basic and advanced parsers.
+# Returns doses-per-day as a numeric scalar, or NA_real_ if unrecognised.
+# Phases are evaluated in priority order: more-specific before more-general.
+#' @noRd
+.extract_freq <- function(s) {
+  # Phase 1: every N hours / qNh → 24/N per day (any N)
+  m <- stringr::str_match(
+    s, "every\\s*(\\d+(?:\\.\\d+)?)\\s*hours?|\\bq(\\d+(?:\\.\\d+)?)h\\b"
+  )
+  if (!is.na(m[1L, 1L])) {
+    n <- safe_as_numeric(dplyr::coalesce(m[1L, 2L], m[1L, 3L]))
+    if (!is.na(n) && n > 0) return(24 / n)
+  }
+
+  # Phase 2: N times (a/per) day/daily → N per day (any N)
+  if (stringr::str_detect(s, "twice\\s*(?:daily|a\\s*day|per\\s*day)")) return(2)
+  m <- stringr::str_match(
+    s, "(\\d+(?:\\.\\d+)?)\\s*(?:times?|x)\\s*(?:a\\s*|per\\s*)?(?:daily|day)"
+  )
+  if (!is.na(m[1L, 1L])) {
+    n <- safe_as_numeric(m[1L, 2L])
+    if (!is.na(n) && n > 0) return(n)
+  }
+
+  # Phase 3: Latin abbreviations
+  if (stringr::str_detect(s, "\\bqid\\b")) return(4)
+  if (stringr::str_detect(s, "\\btid\\b")) return(3)
+  if (stringr::str_detect(s, "\\bbid\\b")) return(2)
+
+  # Phase 4: once daily keywords
+  if (stringr::str_detect(s,
+    paste0("once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|",
+           "every\\s*morning|with\\s*breakfast|q\\s*am\\b|\\bqam\\b|",
+           "every\\s*24\\s*hours?"))) return(1)
+
+  # Phase 5: every other day (named; before generic every-N-days)
+  if (stringr::str_detect(s,
+    "every\\s*other\\s*day|\\bqod\\b|alternate\\s*day")) return(0.5)
+
+  # Phase 6: every N days / qNd → 1/N per day (any N)
+  m <- stringr::str_match(
+    s, "every\\s*(\\d+(?:\\.\\d+)?)\\s*days?|\\bq(\\d+(?:\\.\\d+)?)d\\b"
+  )
+  if (!is.na(m[1L, 1L])) {
+    n <- safe_as_numeric(dplyr::coalesce(m[1L, 2L], m[1L, 3L]))
+    if (!is.na(n) && n > 0) return(1 / n)
+  }
+
+  # Phase 7: N times (a/per) week → N/7 per day (any N)
+  if (stringr::str_detect(s, "twice\\s*(?:a\\s*)?week|twice\\s*weekly")) return(2 / 7)
+  m <- stringr::str_match(
+    s, "(\\d+(?:\\.\\d+)?)\\s*(?:times?|x)\\s*(?:a\\s*|per\\s*)?week"
+  )
+  if (!is.na(m[1L, 1L])) {
+    n <- safe_as_numeric(m[1L, 2L])
+    if (!is.na(n) && n > 0) return(n / 7)
+  }
+
+  # Phase 8: every N weeks → 1/(N*7) per day (any N)
+  m <- stringr::str_match(s, "every\\s*(\\d+(?:\\.\\d+)?)\\s*weeks?")
+  if (!is.na(m[1L, 1L])) {
+    n <- safe_as_numeric(m[1L, 2L])
+    if (!is.na(n) && n > 0) return(1 / (n * 7))
+  }
+
+  # Phase 9: once weekly
+  if (stringr::str_detect(s,
+    "once\\s*(?:a\\s*)?week|once\\s*weekly|\\bqweek\\b|\\bq7d\\b|\\bweekly\\b")) {
+    return(1 / 7)
+  }
+
+  # Phase 10: monthly
+  if (stringr::str_detect(s,
+    paste0("once\\s*(?:a\\s*)?month|\\bmonthly\\b|\\bq30d\\b|",
+           "every\\s*30\\s*days?|every\\s*month"))) {
+    return(1 / 30)
+  }
+
+  # Phase 11: remaining once-daily synonyms
+  if (stringr::str_detect(s, "\\bonce\\b.*\\boral\\b")) return(1)
+  if (stringr::str_detect(s, "\\bnightly\\b|every\\s*evening")) return(1)
+  if (stringr::str_detect(s,
+    "\\bin\\s+(?:the\\s+)?(?:am\\b|morning)|every\\s+(?:am\\b|morning)|each\\s+morning")) {
+    return(1)
+  }
+  if (stringr::str_detect(s, "\\bonce\\b.*\\bfor\\s+\\d+\\s+doses?")) return(1)
+  if (stringr::str_detect(s, "^\\d+(?:\\.\\d+)?\\s*mg\\.?$")) return(1)
+  if (stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &&
+      !stringr::str_detect(s,
+        "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery")) return(1)
+  if (stringr::str_detect(s, "\\ba\\s+day\\b|\\bper\\s+day\\b|\\bper\\s+d\\b")) return(1)
+
+  NA_real_
 }
 
 # ---------------------------------------------------------------------------
@@ -128,27 +228,7 @@ parse_sig_one <- function(sig_text) {
     safe_as_numeric()
 
   # ---- Frequency per day ----------------------------------------------------
-  freq <- dplyr::case_when(
-    stringr::str_detect(s, "every other day|\\bqod\\b") ~ 0.5,
-    stringr::str_detect(s, "(?:four|4)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bqid\\b|\\bq6h\\b|every\\s*6\\s*hours?") ~ 4,
-    stringr::str_detect(s, "(?:three|3)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b|\\bq8h\\b|every\\s*8\\s*hours?") ~ 3,
-    stringr::str_detect(s, "twice\\s*(?:daily|a\\s*day)|(?:two|2)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b|\\bq12h\\b|every\\s*12\\s*hours?") ~ 2,
-    stringr::str_detect(s, "once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|every\\s*morning|with\\s*breakfast|q\\s*am|qam|every\\s*24\\s*hours?") ~ 1,
-    stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
-    # "in am" / "in the morning" / "every morning"
-    stringr::str_detect(s,
-      "\\bin\\s+(?:the\\s+)?(?:am\\b|morning)|every\\s+(?:am\\b|morning)|each\\s+morning") ~ 1,
-    # "once for X dose(s)" — single-administration instruction
-    stringr::str_detect(s, "\\bonce\\b.*\\bfor\\s+\\d+\\s+doses?") ~ 1,
-    # Bare "X mg." with nothing else — treat as once-daily dose
-    stringr::str_detect(s, "^\\d+(?:\\.\\d+)?\\s*mg\\.?$") ~ 1,
-    # "by mouth" / "po" / "orally" without any time qualifier — implicit QD
-    stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &
-      !stringr::str_detect(s, "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery") ~ 1,
-    # "a day" / "per day" — common shorthand for once-daily
-    stringr::str_detect(s, "\\ba\\s+day\\b|\\bper\\s+day\\b|\\bper\\s+d\\b") ~ 1,
-    TRUE ~ NA_real_
-  )
+  freq <- .extract_freq(s)
 
   # Default tablets to 1 when SIG contains no explicit tablet count.
   # "Once Oral", "Nightly", "Every evening" prescriptions typically mean 1 tablet.
@@ -183,8 +263,18 @@ parse_sig_one <- function(sig_text) {
     stringr::str_match(s, "\\((\\d+(?:\\.\\d+)?)\\s*mg\\)")[, 2L] |> safe_as_numeric()
   } else NA_real_
 
+  # 3.5. Bare "X mg/day", "X mg per day", "X mg a day" — explicit daily total.
+  #      Must precede mg_bare so these strings don't get per-tablet treatment.
+  mg_per_day <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain)) {
+    stringr::str_match(
+      s,
+      "(?<!\\()\\b(\\d+(?:\\.\\d+)?)\\s*mg\\s*(?:/\\s*day|per\\s*day|a\\s*day)\\b"
+    )[, 2L] |> safe_as_numeric()
+  } else NA_real_
+
   # 4. Bare mg not in parens: "X mg" -- only when none of the above
-  mg_bare <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain)) {
+  mg_bare <- if (is.na(mg_per_dose) && is.na(mg_total) && is.na(mg_paren_plain) &&
+                 is.na(mg_per_day)) {
     stringr::str_match(s, "(?<!\\()\\b(\\d+(?:\\.\\d+)?)\\s*mg\\b")[, 2L] |> safe_as_numeric()
   } else NA_real_
 
@@ -193,19 +283,22 @@ parse_sig_one <- function(sig_text) {
   # by tablet count (tablets just tell you how many pills, not a dose multiplier).
   # Plain parenthetical "(X mg)" and bare "X mg" are treated as per-tablet
   # strengths, so they ARE multiplied by tablet count when tablets is known.
+  # mg_per_day is an explicit daily total; per-admin math is skipped entirely.
   mg_per_admin <- dplyr::case_when(
-    !is.na(mg_total) ~ NA_real_,       # daily total provided; use directly below
-    !is.na(mg_per_dose) ~ mg_per_dose, # explicit per-dose total; tablets already accounted for
-    !is.na(mg_paren_plain) & !is.na(tablets) ~ mg_paren_plain * tablets,
-    !is.na(mg_paren_plain) ~ mg_paren_plain,
-    !is.na(mg_bare) & !is.na(tablets) ~ mg_bare * tablets,
-    !is.na(mg_bare) ~ mg_bare,
-    TRUE ~ NA_real_
+    !is.na(mg_total)                              ~ NA_real_,
+    !is.na(mg_per_day)                            ~ NA_real_,
+    !is.na(mg_per_dose)                           ~ mg_per_dose,
+    !is.na(mg_paren_plain) & !is.na(tablets)     ~ mg_paren_plain * tablets,
+    !is.na(mg_paren_plain)                        ~ mg_paren_plain,
+    !is.na(mg_bare) & !is.na(tablets)            ~ mg_bare * tablets,
+    !is.na(mg_bare)                               ~ mg_bare,
+    TRUE                                          ~ NA_real_
   )
 
   # ---- daily dose mg --------------------------------------------------------
   daily_mg <- dplyr::case_when(
-    !is.na(mg_total) ~ mg_total,
+    !is.na(mg_total)    ~ mg_total,
+    !is.na(mg_per_day)  ~ mg_per_day,
     !is.na(mg_per_admin) & !is.na(freq) ~ mg_per_admin * freq,
     !is.na(mg_per_admin) & is.na(freq) &
       stringr::str_detect(s, "daily|every day|once daily|\\bqd\\b|with breakfast|every morning|qam|every 24 hours?") ~ mg_per_admin,
@@ -226,7 +319,7 @@ parse_sig_one <- function(sig_text) {
     tablets        = tablets,
     freq_per_day   = freq,
     mg_per_admin   = mg_per_admin,
-    mg_total_flag  = !is.na(mg_total),
+    mg_total_flag  = !is.na(mg_total) | !is.na(mg_per_day),
     duration_days  = duration_days,
     taper_flag     = taper_flag,
     prn_flag       = prn_flag,
