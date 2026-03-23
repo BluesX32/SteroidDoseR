@@ -307,7 +307,7 @@ show_person_trajectories(adv_nlp_episodes, "Advanced NLP")
 # ===========================================================================
 message("\n=== Dose distributions ===")
 
-# Build a combined data frame for plotting
+# Build a combined data frame for plotting (gold panel added after Section 8)
 make_dist_df <- function(episodes_df, method_label) {
   episodes_df |>
     dplyr::filter(!is.na(median_daily_dose), median_daily_dose > 0) |>
@@ -319,34 +319,13 @@ dist_df <- dplyr::bind_rows(
   make_dist_df(baseline_episodes,  "Baseline"),
   make_dist_df(nlp_episodes,       "NLP"),
   make_dist_df(adv_nlp_episodes,   "Advanced NLP")
-) |>
-  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "Advanced NLP")))
-
-# Histogram / density comparison
-p_dist <- ggplot2::ggplot(
-  dist_df,
-  ggplot2::aes(x = median_daily_dose, fill = method, colour = method)
-) +
-  ggplot2::geom_density(alpha = 0.35, linewidth = 0.7) +
-  ggplot2::scale_x_log10(
-    breaks = c(1, 2, 5, 10, 20, 40, 80, 160, 320, 640),
-    labels = scales::label_number()
-  ) +
-  ggplot2::facet_wrap(~ method, ncol = 1, scales = "free_y") +
-  ggplot2::labs(
-    title    = "Distribution of median daily prednisone-equivalent dose by method",
-    subtitle = "One data point per patient-drug episode; x-axis on log10 scale",
-    x        = "Median daily dose (mg prednisone-equivalent)",
-    y        = "Density"
-  ) +
-  ggplot2::theme_bw() +
-  ggplot2::theme(legend.position = "none")
-
-print(p_dist)
+)
+# NOTE: Distribution plot printed after Section 8 once gold standard is loaded.
 
 # Descriptive summary per method
 cat("\nDose distribution summary by method (mg prednisone-equivalent):\n")
 dist_df |>
+  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "Advanced NLP"))) |>
   dplyr::group_by(method) |>
   dplyr::summarise(
     n_episodes = dplyr::n(),
@@ -425,6 +404,50 @@ print(head(gold_std[, c("patient_id", "episode_start", "episode_end",
 
 cat("\nGold standard dose distribution (pred-equiv):\n")
 print(summary(gold_std$median_daily_dose))
+
+# --- Distribution plot including gold standard (4 panels) -------------------
+gold_dist_df <- gold_std |>
+  dplyr::filter(!is.na(median_daily_dose), median_daily_dose > 0) |>
+  dplyr::transmute(
+    person_id        = as.integer(patient_id),
+    drug_name_std    = dplyr::coalesce(drug_name_std, "unknown"),
+    median_daily_dose,
+    method           = "Gold"
+  )
+
+dist_method_colors <- c(
+  "Baseline"     = "#2271B3",
+  "NLP"          = "#E69F00",
+  "Advanced NLP" = "#009E73",
+  "Gold"         = "#333333"
+)
+
+dist_df_all <- dplyr::bind_rows(dist_df, gold_dist_df) |>
+  dplyr::mutate(method = factor(method,
+    levels = c("Baseline", "NLP", "Advanced NLP", "Gold")))
+
+p_dist <- ggplot2::ggplot(
+  dist_df_all,
+  ggplot2::aes(x = median_daily_dose, fill = method, colour = method)
+) +
+  ggplot2::geom_density(alpha = 0.35, linewidth = 0.7) +
+  ggplot2::scale_x_log10(
+    breaks = c(1, 2, 5, 10, 20, 40, 80, 160, 320, 640),
+    labels = scales::label_number()
+  ) +
+  ggplot2::scale_fill_manual(values   = dist_method_colors) +
+  ggplot2::scale_colour_manual(values = dist_method_colors) +
+  ggplot2::facet_wrap(~ method, ncol = 1, scales = "free_y") +
+  ggplot2::labs(
+    title    = "Distribution of median daily prednisone-equivalent dose by method",
+    subtitle = "One data point per patient-drug episode; x-axis on log10 scale",
+    x        = "Median daily dose (mg prednisone-equivalent)",
+    y        = "Density"
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(legend.position = "none")
+
+print(p_dist)
 
 # ===========================================================================
 # 9. Episode-level comparison (each method vs gold standard)
@@ -551,6 +574,95 @@ p_scatter <- ggplot2::ggplot(
   ggplot2::theme_bw()
 
 print(p_scatter)
+
+# ===========================================================================
+# 10.5 Bland-Altman plots (method dose vs gold standard)
+# ===========================================================================
+message("\n=== Bland-Altman plots ===")
+
+ba_df <- scatter_df |>
+  dplyr::filter(!is.na(gold_dose), !is.na(method_dose)) |>
+  dplyr::mutate(
+    mean_dose = (method_dose + gold_dose) / 2,
+    diff      = method_dose - gold_dose
+  )
+
+# Per-method bias and 95% limits of agreement
+ba_limits <- ba_df |>
+  dplyr::group_by(method) |>
+  dplyr::summarise(
+    n       = dplyr::n(),
+    bias    = mean(diff),
+    sd_diff = stats::sd(diff),
+    loa_lo  = bias - 1.96 * sd_diff,
+    loa_hi  = bias + 1.96 * sd_diff,
+    .groups = "drop"
+  )
+
+cat("\nBland-Altman limits of agreement by method:\n")
+print(as.data.frame(ba_limits |>
+  dplyr::mutate(dplyr::across(where(is.numeric), ~ round(., 2)))))
+
+p_ba <- ggplot2::ggplot(ba_df, ggplot2::aes(x = mean_dose, y = diff)) +
+  ggplot2::geom_hline(yintercept = 0,
+                      linetype = "solid", colour = "grey70", linewidth = 0.5) +
+  ggplot2::geom_hline(
+    data     = ba_limits,
+    ggplot2::aes(yintercept = bias),
+    linetype = "dashed", colour = "#d6604d", linewidth = 0.8
+  ) +
+  ggplot2::geom_hline(
+    data     = ba_limits,
+    ggplot2::aes(yintercept = loa_lo),
+    linetype = "dotted", colour = "#4393c3", linewidth = 0.7
+  ) +
+  ggplot2::geom_hline(
+    data     = ba_limits,
+    ggplot2::aes(yintercept = loa_hi),
+    linetype = "dotted", colour = "#4393c3", linewidth = 0.7
+  ) +
+  ggplot2::geom_point(alpha = 0.45, size = 1.8, colour = "#2166ac") +
+  ggplot2::geom_text(
+    data = ba_limits,
+    ggplot2::aes(
+      x     = Inf,
+      y     = bias,
+      label = sprintf("Bias: %.1f mg", bias)
+    ),
+    hjust = 1.1, vjust = -0.5, colour = "#d6604d", size = 3.2
+  ) +
+  ggplot2::geom_text(
+    data = ba_limits,
+    ggplot2::aes(
+      x     = Inf,
+      y     = loa_hi,
+      label = sprintf("+1.96 SD: %.1f mg", loa_hi)
+    ),
+    hjust = 1.1, vjust = -0.5, colour = "#4393c3", size = 3.2
+  ) +
+  ggplot2::geom_text(
+    data = ba_limits,
+    ggplot2::aes(
+      x     = Inf,
+      y     = loa_lo,
+      label = sprintf("-1.96 SD: %.1f mg", loa_lo)
+    ),
+    hjust = 1.1, vjust = 1.5, colour = "#4393c3", size = 3.2
+  ) +
+  ggplot2::facet_wrap(~ method) +
+  ggplot2::labs(
+    title    = "Bland-Altman: method dose minus gold standard",
+    subtitle = paste0(
+      "Red dashed = mean bias; blue dotted = 95% limits of agreement (\u00b11.96 SD);\n",
+      "zero line = perfect agreement"
+    ),
+    x = "Mean of method and gold standard (mg pred-equiv)",
+    y = "Method \u2212 Gold standard (mg pred-equiv)"
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(strip.text = ggplot2::element_text(face = "bold"))
+
+print(p_ba)
 
 # ===========================================================================
 # 11. REPORT
