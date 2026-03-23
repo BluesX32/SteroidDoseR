@@ -125,11 +125,7 @@ synthetic_drug_exposure <- tribble(
 
   # --- missing amount_value → strength from source_value -----------------
   102L, "prednisone 10 MG oral tablet", "PREDNISONE 10 MG TABLET",
-  "2024-07-01", "2024-09-30", 92, 92, NA, NA, NA, "Take 1 tab (10 mg per dose) daily.",
-
-  # --- unknown drug -------------------------------------------------------
-  103L, "hydroxychloroquine 200 MG oral tablet", "HYDROXYCHLOROQUINE 200 MG TABLET",
-  "2023-01-01", "2023-06-30", 180, 182, 200, 8576L, NA, "Take 1 tablet daily."
+  "2024-07-01", "2024-09-30", 92, 92, NA, NA, NA, "Take 1 tab (10 mg per dose) daily."
 )
 
 # Add route column

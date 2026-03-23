@@ -27,4 +27,3 @@ person_id,drug_concept_name,drug_source_value,drug_exposure_start_date,drug_expo
 105,prednisone 10 MG oral tablet,PREDNISONE 10 MG TABLET,2024-05-01,2024-07-31,92,92,10,8576,10,Take 1 tablet daily.,Oral,Oral
 101,prednisone 5 MG oral tablet,PREDNISONE 5 MG TABLET,2024-06-30,2024-06-01,30,30,5,8576,,Take 1 tablet (5 mg) daily.,Oral,Oral
 102,prednisone 10 MG oral tablet,PREDNISONE 10 MG TABLET,2024-07-01,2024-09-30,92,92,,,"Take 1 tab (10 mg per dose) daily.",Oral,Oral
-103,hydroxychloroquine 200 MG oral tablet,HYDROXYCHLOROQUINE 200 MG TABLET,2023-01-01,2023-06-30,180,182,200,8576,,Take 1 tablet daily.,Oral,Oral
