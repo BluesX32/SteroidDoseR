@@ -66,6 +66,7 @@ test_that("M2 auto-parse fires when tablets/freq_per_day columns exist but are a
   df <- tibble::tibble(
     person_id                = 1L,
     drug_source_value        = "PREDNISONE 5 MG TABLET",
+    route_concept_name       = "Oral",
     amount_value             = 5,
     quantity                 = NA_real_,
     days_supply              = NA_real_,
@@ -90,6 +91,7 @@ test_that("sig_source = 'drug_source_value' works on data-frame path", {
   df <- tibble::tibble(
     person_id                = 1L,
     drug_source_value        = "PREDNISONE 5 MG TABLET Take 2 tablets (10 mg total) daily",
+    route_concept_name       = "Oral",
     amount_value             = 5,
     quantity                 = NA_real_,
     days_supply              = NA_real_,
@@ -116,6 +118,7 @@ test_that("strength_mg extracted from drug_source_value when amount_value is NA"
   df <- tibble::tibble(
     person_id                = 1L,
     drug_source_value        = "PREDNISONE 10 MG TABLET",
+    route_concept_name       = "Oral",
     amount_value             = NA_real_,
     quantity                 = 90,
     days_supply              = 90,
@@ -150,6 +153,7 @@ test_that("M1 fires on daily_dose_mg column (Version2 naming)", {
   df <- tibble::tibble(
     person_id                = 1L,
     drug_source_value        = "PREDNISONE 5 MG TABLET",
+    route_concept_name       = "Oral",
     amount_value             = 5,
     quantity                 = 90,
     days_supply              = 90,
@@ -166,6 +170,7 @@ test_that("daily_dose takes precedence over daily_dose_mg when both present", {
   df <- tibble::tibble(
     person_id                = 1L,
     drug_source_value        = "PREDNISONE 5 MG TABLET",
+    route_concept_name       = "Oral",
     amount_value             = 5,
     quantity                 = 90,
     days_supply              = 90,
