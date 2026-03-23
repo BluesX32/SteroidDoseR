@@ -90,11 +90,11 @@
     stringr::str_detect(s, "every\\s*12\\s*hours?|\\bq12h\\b") ~ 2,
     # ---- QID / TID / BID ---------------------------------------------------
     stringr::str_detect(s,
-      "four\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bqid\\b") ~ 4,
+      "(?:four|4)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bqid\\b") ~ 4,
     stringr::str_detect(s,
-      "three\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b") ~ 3,
+      "(?:three|3)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b") ~ 3,
     stringr::str_detect(s,
-      "twice\\s*(?:daily|a\\s*day)|two\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b") ~ 2,
+      "twice\\s*(?:daily|a\\s*day)|(?:two|2)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b") ~ 2,
     # ---- once daily --------------------------------------------------------
     stringr::str_detect(s,
       "once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|every\\s*morning|q\\s*am|qam|every\\s*24\\s*hours?|with\\s*breakfast") ~ 1,
@@ -125,6 +125,8 @@
     # "by mouth" / "po" / "orally" without time qualifier
     stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &
       !stringr::str_detect(s, "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery") ~ 1,
+    # "a day" / "per day" — common shorthand for once-daily
+    stringr::str_detect(s, "\\ba\\s+day\\b|\\bper\\s+day\\b|\\bper\\s+d\\b") ~ 1,
     TRUE ~ NA_real_
   )
 }
@@ -152,7 +154,7 @@
     s, "as directed|use as directed|see attach|per md|per ng|per physician|per doctor|per provider"
   )
   taper_flag <- stringr::str_detect(
-    s, "taper|decreas|reducing|reduce by|drop by|\\bthen\\b.*\\bmg\\b|alternate day|\\bqod\\b|every other day"
+    s, "taper|decreas|reducing|reduce by|\\bdrop\\b|\\bthen\\b.*\\bmg\\b|\\bthen\\b.*\\btabs?\\b|alternate day|\\bqod\\b|every other day"
   )
 
   # ---- Tablets (enhanced) --------------------------------------------------
@@ -451,30 +453,36 @@ parse_taper_schedule <- function(sig_text) {
   # Pattern: "60 mg daily then decrease by 10 mg every week" or
   #          "start at 60 mg, taper by 5 mg each month"
 
-  # Starting dose: either at the beginning of the string or after "start"/"begin"
+  # Starting dose: at the beginning of the string, or after "start/begin/continue"
   start_m <- stringr::str_match(
     s,
-    "(?:^\\s*|(?:start(?:ing)?|begin(?:ning)?)\\s+(?:at\\s+)?)(\\d+(?:\\.\\d+)?)\\s*mg"
+    "(?:^\\s*|(?:start(?:ing)?|begin(?:ning)?|continue)\\s+(?:at\\s+)?)(\\d+(?:\\.\\d+)?)\\s*mg"
   )
   start_dose <- safe_as_numeric(start_m[1L, 2L])
   if (is.na(start_dose)) return(NULL)
 
-  # Decrement: "decrease/reduce/taper/drop [by] X mg every/each/per UNIT"
+  # Decrement: "decrease/reduce/taper/drop [OPTIONAL WORDS] [by] X mg every/each/per [N] UNIT"
+  # - Allows "drop dose by 0.5 mg" (≤ 2 intervening words before "by")
+  # - Allows "every 4 weeks" (captures optional interval number before unit)
   dec_m <- stringr::str_match(
     s,
-    "(?:decrease|decreas|reduce|taper|drop)\\s+(?:by\\s+)?(\\d+(?:\\.\\d+)?)\\s*mg\\s+(?:each|every|per)\\s*(day|week|month|wk|mo)"
+    "(?:decrease|decreas|reduce|taper|drop)\\s+(?:\\w+\\s+){0,2}(?:by\\s+)?(\\d+(?:\\.\\d+)?)\\s*mg\\s+(?:each|every|per)\\s*(\\d+)?\\s*(days?|wks?|weeks?|mos?|months?)"
   )
   if (is.na(dec_m[1L, 1L])) return(NULL)
 
-  dec_amount <- safe_as_numeric(dec_m[1L, 2L])
-  dec_unit   <- dec_m[1L, 3L]
+  dec_amount    <- safe_as_numeric(dec_m[1L, 2L])
+  interval_num  <- safe_as_numeric(dec_m[1L, 3L])   # e.g. 4 from "every 4 weeks"; NA → 1
+  dec_unit      <- dec_m[1L, 4L]
 
-  dec_days <- dplyr::case_when(
+  if (is.na(interval_num)) interval_num <- 1
+
+  dec_days_base <- dplyr::case_when(
     stringr::str_detect(dec_unit, "^day")       ~ 1,
     stringr::str_detect(dec_unit, "^wk|^week")  ~ 7,
     stringr::str_detect(dec_unit, "^mo")         ~ 30,
     TRUE                                         ~ NA_real_
   )
+  dec_days <- dec_days_base * interval_num
 
   if (is.na(dec_days) || is.na(dec_amount) ||
       dec_amount <= 0 || dec_amount >= start_dose) {
@@ -567,7 +575,7 @@ parse_taper_schedule <- function(sig_text) {
 #' @param sig_col `character(1)`. Column with the SIG text. Default: `"sig"`.
 #' @param filter_oral `logical(1)`. If `TRUE` (default), only oral-route
 #'   records are kept.
-#' @param expand_tapers `logical(1)`. If `TRUE`, taper records with a
+#' @param expand_tapers `logical(1)`. If `TRUE` (default), taper records with a
 #'   parseable schedule are expanded into multiple rows -- one per dose step --
 #'   with columns `taper_step`, `step_start_day`, and `step_end_day` added.
 #'   Records whose taper cannot be decomposed keep `taper_step = NA`.
@@ -616,7 +624,7 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
                                          drug_name_col     = "drug_concept_name",
                                          sig_col           = "sig",
                                          filter_oral       = TRUE,
-                                         expand_tapers     = FALSE,
+                                         expand_tapers     = TRUE,
                                          max_daily_dose_mg = 2000,
                                          baseline_fallback = FALSE,
                                          equiv_table       = NULL,

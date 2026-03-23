@@ -19,6 +19,13 @@
 .preprocess_sig <- function(s) {
   # Spanish number words → digits; tablet/frequency synonyms → English
   s <- stringr::str_replace_all(s, c(
+    # English number words (for tab-count SIGs like "one a day")
+    "\\bone\\b"       = "1",
+    "\\btwo\\b"       = "2",
+    "\\bthree\\b"     = "3",
+    "\\bfour\\b"      = "4",
+    "\\bfive\\b"      = "5",
+    # Spanish number words
     "\\buno\\b"       = "1",
     "\\bdos\\b"       = "2",
     "\\btres\\b"      = "3",
@@ -113,7 +120,7 @@ parse_sig_one <- function(sig_text) {
   free_text_flag <- stringr::str_detect(s,
     "as directed|use as directed|see attach|per md|per ng|per physician|per doctor|per provider")
   taper_flag     <- stringr::str_detect(s,
-    "taper|decreas|reducing|reduce by|drop by|\\bthen\\b.*\\bmg\\b|alternate day|\\bqod\\b|every other day")
+    "taper|decreas|reducing|reduce by|\\bdrop\\b|\\bthen\\b.*\\bmg\\b|\\bthen\\b.*\\btabs?\\b|alternate day|\\bqod\\b|every other day")
 
   # ---- Tablets per dose -----------------------------------------------------
   tablets <- stringr::str_match(s,
@@ -123,9 +130,9 @@ parse_sig_one <- function(sig_text) {
   # ---- Frequency per day ----------------------------------------------------
   freq <- dplyr::case_when(
     stringr::str_detect(s, "every other day|\\bqod\\b") ~ 0.5,
-    stringr::str_detect(s, "four\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bqid\\b|\\bq6h\\b|every\\s*6\\s*hours?") ~ 4,
-    stringr::str_detect(s, "three\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b|\\bq8h\\b|every\\s*8\\s*hours?") ~ 3,
-    stringr::str_detect(s, "twice\\s*(?:daily|a\\s*day)|two\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b|\\bq12h\\b|every\\s*12\\s*hours?") ~ 2,
+    stringr::str_detect(s, "(?:four|4)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bqid\\b|\\bq6h\\b|every\\s*6\\s*hours?") ~ 4,
+    stringr::str_detect(s, "(?:three|3)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\btid\\b|\\bq8h\\b|every\\s*8\\s*hours?") ~ 3,
+    stringr::str_detect(s, "twice\\s*(?:daily|a\\s*day)|(?:two|2)\\s*(?:times|x)\\s*(?:a\\s*)?(?:daily|day)|\\bbid\\b|\\bq12h\\b|every\\s*12\\s*hours?") ~ 2,
     stringr::str_detect(s, "once\\s*(?:daily|a\\s*day)|\\bqd\\b|\\bdaily\\b|every\\s*day|every\\s*morning|with\\s*breakfast|q\\s*am|qam|every\\s*24\\s*hours?") ~ 1,
     stringr::str_detect(s, "\\bonce\\b.*\\boral\\b|\\bnightly\\b|every\\s*evening") ~ 1,
     # "in am" / "in the morning" / "every morning"
@@ -138,6 +145,8 @@ parse_sig_one <- function(sig_text) {
     # "by mouth" / "po" / "orally" without any time qualifier — implicit QD
     stringr::str_detect(s, "(?:by\\s+mouth|\\bpo\\b|\\borally\\b)") &
       !stringr::str_detect(s, "\\bhours?\\b|\\bhrs?\\b|\\bbefore\\b|\\bafter\\b|procedure|surgery") ~ 1,
+    # "a day" / "per day" — common shorthand for once-daily
+    stringr::str_detect(s, "\\ba\\s+day\\b|\\bper\\s+day\\b|\\bper\\s+d\\b") ~ 1,
     TRUE ~ NA_real_
   )
 

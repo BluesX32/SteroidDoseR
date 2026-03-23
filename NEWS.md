@@ -1,3 +1,39 @@
+# SteroidDoseR 0.2.2
+
+## Enhancements
+
+* **`parse_sig_one()` / `parse_sig_one_advanced()` — `"a day"` / `"per day"` now
+  recognised as once-daily** (`nlp.R`, `nlp_advanced.R`):
+  Common shorthand forms (`"3.5 mg a day"`, `"40 mg per day"`) were not matched
+  by any frequency pattern. Now return `freq_per_day = 1`.
+
+* **`parse_sig_one()` / `parse_sig_one_advanced()` — English number words
+  translated in preprocessing** (`nlp.R`):
+  `one`→`1`, `two`→`2`, `three`→`3`, `four`→`4`, `five`→`5` are now translated
+  by `.preprocess_sig()` so tab-count SIGs like `"1 a day for 3 days"` (from
+  `"one a day"`) are parsed correctly. TID/QID frequency patterns updated to
+  accept both word (`"three times"`) and digit (`"3 times"`) forms.
+
+* **Taper detection broadened** (`nlp.R`, `nlp_advanced.R`):
+  Pattern `"drop by"` replaced with `\\bdrop\\b` so `"DROP DOSE BY 0.5 MG
+  EVERY 4 WEEKS"` is correctly flagged as a taper. Added
+  `\\bthen\\b.*\\btabs?\\b` to catch tab-count step tapers like `"4 tabs now
+  then 3 a day for 3 days"`.
+
+* **`parse_taper_schedule()` — improved decrement-pattern parser**
+  (`nlp_advanced.R`):
+  Three fixes applied: (1) `"continue X mg"` is now a valid starting dose
+  anchor (previously only `"start/begin"` was recognised); (2) up to two
+  intervening words between the decrement verb and amount are allowed (handles
+  `"drop dose by 0.5 mg"`); (3) an optional interval number before the unit is
+  captured (`"every 4 weeks"` → step duration = 28 days, previously failed to
+  parse the `"4"`).
+
+* **`calc_daily_dose_nlp_advanced()` — `expand_tapers` default changed to
+  `TRUE`** (`nlp_advanced.R`):
+  Taper records are now expanded by default. Pass `expand_tapers = FALSE` to
+  suppress expansion and retain the single-row taper flag.
+
 # SteroidDoseR 0.2.1
 
 ## Enhancements
