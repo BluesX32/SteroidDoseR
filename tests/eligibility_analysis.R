@@ -19,15 +19,13 @@ library(SteroidDoseR)
 library(dplyr)
 
 # ---------------------------------------------------------------------------
-# 0. Reconstruct intermediate steps if not already in session
+# 0. Alias session objects
 # ---------------------------------------------------------------------------
-# oral-filtered record-level results (filter_oral = TRUE, same as run_pipeline)
-if (!exists("baseline_df_oral")) {
-  baseline_df_oral <- calc_daily_dose_baseline(drug_df, filter_oral = TRUE)
-}
-if (!exists("nlp_df_oral")) {
-  nlp_df_oral <- calc_daily_dose_nlp(drug_df, filter_oral = TRUE)
-}
+# baseline_df and nlp_df from run_analysis.R are already oral-filtered
+# (filter_oral = TRUE is the default and is set explicitly in run_analysis.R).
+# Use them directly to avoid re-running expensive queries.
+baseline_df_oral <- baseline_df   # filter_oral = TRUE already applied in run_analysis.R
+nlp_df_oral      <- nlp_df        # filter_oral = TRUE is the default
 
 # ---------------------------------------------------------------------------
 # Helper: compact funnel printer

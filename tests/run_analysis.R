@@ -268,7 +268,8 @@ message("\n=== [3/3] Advanced NLP method ===")
 adv_nlp_df <- calc_daily_dose_nlp_advanced(
   drug_df,
   max_daily_dose_mg = 2000,
-  expand_tapers     = FALSE
+  expand_tapers     = FALSE,
+  filter_oral       = TRUE
 )
 
 cat("\nparsed_status breakdown (Advanced NLP):\n")
@@ -377,7 +378,9 @@ cat(sprintf(
 # 8 mg ≠ 10 mg pred-equiv). We identify each gold episode's drug by finding
 # the most-frequent drug in drug_df that overlaps the gold episode window,
 # then apply the same convert_pred_equiv() used on the computed side.
-gold_drug_map <- drug_df |>
+# Use baseline_df (oral-filtered) so injection records cannot become the
+# dominant drug and corrupt the pred-equiv conversion.
+gold_drug_map <- baseline_df |>
   dplyr::select(person_id, drug_name_std,
                 drug_exposure_start_date, drug_exposure_end_date) |>
   dplyr::rename(patient_id = person_id) |>

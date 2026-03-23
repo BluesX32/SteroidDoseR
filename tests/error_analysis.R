@@ -77,6 +77,7 @@ high_err |>
 # ---------------------------------------------------------------------------
 cat(strrep("=", 70), "\n")
 cat("2. ORIGINAL DRUG_DF RECORDS FOR HIGH-ERROR PATIENTS\n")
+cat("   (all routes shown — oral-filtered records are in baseline_df)\n")
 cat(strrep("-", 40), "\n")
 
 high_pts <- unique(high_err$patient_id)
