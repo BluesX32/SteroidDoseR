@@ -60,18 +60,17 @@ drug_baseline |>
 
 ```{r conversion}
 drug_baseline <- drug_baseline |>
-  dplyr::mutate(drug_name_std = SteroidDoseR:::standardize_drug_name(drug_concept_name)) |>
-  dplyr::rename(daily_dose_mg = daily_dose_mg_imputed)
+  dplyr::mutate(drug_name_std = SteroidDoseR:::standardize_drug_name(drug_concept_name))
 
 drug_pe <- convert_pred_equiv(
   drug_baseline,
   drug_col = "drug_name_std",
-  dose_col = "daily_dose_mg"
+  dose_col = "daily_dose_mg_imputed"
 )
 
 drug_pe |>
   dplyr::filter(pred_equiv_status == "ok") |>
-  dplyr::select(person_id, drug_name_std, daily_dose_mg, pred_equiv_mg, equiv_factor) |>
+  dplyr::select(person_id, drug_name_std, daily_dose_mg_imputed, pred_equiv_mg, equiv_factor) |>
   head(10)
 ```
 
@@ -80,14 +79,14 @@ drug_pe |>
 ## Step 3: Build episodes
 
 ```{r episodes}
-# Keep only steroids with a computable dose
+# Keep only steroids with a computable pred-equiv dose
 drug_for_episodes <- drug_pe |>
-  dplyr::filter(pred_equiv_status == "ok", !is.na(pred_equiv_mg)) |>
-  dplyr::rename(daily_dose_mg_imputed = pred_equiv_mg)
+  dplyr::filter(pred_equiv_status == "ok", !is.na(pred_equiv_mg))
 
 episodes <- build_episodes(
   drug_for_episodes,
   end_col  = "drug_exposure_end_date",
+  dose_col = "pred_equiv_mg",
   gap_days = 30L
 )
 
