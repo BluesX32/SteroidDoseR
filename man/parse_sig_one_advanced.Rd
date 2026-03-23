@@ -2,26 +2,36 @@
 % Please edit documentation in R/nlp_advanced.R
 \name{parse_sig_one_advanced}
 \alias{parse_sig_one_advanced}
-\title{Parse one SIG string using the advanced NLP parser}
+\title{Parse one SIG string with enhanced vocabulary (advanced NLP)}
 \usage{
 parse_sig_one_advanced(sig_text)
 }
 \arguments{
-\item{sig_text}{\code{character(1)}. The raw SIG string to parse.}
+\item{sig_text}{\code{character(1)}. Raw SIG string.}
 }
 \value{
-A one-row \code{tibble} with columns including \code{tablets}, \code{freq_per_day},
-\code{mg_from_sig}, \code{parsed_status}, \code{is_taper}, and related fields.
-Never throws an error; returns \code{NA}s with \code{parsed_status = "no_parse"}
-on failure.
+A one-row \code{tibble} with the same columns as \code{\link[=parse_sig_one]{parse_sig_one()}}.
 }
 \description{
-Extends \code{\link[=parse_sig_one]{parse_sig_one()}} with word-form tablet counts
-(\code{"one tablet"}, \code{"half a tablet"}), fractional tablets (\code{"1/2"}),
-weekly/monthly frequencies, every-N-days patterns (\code{"q48h"}),
-every-N-hours patterns (\code{"q4h"}), and taper schedule detection.
+Drop-in replacement for \code{\link[=parse_sig_one]{parse_sig_one()}} that adds:
+\itemize{
+\item Word-form tablet counts: \code{"one tablet"}, \code{"half a tablet"}, \code{"1/2 tab"}
+\item Weekly / monthly frequencies: \code{"once weekly"}, \code{"twice a week"}, \code{"monthly"}
+\item Generalised every-N-days: \code{"every 3 days"}, \code{"q48h"}, \code{"q72h"}
+\item Sub-daily every-N-hours: \code{"every 4 hours"}, \code{"q4h"}
+}
+}
+\details{
+Returns the same columns as \code{\link[=parse_sig_one]{parse_sig_one()}} for full compatibility.
+The function \strong{never throws an error}.
 }
 \examples{
-parse_sig_one_advanced("Take one and a half tablets twice weekly")
-parse_sig_one_advanced("40mg daily for 7 days then 20mg daily for 7 days")
+parse_sig_one_advanced("Take one tablet daily")
+parse_sig_one_advanced("Take half a tablet (5 mg) once weekly")
+parse_sig_one_advanced("Take 2 tabs every 3 days")
+parse_sig_one_advanced("40 mg daily x 4 weeks then 20 mg daily x 4 weeks")
+}
+\seealso{
+\code{\link[=parse_sig_one]{parse_sig_one()}}, \code{\link[=parse_taper_schedule]{parse_taper_schedule()}},
+\code{\link[=calc_daily_dose_nlp_advanced]{calc_daily_dose_nlp_advanced()}}
 }

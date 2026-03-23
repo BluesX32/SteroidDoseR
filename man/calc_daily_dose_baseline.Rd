@@ -51,37 +51,40 @@ native \code{sig} field is absent. One of \code{"sig"} (default) or
 \item{m2_sig_parse}{\code{character(1)}. Controls behaviour when \code{tablets} and
 \code{freq_per_day} columns are absent but a \code{sig} column is present:
 \describe{
-\item{\code{"auto"} (default)}{Call \code{\link[=parse_sig]{parse_sig()}} internally to populate \code{tablets} and
-\code{freq_per_day} before running M2. Recommended for real-world OMOP data.}
+\item{\code{"auto"} (default)}{Call \code{\link[=parse_sig]{parse_sig()}} internally to populate
+\code{tablets} and \code{freq_per_day} before running M2. This is the recommended
+setting for real-world OMOP data where these columns are not pre-populated.}
 \item{\code{"warn"}}{Emit a warning and skip M2.}
 \item{\code{"none"}}{Silently skip M2 without any message.}
 }
-Ignored when \code{tablets} and \code{freq_per_day} columns already exist in the data
-(even if all NA), or when \code{"tablets_freq"} is not in \code{methods}.}
+Ignored when \code{tablets} and \code{freq_per_day} columns already exist in the
+data (even if all NA), or when \code{"tablets_freq"} is not in \code{methods}.}
 
 \item{max_daily_dose_mg}{\code{numeric(1)} or \code{NULL}. Upper plausibility bound in
 mg/day. Records whose imputed dose exceeds this value are set to \code{NA} with
-a warning. Default: \code{2000}. Set to \code{NULL} to disable the cap.}
+a warning, because doses that large almost always indicate data-quality
+problems (non-mg \code{amount_value}, quantity in total-mg, near-zero
+\code{days_supply}, etc.). Default: \code{2000}. Set to \code{NULL} to disable the cap.}
 
 \item{filter_oral}{\code{logical(1)}. If \code{TRUE} (default), restrict to oral-route
 records and to drugs present in the prednisone-equivalency table before
-imputing — matching \code{calc_daily_dose_nlp()}. Set to \code{FALSE} only if the
-input is already pre-filtered to oral steroids.}
-
-\item{equiv_table}{A data frame with columns \code{drug_name_std} and
-\code{equiv_factor} used when \code{filter_oral = TRUE}. If \code{NULL}, the built-in
-table is used.}
-
-\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex) and
-\code{canonical_name} passed to \code{\link[=standardize_drug_name]{standardize_drug_name()}}. \code{NULL} uses built-in
-mappings.}
+imputing — matching the default behaviour of \code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}}.
+Set to \code{FALSE} only if the input is already pre-filtered to oral steroids.}
 }
 \value{
-The input data frame (or the fetched data frame) with three
+The input data frame (or the fetched data frame) with seven
 additional columns:
 \describe{
 \item{strength_mg}{Extracted tablet/capsule strength in mg.}
-\item{daily_dose_mg_imputed}{Best-estimate daily dose in mg.}
+\item{dose_from_original}{M1 value: the original \code{daily_dose} or
+\code{daily_dose_mg} column cast to numeric (NA if absent or non-positive).}
+\item{dose_from_tablets_freq}{M2 value: \code{tablets * freq_per_day * strength_mg} (NA if any component is missing).}
+\item{dose_from_actual_duration}{M3 value: \code{(quantity * strength_mg) / actual_duration_days} (NA if any component is missing or duration <= 0).
+This is the Burkard (2024) formula for fixed-amount oral formulations.}
+\item{dose_from_supply}{M4 value: \code{(quantity * strength_mg) / days_supply}
+(NA if any component is missing or \code{days_supply} is 0). Fallback only.}
+\item{daily_dose_mg_imputed}{Best-estimate daily dose in mg: the first
+non-NA value across M1-M4 in cascade order.}
 \item{imputation_method}{One of \code{"original"}, \code{"tablets_freq"},
 \code{"supply_based"}, \code{"actual_duration"}, or \code{"missing"}.}
 }
@@ -99,9 +102,9 @@ The first argument accepts either a \strong{connector} (created by
 \subsection{Cascade order}{\tabular{lll}{
    Method \tab Label \tab Logic \cr
    M1 \tab \code{"original"} \tab Use \code{daily_dose} or \code{daily_dose_mg} column if numeric and > 0. \cr
-   M2 \tab \code{"tablets_freq"} \tab \verb{tablets * freq_per_day * strength_mg}. Requires \code{sig} column to be parsed first, or pre-parsed \code{tablets} and \code{freq_per_day} columns. \cr
-   M3 \tab \code{"actual_duration"} \tab \verb{(quantity * strength_mg) / (end_date - start_date + 1)}. Burkard (2024) standard for oral tablets. \cr
-   M4 \tab \code{"supply_based"} \tab \verb{(quantity * strength_mg) / days_supply}. Fallback when date range is unavailable. \cr
+   M2 \tab \code{"tablets_freq"} \tab \code{tablets * freq_per_day * strength_mg}. Requires \code{sig} column to be parsed first, or pre-parsed \code{tablets} and \code{freq_per_day} columns. \cr
+   M3 \tab \code{"actual_duration"} \tab \code{(quantity * strength_mg) / actual_duration_days}, where \verb{actual_duration_days = end_date − start_date + 1}. This is the Burkard (2024) standard formula for fixed-amount oral formulations. \cr
+   M4 \tab \code{"supply_based"} \tab \code{(quantity * strength_mg) / days_supply}. Fallback when date range is unavailable. \cr
 }
 
 }

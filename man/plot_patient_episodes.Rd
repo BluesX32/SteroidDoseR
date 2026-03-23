@@ -19,19 +19,29 @@ plot_patient_episodes(
 }
 \arguments{
 \item{episode_list}{A \strong{named} list of episode data frames, one per
-method. Each data frame must contain \code{person_id}, \code{drug_name_std},
-\code{episode_start}, \code{episode_end}, and the dose column in \code{dose_col}.}
+method. Each data frame must be output from \code{\link[=build_episodes]{build_episodes()}} and
+contain columns \code{person_id}, \code{drug_name_std}, \code{episode_start},
+\code{episode_end}, and the dose column specified in \code{dose_col}.
+Example:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{list(Baseline = baseline_episodes,
+     NLP      = nlp_episodes,
+     "Advanced NLP" = adv_episodes)
+}\if{html}{\out{</div>}}}
 
 \item{patient_ids}{Character or integer vector of \code{person_id} values to
-include.}
+include. At least one must be provided.}
 
-\item{gold_std}{Optional gold-standard data frame. Default: \code{NULL}.}
+\item{gold_std}{Optional gold-standard data frame with columns for patient
+ID (\code{gold_id_col}), \code{episode_start}, \code{episode_end}, and a dose column
+(\code{gold_dose_col}). Default: \code{NULL} (no gold standard plotted).}
 
 \item{drug_filter}{Character vector of \code{drug_name_std} values to restrict
 the plot to. Default: \code{NULL} (all drugs).}
 
 \item{dose_col}{\code{character(1)}. Dose column to use from each episode data
-frame. Default: \code{"median_daily_dose"}.}
+frame. One of \code{"median_daily_dose"} (default), \code{"min_daily_dose"},
+\code{"max_daily_dose"}, or \code{"mean_daily_dose"}.}
 
 \item{gold_dose_col}{\code{character(1)}. Dose column in \code{gold_std}. Default:
 \code{"median_daily_dose"}.}
@@ -42,7 +52,7 @@ Default: \code{"patient_id"}.}
 \item{colors}{Named character vector mapping method names to hex colour
 codes. Defaults to the built-in palette.}
 
-\item{linewidth}{\code{numeric(1)}. Thickness of episode segments. Default: \code{2}.}
+\item{linewidth}{\code{numeric(1)}. Thickness of episode segments. Default: 2.}
 
 \item{title}{\code{character(1)}. Plot title. Default: \code{"Patient dose episodes"}.}
 }
@@ -51,15 +61,26 @@ A \code{ggplot} object. Print or save with \code{\link[ggplot2:ggsave]{ggplot2::
 }
 \description{
 Generates a \code{ggplot2} figure showing computed daily dose over time for
-one or more patients, overlaying Baseline, NLP, Advanced NLP, and
-gold-standard episodes as horizontal step segments. Requires the
-\code{ggplot2} package.
+one or more patients, overlaying any combination of Baseline, NLP,
+Advanced NLP, and gold-standard episodes as horizontal step segments.
+}
+\details{
+Each method's episodes appear as coloured horizontal lines spanning
+\code{episode_start} to \code{episode_end}. Gaps between episodes are blank (no
+dose prescribed). The gold standard is drawn in dark grey with a dashed
+line style. Panels are faceted by patient x drug.
 }
 \examples{
 \dontrun{
-  plot_patient_episodes(
-    list(Baseline = baseline_ep, NLP = nlp_ep),
-    patient_ids = c(1L, 2L)
-  )
+p <- plot_patient_episodes(
+  list(Baseline = baseline_episodes, NLP = nlp_episodes),
+  patient_ids = c(1001L, 1002L),
+  gold_std    = gold_standard
+)
+print(p)
+ggplot2::ggsave("dose_review.pdf", p, width = 12, height = 8)
 }
+}
+\seealso{
+\code{\link[=launch_dose_dashboard]{launch_dose_dashboard()}}, \code{\link[=build_episodes]{build_episodes()}}
 }

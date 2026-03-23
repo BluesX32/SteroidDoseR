@@ -9,9 +9,12 @@ standardize_drug_name(x, drug_name_map = NULL)
 \arguments{
 \item{x}{Character vector of drug names.}
 
-\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex) and
-\code{canonical_name}. Rows are applied in order before the built-in synonym
-table. \code{NULL} uses only the built-in mappings.}
+\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex
+string, case-insensitive) and \code{canonical_name} (replacement string).
+User-supplied rows are applied \strong{before} the built-in mapping, so
+site-specific brand names or non-English names can be added without
+modifying the package. Any drug not matched by the user map falls
+through to the built-in rules. Default: \code{NULL} (built-in only).}
 }
 \value{
 Character vector with standardised names.

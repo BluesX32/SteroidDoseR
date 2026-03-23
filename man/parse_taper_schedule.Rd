@@ -2,35 +2,46 @@
 % Please edit documentation in R/nlp_advanced.R
 \name{parse_taper_schedule}
 \alias{parse_taper_schedule}
-\title{Parse a taper schedule from a single SIG string}
+\title{Decompose a taper SIG string into a per-step dose schedule}
 \usage{
 parse_taper_schedule(sig_text)
 }
 \arguments{
-\item{sig_text}{\code{character(1)}. The raw SIG string containing a taper
-schedule.}
+\item{sig_text}{\code{character(1)}. The raw SIG string.}
 }
 \value{
-A \code{tibble} with one row per dose step and columns:
+A \code{tibble} with one row per taper step and columns:
 \describe{
 \item{step}{Integer step number (1, 2, ...).}
-\item{dose_mg}{Numeric dose in mg for this step.}
-\item{freq_per_day}{Numeric doses per day for this step.}
-\item{duration_days}{Integer duration of this step in days (\code{NA} for the
-final open-ended step).}
-\item{step_start_day}{Cumulative start day of this step.}
-\item{step_end_day}{Cumulative end day of this step (\code{NA} for final step).}
+\item{daily_dose_mg}{Daily dose for this step (mg/day).}
+\item{freq_per_day}{Inferred doses per day (1 = daily by default).}
+\item{duration_days}{Length of this step in days.}
+\item{step_start_day}{Days from prescription start to step start (0-based).}
+\item{step_end_day}{Days from prescription start to step end (inclusive).}
 }
-Returns \code{NULL} when the SIG cannot be decomposed into 2 or more steps.
+Returns \code{NULL} when the SIG cannot be decomposed into >= 2 steps.
 }
 \description{
-Attempts to decompose a SIG string into explicit taper steps using two
-strategies: (1) explicit multi-step patterns (\code{"X mg for N days then Y mg
-for M days"}), and (2) decrement patterns (\code{"starting at X mg, reduce by
-Y mg every N days"}).
+Attempts to parse a steroid taper instruction into a table of dose steps,
+each with its daily dose, frequency, duration, and start/end day offsets
+relative to the prescription start date.
+}
+\details{
+Two strategies are attempted in order:
+\enumerate{
+\item \strong{Explicit multi-step} -- SIG contains two or more \code{"X mg ... for N units"} blocks separated by \code{"then"}, commas, or semicolons.
+\item \strong{Decrement pattern} -- SIG states a starting dose and a fixed
+decrement: \code{"60 mg daily then decrease by 10 mg every week"}.
+}
+
+Returns \code{NULL} when neither strategy produces >= 2 parseable steps.
 }
 \examples{
-parse_taper_schedule("40mg daily for 7 days then 20mg daily for 7 days then 10mg daily")
-parse_taper_schedule("starting at 60mg, taper by 10mg every week")
-parse_taper_schedule("Take 1 tab daily")  # returns NULL
+parse_taper_schedule(
+  "60 mg daily for 2 weeks, then 40 mg daily for 2 weeks, then 20 mg daily for 2 weeks"
+)
+parse_taper_schedule(
+  "start 60 mg then decrease by 10 mg every week"
+)
+parse_taper_schedule("Take 1 tablet daily")  # returns NULL
 }

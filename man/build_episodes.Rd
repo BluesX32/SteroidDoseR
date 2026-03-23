@@ -60,6 +60,11 @@ A data frame with one row per patient-drug episode:
 \item{median_daily_dose}{Median of \code{dose_col} across merged records.}
 \item{min_daily_dose}{Minimum daily dose across merged records.}
 \item{max_daily_dose}{Maximum daily dose across merged records.}
+\item{mean_daily_dose}{Duration-weighted mean daily dose:
+\code{sum(dose_i * days_i) / sum(days_i)} across non-NA records in the
+episode. Use this (via \code{computed_dose_col = "mean_daily_dose"} in
+\code{\link[=evaluate_against_gold]{evaluate_against_gold()}}) to weight longer prescriptions more heavily
+than short ones.}
 }
 }
 \description{

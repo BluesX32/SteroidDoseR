@@ -2,7 +2,7 @@
 % Please edit documentation in R/viz.R
 \name{launch_dose_dashboard}
 \alias{launch_dose_dashboard}
-\title{Launch an interactive Shiny dashboard for reviewing dose episodes}
+\title{Launch an interactive dose review dashboard}
 \usage{
 launch_dose_dashboard(
   episode_list,
@@ -14,35 +14,51 @@ launch_dose_dashboard(
 )
 }
 \arguments{
-\item{episode_list}{A \strong{named} list of episode data frames, one per method.
-Must include at least one entry. See \code{\link[=plot_patient_episodes]{plot_patient_episodes()}} for format.}
+\item{episode_list}{A \strong{named} list of episode data frames -- one per method
+(see \code{\link[=plot_patient_episodes]{plot_patient_episodes()}} for format). Must include at least one
+entry.}
 
 \item{gold_std}{Optional gold-standard data frame. Default: \code{NULL}.}
 
-\item{dose_col}{\code{character(1)}. Dose column to display. Default:
-\code{"median_daily_dose"}.}
+\item{dose_col}{\code{character(1)}. Default dose metric on startup. One of
+\code{"median_daily_dose"} (default), \code{"min_daily_dose"}, \code{"max_daily_dose"},
+\code{"mean_daily_dose"}.}
 
-\item{gold_dose_col}{\code{character(1)}. Dose column in \code{gold_std}. Default:
-\code{"median_daily_dose"}.}
+\item{gold_dose_col}{\code{character(1)}. Dose column in \code{gold_std}.
+Default: \code{"median_daily_dose"}.}
 
 \item{gold_id_col}{\code{character(1)}. Patient-ID column in \code{gold_std}.
 Default: \code{"patient_id"}.}
 
-\item{plot_height}{\code{integer(1)}. Height of the plot panel in pixels.
+\item{plot_height}{\code{integer(1)}. Height of the episode plot in pixels.
 Default: \code{500L}.}
 }
 \value{
-Launches a Shiny app (does not return a value). Requires the
-\code{shiny}, \code{ggplot2}, and \code{DT} packages.
+Launches a Shiny app (does not return a value). Press \strong{Escape} or
+close the browser tab to stop.
 }
 \description{
-Opens a Shiny application for interactive patient-level review of dose
-episodes. Supports patient selection, drug filtering, method toggling,
-and optional gold-standard overlay. Requires the \code{shiny}, \code{ggplot2},
-and \code{DT} packages.
+Opens a Shiny application in the browser for manual review of patient-level
+dose episodes. The dashboard overlays computed episodes from one or more
+methods and an optional gold standard, with controls for:
+\itemize{
+\item Selecting patients by ID (multi-select or free-text entry)
+\item Filtering by drug name
+\item Choosing the dose aggregation metric (median / min / max / mean)
+\item Toggling individual methods on/off
+\item Viewing the underlying episode table
+}
 }
 \examples{
 \dontrun{
-  launch_dose_dashboard(list(Baseline = baseline_ep, NLP = nlp_ep))
+launch_dose_dashboard(
+  list(Baseline = baseline_episodes,
+       NLP      = nlp_episodes,
+       "Advanced NLP" = adv_episodes),
+  gold_std = gold_standard
+)
 }
+}
+\seealso{
+\code{\link[=plot_patient_episodes]{plot_patient_episodes()}}
 }

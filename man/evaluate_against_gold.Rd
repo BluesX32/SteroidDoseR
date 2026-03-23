@@ -17,7 +17,8 @@ evaluate_against_gold(
   gold_end_col = "episode_end",
   gold_dose_col = "median_daily_dose",
   dose_breaks = c(0, 10, 20, 40, Inf),
-  dose_labels = c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)", "Very High (>40mg)")
+  dose_labels = c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)",
+    "Very High (>40mg)")
 )
 }
 \arguments{
@@ -58,10 +59,12 @@ Default: \code{"episode_end"}.}
 Default: \code{"median_daily_dose"}.}
 
 \item{dose_breaks}{Numeric vector of cut-point boundaries for dose-range
-stratification. Default: \code{c(0, 10, 20, 40, Inf)}.}
+stratification in \verb{$stratified$by_dose_range}. Default:
+\code{c(0, 10, 20, 40, Inf)} (tuned for typical myositis maintenance doses).
+Must have exactly one more element than \code{dose_labels}.}
 
-\item{dose_labels}{Character vector of labels for the dose ranges. Must
-have exactly one fewer element than \code{dose_breaks}. Default:
+\item{dose_labels}{Character vector of labels for the dose ranges defined
+by \code{dose_breaks}. Default:
 \code{c("Low (<=10mg)", "Medium (10-20mg)", "High (20-40mg)", "Very High (>40mg)")}.}
 }
 \value{

@@ -32,9 +32,9 @@ prednisone-equivalent dose. Default: \code{"pred_equiv_mg"}.}
 \item{equiv_table}{A data frame with columns \code{drug_name_std} and
 \code{equiv_factor}. If \code{NULL} (default), the built-in clinical table is used.}
 
-\item{drug_name_map}{Optional data frame with columns \code{pattern} (regex) and
-\code{canonical_name} for custom drug-name mappings passed to
-\code{\link[=standardize_drug_name]{standardize_drug_name()}}. \code{NULL} uses built-in mappings.}
+\item{drug_name_map}{Optional data frame with columns \code{pattern} and
+\code{canonical_name} passed to \code{\link[=standardize_drug_name]{standardize_drug_name()}}. Use to add
+site-specific brand names or non-English synonyms. Default: \code{NULL}.}
 }
 \value{
 \code{drug_df} with three additional columns:

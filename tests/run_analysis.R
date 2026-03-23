@@ -34,6 +34,13 @@
 # R CMD check runs every .R file in tests/ via R CMD BATCH (non-interactive).
 # Exit immediately and cleanly when not in an interactive session.
 if (!interactive()) quit(status = 0L, save = "no")
+setwd("H:/Myositis/DoseCalculation/SteroidDoseR")
+devtools::install_local("./SteroidDoseR/", force = TRUE)
+
+devtools::load_all()
+devtools::document()
+devtools::test()
+
 
 library(SteroidDoseR)
 library(dplyr)
@@ -46,7 +53,7 @@ USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
 ENV_FILE       <- ".env"  # path to .env file (relative to working directory)
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
-GAP_DAYS       <- 0L
+GAP_DAYS       <- 30L
 
 GOLD_STD_PATH  <- "H:/Myositis/DoseCalculation/Version2/GoldStandard/qc_gold_standard/corticosteroids_metrics_per_record.csv"
 

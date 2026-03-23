@@ -2,25 +2,29 @@
 % Please edit documentation in R/nlp_advanced.R
 \name{parse_sig_advanced}
 \alias{parse_sig_advanced}
-\title{Parse SIG strings using the advanced NLP parser}
+\title{Apply \code{parse_sig_one_advanced()} to every row of a data frame}
 \usage{
 parse_sig_advanced(drug_df, sig_col = "sig")
 }
 \arguments{
-\item{drug_df}{A data frame containing at least the SIG column.}
+\item{drug_df}{A data frame containing a SIG text column.}
 
-\item{sig_col}{\code{character(1)}. Name of the column holding SIG text.
-Default: \code{"sig"}.}
+\item{sig_col}{\code{character(1)}. Name of the SIG column. Default: \code{"sig"}.}
 }
 \value{
-\code{drug_df} with additional parsed columns from
-\code{\link[=parse_sig_one_advanced]{parse_sig_one_advanced()}} bound column-wise.
+\code{drug_df} with parsed columns from \code{\link[=parse_sig_one_advanced]{parse_sig_one_advanced()}}
+appended (excluding the \code{sig_raw} duplicate).
 }
 \description{
-Applies \code{\link[=parse_sig_one_advanced]{parse_sig_one_advanced()}} row-wise to a data frame, returning
-the original data with parsed dose components appended.
+Drop-in replacement for \code{\link[=parse_sig]{parse_sig()}} using the enhanced vocabulary.
 }
 \examples{
-df <- tibble::tibble(sig = c("Take 2 tabs BID", "one tablet daily", NA_character_))
+df <- tibble::tibble(
+  person_id = 1:2,
+  sig = c("Take one tablet (5 mg) daily", "Take half tab every 3 days")
+)
 parse_sig_advanced(df)
+}
+\seealso{
+\code{\link[=parse_sig]{parse_sig()}}, \code{\link[=parse_sig_one_advanced]{parse_sig_one_advanced()}}
 }

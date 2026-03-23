@@ -24,8 +24,8 @@ frame (legacy path), ensure the relevant columns are present.
    \code{drug_concept_id} \tab int \tab Concept-set filtering \cr
    \code{drug_source_concept_id} \tab int \tab Unmapped-concept fallback \cr
    \code{drug_concept_name} \tab chr \tab Drug name standardisation \cr
-   \code{drug_source_value} \tab chr \tab Strength extraction (Baseline actual_duration/supply_based) \cr
-   \code{drug_exposure_end_date} \tab Date \tab Duration (Baseline actual_duration [M3], episodes) \cr
+   \code{drug_source_value} \tab chr \tab Strength extraction (Baseline supply_based/actual_duration) \cr
+   \code{drug_exposure_end_date} \tab Date \tab Duration (Baseline actual_duration M3, episodes) \cr
    \code{quantity} \tab num \tab Baseline actual_duration (M3), supply_based (M4) \cr
    \code{days_supply} \tab num \tab Baseline supply_based (M4, fallback) \cr
    \code{sig} \tab chr \tab NLP method \cr

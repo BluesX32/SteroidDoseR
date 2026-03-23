@@ -2,7 +2,7 @@
 % Please edit documentation in R/nlp_advanced.R
 \name{calc_daily_dose_nlp_advanced}
 \alias{calc_daily_dose_nlp_advanced}
-\title{Compute daily steroid doses using advanced NLP SIG parsing}
+\title{Compute daily steroid doses using the advanced NLP method}
 \usage{
 calc_daily_dose_nlp_advanced(
   connector_or_df,
@@ -32,41 +32,70 @@ Default: \code{"drug_concept_name"}.}
 \item{filter_oral}{\code{logical(1)}. If \code{TRUE} (default), only oral-route
 records are kept.}
 
-\item{expand_tapers}{\code{logical(1)}. If \code{TRUE}, taper schedules are
-decomposed into one row per dose step. Default: \code{FALSE}.}
+\item{expand_tapers}{\code{logical(1)}. If \code{TRUE}, taper records with a
+parseable schedule are expanded into multiple rows -- one per dose step --
+with columns \code{taper_step}, \code{step_start_day}, and \code{step_end_day} added.
+Records whose taper cannot be decomposed keep \code{taper_step = NA}.
+Default: \code{FALSE}.}
 
-\item{max_daily_dose_mg}{\code{numeric(1)} or \code{NULL}. Upper plausibility bound in
-mg/day. Default: \code{2000}.}
+\item{max_daily_dose_mg}{\code{numeric(1)}. Records with \code{daily_dose_mg} above
+this value are set to \code{NA} with a diagnostic warning. Pass \code{NULL} to
+disable. Default: \code{2000}.}
 
-\item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, carry through an existing
-\code{daily_dose_mg} column for records where parsing fails. Default: \code{FALSE}.}
-
-\item{equiv_table}{A data frame with columns \code{drug_name_std} and
-\code{equiv_factor}. If \code{NULL}, the built-in table is used.}
-
-\item{drug_name_map}{Optional data frame with columns \code{pattern} and
-\code{canonical_name} for custom drug-name mappings.}
+\item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, carries through an
+existing \code{daily_dose_mg_orig} column for failed records. Default: \code{FALSE}.}
 
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame.}
 }
 \value{
-A data frame with parsed dose columns and \code{daily_dose_mg}.
-When \code{expand_tapers = TRUE}, taper records produce multiple rows.
+A data frame with the same columns as \code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}} plus:
+\itemize{
+\item When \code{expand_tapers = TRUE}: \code{taper_step} (int), \code{step_start_day}
+(num), \code{step_end_day} (num) -- present on every row, \code{NA} for
+non-taper records.
+}
 }
 \description{
-Extends \code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}} with word-form tablet counts, fractional
-tablets, weekly/monthly frequencies, every-N-days patterns, and optional
-taper schedule decomposition.
+Extends \code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}} with:
+\itemize{
+\item Enhanced vocabulary: word-form tablets, weekly/monthly frequencies,
+generalised every-N-days and every-N-hours patterns.
+\item Taper schedule decomposition: when \code{expand_tapers = TRUE}, records
+flagged as taper are decomposed into per-step rows, each with its own
+\code{daily_dose_mg}, \code{taper_step}, \code{step_start_day}, and \code{step_end_day}.
+\item Dose plausibility cap: records above \code{max_daily_dose_mg} are set to
+\code{NA} with a warning (matching the Baseline method).
+}
+}
+\details{
+The first argument accepts either a \strong{connector} (created by
+\code{\link[=create_omop_connector]{create_omop_connector()}} or \code{\link[=create_df_connector]{create_df_connector()}}) or a plain
+\strong{data frame}.
 }
 \examples{
 df <- tibble::tibble(
   person_id              = 1L,
   drug_concept_name      = "prednisone 5 MG oral tablet",
   route_concept_name     = "oral",
-  sig                    = "Take 2 tabs daily for 30 days then 1 tab daily",
+  sig                    = "Take one tablet (5 mg) daily",
   drug_exposure_start_date = as.Date("2023-01-01"),
   drug_exposure_end_date   = as.Date("2023-03-01")
 )
 calc_daily_dose_nlp_advanced(df)
+
+# With taper expansion
+df_taper <- tibble::tibble(
+  person_id              = 1L,
+  drug_concept_name      = "prednisone 10 MG oral tablet",
+  route_concept_name     = "oral",
+  sig                    = "60 mg daily for 2 weeks, then 40 mg daily for 2 weeks, then 20 mg daily for 2 weeks",
+  drug_exposure_start_date = as.Date("2023-01-01"),
+  drug_exposure_end_date   = as.Date("2023-07-01")
+)
+calc_daily_dose_nlp_advanced(df_taper, expand_tapers = TRUE)
+}
+\seealso{
+\code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}}, \code{\link[=parse_taper_schedule]{parse_taper_schedule()}},
+\code{\link[=parse_sig_one_advanced]{parse_sig_one_advanced()}}
 }

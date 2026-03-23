@@ -29,8 +29,9 @@ selected dose method.}
 Controls how M2 (\code{tablets_freq}) is handled when \code{tablets} and
 \code{freq_per_day} are absent:
 \describe{
-\item{\code{"auto"} (default)}{Parse the \code{sig} column inside \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}
-to populate \code{tablets} and \code{freq_per_day}. Recommended for real-world OMOP data.}
+\item{\code{"auto"} (default)}{Parse the \code{sig} column inside
+\code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} to populate \code{tablets} and \code{freq_per_day}.
+Recommended for real-world OMOP data where these columns are absent.}
 \item{\code{"warn"}}{Warn and skip M2.}
 \item{\code{"nlp_first"}}{Run \code{\link[=parse_sig]{parse_sig()}} on the full data frame \emph{before}
 calling \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}, so NLP-derived \code{tablets} and
