@@ -283,6 +283,23 @@ entries in `\arguments{}` for each new parameter.
 **Prevention**: always run `devtools::document()` after changing a function
 signature. Commit the updated Rd files in the same PR as the code change.
 
+**Related variant — "Undocumented arguments" WARNING**
+
+A subtler form of the same problem: the parameter is present in `\usage{}` (so
+the function signature matches) but is missing from `\arguments{}`:
+
+```
+Warning: Undocumented arguments in Rd file 'calc_daily_dose_baseline.Rd'
+  'equiv_table' 'drug_name_map'
+```
+
+This happens when a new parameter is added to `\usage{}` (e.g., by copying the
+full signature from the R source) but the matching `\item{equiv_table}{...}`
+entry is never written in `\arguments{}`.
+
+Fix: add the `\item{}` block to `\arguments{}`. The entry must appear between
+the last documented argument and the closing `}` of the `\arguments{}` block.
+
 ---
 
 ## 8. Global variable binding NOTEs (dplyr column names)
@@ -651,7 +668,9 @@ exercising, not rely on the full default cascade.
 | WARNING | Non-ASCII in R source or Rd | Replace with ASCII; grep with `[^\x00-\x7F]` |
 | WARNING | Undeclared package dependency | Add to `Suggests` in `DESCRIPTION` |
 | WARNING | Undocumented exported function | Create `man/<fn>.Rd` |
-| WARNING | Codoc mismatch | Update `\usage{}` and `\arguments{}` in Rd |
+| WARNING | Codoc mismatch (`\usage{}` wrong) | Update `\usage{}` in Rd to match function signature |
+| WARNING | Undocumented arguments (in `\usage{}` but not `\arguments{}`) | Add `\item{param}{desc}` to `\arguments{}` in Rd |
+| NOTE | Rd line > 100 chars in `\examples` | Wrap with `paste()` or split string literal |
 | WARNING | Spurious test warnings | Pass a "silent" mode parameter to the function |
 | WARNING | No route column / filter_oral skipped | Add `route_concept_name` to all test fixtures |
 | NOTE | Non-standard top-level files | Add pattern to `.Rbuildignore` |
