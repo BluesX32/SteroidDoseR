@@ -36,13 +36,14 @@ cdm_schema   <- Sys.getenv("OMOP_CDM_SCHEMA",   unset = "Myositis_OMOP.dbo")
 write_schema <- Sys.getenv("OMOP_RESULTS_SCHEMA", unset = "Myositis_OMOP.Results")
 
 if (!nzchar(jdbc_path) || !dir.exists(jdbc_path)) {
-  stop(
-    "JDBC_DRIVER_PATH is not set or the directory does not exist.\n",
-    "Set it before running this script:\n",
+  message(
+    "Skipping live DB test: JDBC_DRIVER_PATH is not set or does not exist.\n",
+    "Set it before running interactively:\n",
     "  Sys.setenv(JDBC_DRIVER_PATH = '/path/to/jdbc')\n",
     "Download drivers with:\n",
     "  DatabaseConnector::downloadJdbcDrivers('sql server', pathToDriver = '/path/to/jdbc')"
   )
+  quit(save = "no", status = 0L)
 }
 
 # ---------------------------------------------------------------------------

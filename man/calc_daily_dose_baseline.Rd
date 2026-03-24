@@ -70,6 +70,14 @@ problems (non-mg \code{amount_value}, quantity in total-mg, near-zero
 records and to drugs present in the prednisone-equivalency table before
 imputing — matching the default behaviour of \code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}}.
 Set to \code{FALSE} only if the input is already pre-filtered to oral steroids.}
+
+\item{equiv_table}{Optional data frame with the prednisone-equivalency table.
+Must contain columns \code{drug_name_std} and \code{pred_equiv_factor}. When \code{NULL}
+(default), the built-in \code{.pred_equiv_table} is used.}
+
+\item{drug_name_map}{Optional data frame passed to \code{\link[=standardize_drug_name]{standardize_drug_name()}}
+for site-specific drug name overrides. See that function for the required
+\code{pattern}/\code{canonical_name} column format. Default: \code{NULL}.}
 }
 \value{
 The input data frame (or the fetched data frame) with seven

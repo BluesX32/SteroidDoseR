@@ -384,6 +384,14 @@ parse_sig <- function(drug_df, sig_col = "sig") {
 #' @param baseline_fallback `logical(1)`. If `TRUE`, the function tries to
 #'   carry through an existing `daily_dose_mg` column (e.g. from the Baseline
 #'   method) for records where NLP parsing fails. Default: `FALSE`.
+#' @param max_daily_dose_mg `numeric(1)` or `NULL`. Upper plausibility bound in
+#'   mg/day. Doses above this threshold are set to `NA` with a warning.
+#'   Default: `2000`. Set to `NULL` to disable.
+#' @param equiv_table Optional data frame with the prednisone-equivalency table.
+#'   Must contain columns `drug_name_std` and `pred_equiv_factor`. When `NULL`
+#'   (default), the built-in `.pred_equiv_table` is used.
+#' @param drug_name_map Optional data frame passed to [standardize_drug_name()]
+#'   for site-specific drug name overrides. Default: `NULL`.
 #' @param drug_concept_ids,person_ids,start_date,end_date,sig_source
 #'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
 #'   data frame. See [calc_daily_dose_baseline()] for full descriptions.

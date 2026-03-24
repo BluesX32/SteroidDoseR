@@ -7,5 +7,6 @@
 ^docs$
 ^CLAUDE\.md$
 ^LICENSE\.md$
+^\.env$
 ^\.env\.example$
 ^CICD-experiences\.md$

@@ -35,7 +35,8 @@ records are kept.}
 \item{expand_tapers}{\code{logical(1)}. If \code{TRUE} (default), taper records with a
 parseable schedule are expanded into multiple rows -- one per dose step --
 with columns \code{taper_step}, \code{step_start_day}, and \code{step_end_day} added.
-Records whose taper cannot be decomposed keep \code{taper_step = NA}.}
+Records whose taper cannot be decomposed keep \code{taper_step = NA}.
+Default: \code{FALSE}.}
 
 \item{max_daily_dose_mg}{\code{numeric(1)}. Records with \code{daily_dose_mg} above
 this value are set to \code{NA} with a diagnostic warning. Pass \code{NULL} to
@@ -43,6 +44,13 @@ disable. Default: \code{2000}.}
 
 \item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, carries through an
 existing \code{daily_dose_mg_orig} column for failed records. Default: \code{FALSE}.}
+
+\item{equiv_table}{Optional data frame with the prednisone-equivalency table.
+Must contain columns \code{drug_name_std} and \code{pred_equiv_factor}. When \code{NULL}
+(default), the built-in \code{.pred_equiv_table} is used.}
+
+\item{drug_name_map}{Optional data frame passed to \code{\link[=standardize_drug_name]{standardize_drug_name()}}
+for site-specific drug name overrides. Default: \code{NULL}.}
 
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame.}

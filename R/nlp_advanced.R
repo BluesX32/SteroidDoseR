@@ -540,6 +540,11 @@ parse_taper_schedule <- function(sig_text) {
 #'   disable. Default: `2000`.
 #' @param baseline_fallback `logical(1)`. If `TRUE`, carries through an
 #'   existing `daily_dose_mg_orig` column for failed records. Default: `FALSE`.
+#' @param equiv_table Optional data frame with the prednisone-equivalency table.
+#'   Must contain columns `drug_name_std` and `pred_equiv_factor`. When `NULL`
+#'   (default), the built-in `.pred_equiv_table` is used.
+#' @param drug_name_map Optional data frame passed to [standardize_drug_name()]
+#'   for site-specific drug name overrides. Default: `NULL`.
 #' @param drug_concept_ids,person_ids,start_date,end_date,sig_source
 #'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
 #'   data frame.

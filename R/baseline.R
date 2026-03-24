@@ -54,6 +54,12 @@ utils::globalVariables(c(".m1", ".m2", ".m3", ".m4"))
 #'   records and to drugs present in the prednisone-equivalency table before
 #'   imputing — matching the default behaviour of [calc_daily_dose_nlp()].
 #'   Set to `FALSE` only if the input is already pre-filtered to oral steroids.
+#' @param equiv_table Optional data frame with the prednisone-equivalency table.
+#'   Must contain columns `drug_name_std` and `pred_equiv_factor`. When `NULL`
+#'   (default), the built-in `.pred_equiv_table` is used.
+#' @param drug_name_map Optional data frame passed to [standardize_drug_name()]
+#'   for site-specific drug name overrides. See that function for the required
+#'   `pattern`/`canonical_name` column format. Default: `NULL`.
 #' @param m2_sig_parse `character(1)`. Controls behaviour when `tablets` and
 #'   `freq_per_day` columns are absent but a `sig` column is present:
 #'   \describe{
