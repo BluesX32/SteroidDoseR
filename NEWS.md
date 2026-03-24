@@ -1,3 +1,28 @@
+# SteroidDoseR 0.2.4
+
+## Bug fixes
+
+* **Injection/IV records no longer misclassified as oral** (`utils-validate.R`):
+  `classify_route()` previously included bare `"solution"` and `"liquid"` as
+  oral indicators. Injectable drug source values such as
+  `"METHYLPREDNISOLONE 500MG SOLUTION"` or `"SOLU-MEDROL 125MG VIAL"` were
+  incorrectly classified as `"oral"` when `route_concept_name` and
+  `route_source_value` were both NA and coalesce fell back to
+  `drug_source_value`. Fix: removed bare solution/liquid from the oral pattern;
+  liquid oral forms now require an explicit `"oral solution"` / `"oral liquid"`
+  qualifier. Expanded injection pattern to also catch `\binj\b`,
+  `"for injection/infusion"`, `\bvial\b`, `intrathecal`, `intraperitoneal`,
+  `intravitreal`, and `intraocular`.
+
+* **Non-steroid medications no longer survive when `filter_oral = FALSE`**
+  (`baseline.R`, `nlp.R`, `nlp_advanced.R`): The
+  `drug_name_std %in% known_steroids` guard was inside the `if (filter_oral)`
+  block, so it was bypassed when route filtering was skipped (e.g. the baseline
+  cascade called from within the NLP function passes `filter_oral = FALSE`).
+  Fix: moved drug-name standardisation and the steroid-name filter outside the
+  `if (filter_oral)` block in all three calculation functions so that
+  non-steroid drugs are unconditionally excluded.
+
 # SteroidDoseR 0.2.3
 
 ## Enhancements

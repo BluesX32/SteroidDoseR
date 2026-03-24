@@ -67,3 +67,37 @@ test_that("classify_route identifies injection correctly", {
   expect_equal(classify_route("Intramuscular"), "injection")
   expect_equal(classify_route(NA, "IV"), "injection")
 })
+
+# classify_route() edge cases for v0.2.4 ---------------------------------
+
+test_that("classify_route: 'solution' alone returns 'other', not 'oral'", {
+  expect_equal(classify_route(drug_source = "methylpred 500mg solution"), "other")
+})
+
+test_that("classify_route: 'vial' classifies as injection", {
+  expect_equal(classify_route(drug_source = "solu-medrol 500mg vial"), "injection")
+})
+
+test_that("classify_route: 'for injection' classifies as injection", {
+  expect_equal(classify_route(drug_source = "methylpred solution for injection"), "injection")
+})
+
+test_that("classify_route: standalone 'inj' classifies as injection", {
+  expect_equal(classify_route(drug_source = "methylpred inj 125mg"), "injection")
+})
+
+test_that("classify_route: 'oral solution' classifies as oral", {
+  expect_equal(classify_route(drug_source = "prednisolone oral solution 5mg/5ml"), "oral")
+})
+
+test_that("classify_route: 'tablet' still classifies as oral (regression)", {
+  expect_equal(classify_route(drug_source = "prednisone 5mg oral tab"), "oral")
+})
+
+test_that("classify_route: 'Intravenous' still classifies as injection (regression)", {
+  expect_equal(classify_route(route_concept = "Intravenous"), "injection")
+})
+
+test_that("classify_route: intrathecal classifies as injection", {
+  expect_equal(classify_route(route_concept = "Intrathecal"), "injection")
+})

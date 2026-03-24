@@ -124,27 +124,33 @@ calc_daily_dose_baseline <- function(connector_or_df,
 
   assert_required_cols(drug_df, "drug_exposure_start_date", "drug_df")
 
-  # --- 0. oral-route / drug-class filter ------------------------------------
-  # Mirrors calc_daily_dose_nlp(filter_oral = TRUE): keeps only oral-route
-  # records and drugs present in the prednisone-equivalency table.
-  # Default TRUE ensures baseline, like NLP, targets oral steroids only.
-  # Pass filter_oral = FALSE when the input is already pre-filtered.
-  if (filter_oral) {
-    # Standardise drug names if not already present so the steroid list can
-    # be applied.  Prefer drug_concept_name, fall back to drug_source_value.
-    if (!"drug_name_std" %in% names(drug_df)) {
-      name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(drug_df))
-      if (length(name_col) > 0L) {
-        drug_df <- drug_df |>
-          dplyr::mutate(
-            drug_name_std = standardize_drug_name(
-              .data[[name_col[[1L]]]],
-              drug_name_map = drug_name_map
-            )
+  # --- 0a. Drug-name standardisation (always) --------------------------------
+  # Prefer drug_concept_name, fall back to drug_source_value.
+  if (!"drug_name_std" %in% names(drug_df)) {
+    name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(drug_df))
+    if (length(name_col) > 0L) {
+      drug_df <- drug_df |>
+        dplyr::mutate(
+          drug_name_std = standardize_drug_name(
+            .data[[name_col[[1L]]]],
+            drug_name_map = drug_name_map
           )
-      }
+        )
     }
+  }
 
+  # --- 0b. Non-steroid exclusion (always) ------------------------------------
+  # Applied unconditionally so non-steroids are removed even when
+  # filter_oral = FALSE (e.g. baseline cascade called from calc_daily_dose_nlp).
+  if ("drug_name_std" %in% names(drug_df)) {
+    .etbl          <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
+    known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
+    drug_df        <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
+  }
+
+  # --- 0c. Oral-route filter (only when filter_oral = TRUE) ------------------
+  # Pass filter_oral = FALSE when the input is already pre-filtered to oral route.
+  if (filter_oral) {
     rc <- if ("route_concept_name" %in% names(drug_df))
       drug_df$route_concept_name else NULL
     rs <- if ("route_source_value" %in% names(drug_df))
@@ -157,12 +163,6 @@ calc_daily_dose_baseline <- function(connector_or_df,
     } else {
       route_class <- classify_route(rc, rs, ds)
       drug_df <- drug_df[route_class == "oral" | is.na(route_class), ]
-    }
-
-    if ("drug_name_std" %in% names(drug_df)) {
-      .etbl <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
-      known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
-      drug_df <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
     }
 
     if (nrow(drug_df) == 0L) {

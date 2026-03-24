@@ -157,13 +157,26 @@ classify_route <- function(route_concept = NULL, route_source = NULL,
     stringr::str_detect(combined, "ophthalm|eye|ocular|otic|ear") ~ "ophthalmic",
     stringr::str_detect(combined, "topical|cream|ointment|lotion|gel|patch|transdermal|rectal|nasal") ~ "topical",
     # injection: covers INJECT/INJEC, IM, IV, INTRAVENOUS, INTRAMUS,
-    #   SUBCUTANEOUS, SC, INTRAARTIC, INTRADERMAL, EPIDURAL, INFUSION, SQ
+    #   SUBCUTANEOUS, SC, INTRAARTIC, INTRADERMAL, EPIDURAL, INFUSION, SQ,
+    #   INTRATHECAL, INTRAPERITONEAL, INTRAVITREAL, INTRAOCULAR,
+    #   standalone INJ, "for injection/infusion", VIAL
     stringr::str_detect(combined,
-      paste0("inject|intraven|intramus|\\bim\\b|\\biv\\b|\\bsq\\b|",
-             "subcutan|\\bsc\\b|intraartic|intradermal|epidural|",
-             "infusion|\\binjec\\b")) ~ "injection",
+      paste0(
+        "inject|intraven|intramus|\\bim\\b|\\biv\\b|\\bsq\\b|",
+        "subcutan|\\bsc\\b|intraartic|intradermal|epidural|",
+        "infusion|\\binjec\\b|",
+        "intrathecal|intraperiton|intravitreal|intraocular|",
+        "\\binj\\b|for\\s+(?:injection|infusion)|\\bvial\\b"
+      )) ~ "injection",
+    # oral: "solution" and "liquid" removed as standalone tokens — they appear
+    #   in injectable drug names (e.g. "METHYLPRED 500MG SOLUTION"). Liquid oral
+    #   forms must carry an explicit oral qualifier ("oral solution", etc.).
     stringr::str_detect(combined,
-      "oral|mouth|sublingual|buccal|swallow|\\btab\\b|tablet|capsule|solution|liquid") ~ "oral",
+      paste0(
+        "\\boral\\b|mouth|sublingual|buccal|swallow|",
+        "\\btab\\b|tablet|capsule|",
+        "oral\\s+(?:solution|liquid|suspension|syrup|elixir|drop)"
+      )) ~ "oral",
     TRUE ~ "other"
   )
 }

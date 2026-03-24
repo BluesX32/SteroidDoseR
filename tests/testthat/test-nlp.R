@@ -351,3 +351,17 @@ test_that("parse_sig_one: 'eight tablets daily' → tablets = 8", {
   out <- parse_sig_one("Take eight tablets (5 mg) daily.")
   expect_equal(out$tablets, 8)
 })
+
+# ── non-steroid exclusion regression (v0.2.4) ─────────────────────────────────
+
+test_that("calc_daily_dose_nlp: non-steroid excluded even when filter_oral = FALSE", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_concept_name        = "levetiracetam 500 mg oral tablet",
+    route_concept_name       = "Oral",
+    sig                      = "Take 1 tablet daily",
+    drug_exposure_start_date = as.Date("2023-01-01"),
+    drug_exposure_end_date   = as.Date("2023-03-01")
+  )
+  expect_equal(nrow(calc_daily_dose_nlp(df, filter_oral = FALSE)), 0L)
+})
