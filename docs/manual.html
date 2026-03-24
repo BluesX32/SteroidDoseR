@@ -203,7 +203,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.1.6</p>
+    <p>Package Manual v0.2.5</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -235,6 +235,7 @@
     <li><a href="#episodes">Episode building</a></li>
     <li><a href="#run-pipeline">run_pipeline()</a></li>
     <li><a href="#evaluation">Evaluation</a></li>
+    <li><a href="#viz">Visualization</a></li>
   </ul>
   <div class="nav-section-label">Reference</div>
   <ul>
@@ -253,7 +254,7 @@
   <h1>SteroidDoseR</h1>
   <p>Automated corticosteroid dose extraction from OMOP CDM electronic health records</p>
   <div class="meta">
-    <span>Version 0.1.6</span>
+    <span>Version 0.2.5</span>
     <span>R package</span>
     <span>JHU Myositis Research Group · OHDSI AgentDose 2025</span>
   </div>
@@ -1275,8 +1276,45 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
   <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code>.</td></tr>
   <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
   <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard. <span class="badge badge-new">v0.1.6</span> <code>dose_breaks</code> / <code>dose_labels</code> for customisable stratification bins.</td></tr>
+  <tr><td><code>plot_patient_episodes()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Static ggplot2 timeline overlaying Baseline, NLP, Advanced NLP, and gold-standard episodes as horizontal step segments, faceted by patient × drug.</td></tr>
+  <tr><td><code>launch_dose_dashboard()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Interactive Shiny review dashboard with patient filter, method toggles, PDF/CSV download. <span class="badge badge-new">v0.2.5</span> New <code>raw_list</code> parameter adds a Raw Records tab with colour-coded prescription-level diagnostic view and CSV download. Main panel restructured into Timeline / Episodes / Raw Records tabs.</td></tr>
 </table>
 </div>
+
+<!-- ── VISUALIZATION ─────────────────────────────────────────────── -->
+<h2 id="viz">Visualization</h2>
+
+<p>Both functions require <code>ggplot2</code> (Suggests). The dashboard additionally requires <code>shiny</code> and <code>DT</code>.</p>
+
+<h3>plot_patient_episodes() <span class="badge badge-new">v0.1.3</span></h3>
+<p>Static ggplot2 timeline. One coloured horizontal segment per episode; gold standard overlaid as a dark-grey dashed line. Faceted by patient × drug when more than one patient is requested.</p>
+<pre><code>p &lt;- plot_patient_episodes(
+  list(Baseline = baseline_ep, NLP = nlp_ep),
+  patient_ids = c(101L, 102L),
+  gold_std    = gold_std
+)
+ggplot2::ggsave("dose_review.pdf", p, width = 12, height = 8)
+</code></pre>
+
+<h3>launch_dose_dashboard() <span class="badge badge-new">v0.1.3</span> <span class="badge badge-new">v0.2.5 raw_list</span></h3>
+<p>Opens a Shiny app with three tabs:</p>
+<ul>
+  <li><strong>Timeline</strong> — dose trajectory plot for the selected patients.</li>
+  <li><strong>Episodes</strong> — episode-level summary table (downloadable CSV).</li>
+  <li><strong>Raw Records</strong> <span class="badge badge-new">v0.2.5</span> — prescription-level rows with <code>sig</code>, <code>imputation_method</code>, <code>daily_dose_mg_imputed</code>, <code>pred_equiv_mg</code>, etc., colour-coded by method. Requires <code>raw_list</code>.</li>
+</ul>
+<pre><code># Build pred-equiv record-level frames for raw_list
+baseline_eq &lt;- convert_pred_equiv(baseline_df, drug_col = "drug_name_std",
+                                   dose_col = "daily_dose_mg_imputed")
+nlp_eq      &lt;- convert_pred_equiv(nlp_df,      drug_col = "drug_name_std",
+                                   dose_col = "daily_dose_mg")
+
+launch_dose_dashboard(
+  episode_list = list("Baseline" = baseline_ep, "NLP" = nlp_ep),
+  raw_list     = list("Baseline" = baseline_eq, "NLP" = nlp_eq),
+  gold_std     = gold_std
+)
+</code></pre>
 
 <!-- ── DATA QUALITY ──────────────────────────────────────────────── -->
 <h2 id="dq">Data quality issues and how the package handles them</h2>
