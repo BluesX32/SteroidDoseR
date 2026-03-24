@@ -814,7 +814,47 @@ cat(paste0(
 cat(strrep("=", 70), "\n")
 
 # ===========================================================================
-# 12. Disconnect (live DB only)
+# 12. Interactive dose review dashboard
+# ===========================================================================
+# launch_dose_dashboard() opens a Shiny app in the browser.
+# Pass raw_list (record-level data frames) to populate the Raw Records tab
+# with diagnostic columns (sig, imputation_method, daily_dose_mg_imputed,
+# pred_equiv_mg, etc.) so individual prescription rows can be inspected
+# alongside the dose trajectory plot.
+#
+# adv_nlp_df already has pred_equiv_mg (converted in Section 6).
+# Convert baseline_df and nlp_df to pred-equiv here for consistency.
+message("\n=== Launching interactive dose review dashboard ===")
+message("(Close the browser tab or press Escape in R to stop.)")
+
+baseline_eq <- convert_pred_equiv(
+  baseline_df,
+  drug_col = "drug_name_std",
+  dose_col = "daily_dose_mg_imputed"
+)
+
+nlp_eq <- convert_pred_equiv(
+  nlp_df,
+  drug_col = "drug_name_std",
+  dose_col = "daily_dose_mg"
+)
+
+launch_dose_dashboard(
+  episode_list = list(
+    "Baseline"     = baseline_episodes,
+    "NLP"          = nlp_episodes,
+    "Advanced NLP" = adv_nlp_episodes
+  ),
+  raw_list = list(
+    "Baseline"     = baseline_eq,
+    "NLP"          = nlp_eq,
+    "Advanced NLP" = adv_nlp_df   # pred_equiv_mg already present from Section 6
+  ),
+  gold_std = gold_std
+)
+
+# ===========================================================================
+# 13. Disconnect (live DB only)
 # ===========================================================================
 if (!USE_SYNTHETIC) {
   disconnect_connector(con)

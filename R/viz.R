@@ -266,9 +266,30 @@ plot_patient_episodes <- function(episode_list,
 #' - Toggling individual methods on/off
 #' - Viewing the underlying episode table
 #'
+#' The main panel is organised into three tabs:
+#' \describe{
+#'   \item{Timeline}{Dose trajectory plot overlaying all selected methods and
+#'     the gold standard in distinct colours.}
+#'   \item{Episodes}{Episode-level summary table (one row per computed
+#'     episode), filterable and downloadable as CSV.}
+#'   \item{Raw Records}{Record-level diagnostic table showing the original
+#'     prescription rows with SIG strings, imputation method chosen, and
+#'     calculated doses — colour-coded by method. Only available when
+#'     \code{raw_list} is supplied.}
+#' }
+#'
 #' @param episode_list A **named** list of episode data frames -- one per method
 #'   (see [plot_patient_episodes()] for format). Must include at least one
 #'   entry.
+#' @param raw_list An optional **named** list of record-level data frames, one
+#'   per method -- the direct output of [calc_daily_dose_baseline()],
+#'   [calc_daily_dose_nlp()], or [calc_daily_dose_nlp_advanced()] (optionally
+#'   passed through [convert_pred_equiv()] first). Names should match those in
+#'   `episode_list`. When supplied, the **Raw Records** tab is populated with
+#'   key diagnostic columns (`sig`, `imputation_method`,
+#'   `daily_dose_mg_imputed`, `pred_equiv_mg`, etc.) and rows are
+#'   colour-coded by method to match the Timeline plot palette. Default:
+#'   `NULL` (tab shows a placeholder message).
 #' @param gold_std Optional gold-standard data frame. Default: `NULL`.
 #' @param dose_col `character(1)`. Default dose metric on startup. One of
 #'   `"median_daily_dose"` (default), `"min_daily_dose"`, `"max_daily_dose"`,
@@ -290,13 +311,23 @@ plot_patient_episodes <- function(episode_list,
 #' @examples
 #' \dontrun{
 #' launch_dose_dashboard(
-#'   list(Baseline = baseline_episodes,
-#'        NLP      = nlp_episodes,
-#'        "Advanced NLP" = adv_episodes),
+#'   episode_list = list(Baseline = baseline_episodes,
+#'                       NLP      = nlp_episodes,
+#'                       "Advanced NLP" = adv_episodes),
+#'   raw_list     = list(Baseline = baseline_df,
+#'                       NLP      = nlp_df,
+#'                       "Advanced NLP" = adv_df),
+#'   gold_std     = gold_standard
+#' )
+#'
+#' # Backward-compatible call (no raw records tab)
+#' launch_dose_dashboard(
+#'   list(Baseline = baseline_episodes, NLP = nlp_episodes),
 #'   gold_std = gold_standard
 #' )
 #' }
 launch_dose_dashboard <- function(episode_list,
+                                  raw_list      = NULL,
                                   gold_std      = NULL,
                                   dose_col      = "median_daily_dose",
                                   gold_dose_col = "median_daily_dose",
@@ -308,6 +339,15 @@ launch_dose_dashboard <- function(episode_list,
   if (!is.list(episode_list) || is.null(names(episode_list))) {
     rlang::abort("episode_list must be a named list.")
   }
+
+  # Validate raw_list -- warn and discard if malformed, never abort
+  if (!is.null(raw_list)) {
+    if (!is.list(raw_list) || is.null(names(raw_list))) {
+      rlang::warn("raw_list must be a named list (e.g. list(Baseline = df, NLP = df)); ignoring.")
+      raw_list <- NULL
+    }
+  }
+  has_raw <- !is.null(raw_list)
 
   # Collect all patient IDs and drug names across all methods
   all_ids <- sort(unique(as.character(unlist(lapply(
@@ -322,6 +362,14 @@ launch_dose_dashboard <- function(episode_list,
     "Min daily dose"                = "min_daily_dose",
     "Max daily dose"                = "max_daily_dose",
     "Mean daily dose (duration-wt)" = "mean_daily_dose"
+  )
+
+  # Diagnostic columns shown in the Raw Records tab (subset to those present)
+  RAW_DISPLAY_COLS <- c(
+    "method", "person_id", "drug_concept_name", "drug_source_value", "sig",
+    "drug_exposure_start_date", "drug_exposure_end_date",
+    "amount_value", "amount_unit_concept_id", "quantity", "days_supply",
+    "daily_dose", "imputation_method", "daily_dose_mg_imputed", "pred_equiv_mg"
   )
 
   # --- UI --------------------------------------------------------------------
@@ -382,16 +430,50 @@ launch_dose_dashboard <- function(episode_list,
         shiny::sliderInput("lw", "Line width", min = 0.5, max = 4, value = 2, step = 0.5),
         shiny::downloadButton("dl_plot",  "Download plot (.pdf)"),
         shiny::br(), shiny::br(),
-        shiny::downloadButton("dl_table", "Download table (.csv)")
+        shiny::downloadButton("dl_table", "Download episodes (.csv)"),
+        if (has_raw) {
+          shiny::tagList(shiny::br(), shiny::br(),
+                         shiny::downloadButton("dl_raw", "Download raw records (.csv)"))
+        }
       ),
 
       shiny::mainPanel(
         width = 9,
-        shiny::plotOutput("episode_plot",
-                          height = paste0(plot_height, "px")),
-        shiny::hr(),
-        shiny::h4("Episode table (selected patients)"),
-        DT::dataTableOutput("episode_table")
+        shiny::tabsetPanel(
+          id = "main_tabs",
+
+          shiny::tabPanel(
+            "Timeline",
+            shiny::br(),
+            shiny::plotOutput("episode_plot",
+                              height = paste0(plot_height, "px"))
+          ),
+
+          shiny::tabPanel(
+            "Episodes",
+            shiny::br(),
+            shiny::h4("Episode table (selected patients)"),
+            DT::dataTableOutput("episode_table")
+          ),
+
+          shiny::tabPanel(
+            "Raw Records",
+            shiny::br(),
+            if (!has_raw) {
+              shiny::div(
+                style = "margin-top:1rem; padding:12px; background:#fff8e1; border-left:4px solid #E69F00; border-radius:4px;",
+                shiny::strong("No raw record data provided."),
+                shiny::p(
+                  "Pass ", shiny::code("raw_list"), " to ",
+                  shiny::code("launch_dose_dashboard()"),
+                  " to see record-level details (SIG strings, imputation method, calculated doses)."
+                )
+              )
+            } else {
+              DT::dataTableOutput("raw_table")
+            }
+          )
+        )
       )
     )
   )
@@ -474,6 +556,65 @@ launch_dose_dashboard <- function(episode_list,
       rownames = FALSE
     )
 
+    # Raw records table (record-level, only when has_raw)
+    raw_table_data <- shiny::reactive({
+      if (!has_raw) return(NULL)
+      pid <- as.character(input$patient_ids)
+      if (length(pid) == 0L) return(NULL)
+      valid_methods <- intersect(input$methods, names(raw_list))
+      dplyr::bind_rows(lapply(valid_methods, function(nm) {
+        df <- raw_list[[nm]]
+        if (!"person_id" %in% names(df)) {
+          if ("patient_id" %in% names(df))
+            df <- dplyr::rename(df, person_id = "patient_id")
+          else
+            return(NULL)
+        }
+        df <- df[as.character(df$person_id) %in% pid, ]
+        if (!is.null(drug_sel()) && "drug_name_std" %in% names(df))
+          df <- df[df$drug_name_std %in% drug_sel(), ]
+        if (nrow(df) == 0L) return(NULL)
+        dplyr::mutate(df, method = nm, .before = 1L)
+      }))
+    })
+
+    if (has_raw) {
+      output$raw_table <- DT::renderDataTable({
+        dat <- raw_table_data()
+        if (is.null(dat) || nrow(dat) == 0L) {
+          return(DT::datatable(
+            data.frame(message = "No raw records match the current selection."),
+            options  = list(dom = "t"),
+            rownames = FALSE
+          ))
+        }
+        # Keep only diagnostic columns that exist in this data frame
+        keep_cols <- intersect(RAW_DISPLAY_COLS, names(dat))
+        dat <- dat[, keep_cols, drop = FALSE]
+
+        dt <- DT::datatable(
+          dat,
+          options  = list(pageLength = 20L, scrollX = TRUE),
+          rownames = FALSE,
+          filter   = "top"
+        )
+        # Colour rows by method using a light (~13% opacity) tint of each
+        # method's plot colour ("22" hex suffix = 0x22/0xFF ≈ 13% opacity)
+        DT::formatStyle(
+          dt, "method",
+          target          = "row",
+          backgroundColor = DT::styleEqual(
+            levels = c("Baseline", "NLP", "Advanced NLP"),
+            values = c(
+              paste0(.METHOD_COLORS[["Baseline"]],     "22"),
+              paste0(.METHOD_COLORS[["NLP"]],          "22"),
+              paste0(.METHOD_COLORS[["Advanced NLP"]], "22")
+            )
+          )
+        )
+      }, server = FALSE)
+    }
+
     # Download handlers
     output$dl_plot <- shiny::downloadHandler(
       filename = function() paste0("dose_review_", Sys.Date(), ".pdf"),
@@ -486,6 +627,16 @@ launch_dose_dashboard <- function(episode_list,
       filename = function() paste0("dose_episodes_", Sys.Date(), ".csv"),
       content  = function(file) utils::write.csv(ep_table_data(), file, row.names = FALSE)
     )
+    if (has_raw) {
+      output$dl_raw <- shiny::downloadHandler(
+        filename = function() paste0("raw_records_", Sys.Date(), ".csv"),
+        content  = function(file) {
+          dat <- raw_table_data()
+          utils::write.csv(if (is.null(dat)) data.frame() else dat,
+                           file, row.names = FALSE)
+        }
+      )
+    }
   }
 
   shiny::shinyApp(ui, server)

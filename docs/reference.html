@@ -54,7 +54,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.1.6</p>
+    <p>Package Manual v0.2.5</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -125,7 +125,7 @@
   <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
   <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard. <span class="badge badge-new">v0.1.6</span> <code>dose_breaks</code> / <code>dose_labels</code> for customisable stratification.</td></tr>
   <tr><td><code>plot_patient_episodes()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Static ggplot2 timeline overlaying Baseline, NLP, Advanced NLP, and gold-standard episodes.</td></tr>
-  <tr><td><code>launch_dose_dashboard()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Interactive Shiny review dashboard with patient filter, method toggles, and PDF/CSV download.</td></tr>
+  <tr><td><code>launch_dose_dashboard()</code></td><td>No</td><td><span class="badge badge-new">v0.1.3</span> Interactive Shiny review dashboard with patient filter, method toggles, and PDF/CSV download. <span class="badge badge-new">v0.2.5</span> New <code>raw_list</code> parameter adds a <strong>Raw Records</strong> tab with colour-coded record-level view (<code>sig</code>, <code>imputation_method</code>, <code>daily_dose_mg_imputed</code>, etc.) and CSV download. Main panel restructured into Timeline / Episodes / Raw Records tabs.</td></tr>
 </table>
 </div>
 
@@ -223,6 +223,12 @@
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.2.5 <span class="badge badge-new">Dashboard — Raw Records tab</span></h3>
+<ul>
+  <li><strong>feat(viz): <code>launch_dose_dashboard(raw_list)</code></strong> — New optional <code>raw_list</code> parameter accepts a named list of record-level data frames (output of any <code>calc_daily_dose_*()</code> function, optionally passed through <code>convert_pred_equiv()</code>). Adds a <strong>Raw Records</strong> tab with rows colour-coded by method (matching the plot palette), per-column search filters, and a <em>Download raw records (.csv)</em> button. Backward-compatible: defaults to <code>NULL</code>; tab shows a placeholder message when omitted.</li>
+  <li><strong>feat(viz): tabsetPanel layout</strong> — Main panel restructured into <strong>Timeline</strong> (dose trajectory plot), <strong>Episodes</strong> (episode-level summary table), and <strong>Raw Records</strong> (new record-level diagnostic table) tabs. All existing controls and download buttons are unchanged.</li>
+</ul>
 
 <h3>v0.2.0 <span class="badge badge-fix">Bug fix — injection filtering via drug_source_value</span></h3>
 <ul>

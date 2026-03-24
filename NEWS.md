@@ -1,3 +1,25 @@
+# SteroidDoseR 0.2.5
+
+## Enhancements
+
+* **`launch_dose_dashboard(raw_list)`** (`viz.R`): New optional `raw_list`
+  parameter accepts a named list of record-level data frames (direct output of
+  `calc_daily_dose_baseline()`, `calc_daily_dose_nlp()`, or
+  `calc_daily_dose_nlp_advanced()`, optionally passed through
+  `convert_pred_equiv()`). When supplied, a **Raw Records** tab is added to
+  the dashboard showing key diagnostic columns — `sig`, `imputation_method`,
+  `daily_dose_mg_imputed`, `pred_equiv_mg`, `amount_value`, etc. — with rows
+  colour-coded by method to match the Timeline plot palette. Includes
+  per-column search filters (`filter = "top"`) and a *Download raw records
+  (.csv)* button. Existing callers are unaffected (`raw_list` defaults to
+  `NULL`, showing a placeholder message in the tab).
+
+* **`launch_dose_dashboard()` — tabsetPanel layout** (`viz.R`): Main panel
+  restructured from a flat layout into three tabs: **Timeline** (dose
+  trajectory plot), **Episodes** (episode-level summary table), and **Raw
+  Records** (new record-level diagnostic table). All existing controls,
+  download buttons, and plot behaviour are unchanged.
+
 # SteroidDoseR 0.2.4
 
 ## Bug fixes

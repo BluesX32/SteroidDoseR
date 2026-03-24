@@ -6,6 +6,7 @@
 \usage{
 launch_dose_dashboard(
   episode_list,
+  raw_list = NULL,
   gold_std = NULL,
   dose_col = "median_daily_dose",
   gold_dose_col = "median_daily_dose",
@@ -17,6 +18,16 @@ launch_dose_dashboard(
 \item{episode_list}{A \strong{named} list of episode data frames -- one per method
 (see \code{\link[=plot_patient_episodes]{plot_patient_episodes()}} for format). Must include at least one
 entry.}
+
+\item{raw_list}{An optional \strong{named} list of record-level data frames, one
+per method -- the direct output of \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}},
+\code{\link[=calc_daily_dose_nlp]{calc_daily_dose_nlp()}}, or \code{\link[=calc_daily_dose_nlp_advanced]{calc_daily_dose_nlp_advanced()}} (optionally
+passed through \code{\link[=convert_pred_equiv]{convert_pred_equiv()}} first). Names should match those in
+\code{episode_list}. When supplied, the \strong{Raw Records} tab is populated with
+key diagnostic columns (\code{sig}, \code{imputation_method},
+\code{daily_dose_mg_imputed}, \code{pred_equiv_mg}, etc.) and rows are
+colour-coded by method to match the Timeline plot palette. Default:
+\code{NULL} (tab shows a placeholder message).}
 
 \item{gold_std}{Optional gold-standard data frame. Default: \code{NULL}.}
 
@@ -49,12 +60,34 @@ methods and an optional gold standard, with controls for:
 \item Viewing the underlying episode table
 }
 }
+\details{
+The main panel is organised into three tabs:
+\describe{
+\item{Timeline}{Dose trajectory plot overlaying all selected methods and
+the gold standard in distinct colours.}
+\item{Episodes}{Episode-level summary table (one row per computed
+episode), filterable and downloadable as CSV.}
+\item{Raw Records}{Record-level diagnostic table showing the original
+prescription rows with SIG strings, imputation method chosen, and
+calculated doses — colour-coded by method. Only available when
+\code{raw_list} is supplied.}
+}
+}
 \examples{
 \dontrun{
 launch_dose_dashboard(
-  list(Baseline = baseline_episodes,
-       NLP      = nlp_episodes,
-       "Advanced NLP" = adv_episodes),
+  episode_list = list(Baseline = baseline_episodes,
+                      NLP      = nlp_episodes,
+                      "Advanced NLP" = adv_episodes),
+  raw_list     = list(Baseline = baseline_df,
+                      NLP      = nlp_df,
+                      "Advanced NLP" = adv_df),
+  gold_std     = gold_standard
+)
+
+# Backward-compatible call (no raw records tab)
+launch_dose_dashboard(
+  list(Baseline = baseline_episodes, NLP = nlp_episodes),
   gold_std = gold_standard
 )
 }
