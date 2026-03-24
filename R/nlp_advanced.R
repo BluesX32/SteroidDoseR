@@ -629,7 +629,10 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
   }
 
   if (nrow(drug_df) == 0L) {
-    rlang::warn("No oral corticosteroid records found after filtering.")
+    rlang::warn(if (filter_oral)
+      "No oral corticosteroid records found after filtering."
+    else
+      "No corticosteroid records found after filtering.")
     return(drug_df)
   }
 

@@ -363,5 +363,8 @@ test_that("calc_daily_dose_nlp: non-steroid excluded even when filter_oral = FAL
     drug_exposure_start_date = as.Date("2023-01-01"),
     drug_exposure_end_date   = as.Date("2023-03-01")
   )
-  expect_equal(nrow(calc_daily_dose_nlp(df, filter_oral = FALSE)), 0L)
+  expect_warning(
+    expect_equal(nrow(calc_daily_dose_nlp(df, filter_oral = FALSE)), 0L),
+    "No corticosteroid records found after filtering\\."
+  )
 })
