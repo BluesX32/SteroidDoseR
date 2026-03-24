@@ -150,7 +150,7 @@ calc_daily_dose_baseline <- function(connector_or_df,
   # filter_oral = FALSE (e.g. baseline cascade called from calc_daily_dose_nlp).
   if ("drug_name_std" %in% names(drug_df)) {
     .etbl          <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
-    known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
+    known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std) & !is.na(.etbl$equiv_factor)]
     drug_df        <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
   }
 

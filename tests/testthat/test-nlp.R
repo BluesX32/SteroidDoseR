@@ -368,3 +368,20 @@ test_that("calc_daily_dose_nlp: non-steroid excluded even when filter_oral = FAL
     "No corticosteroid records found after filtering\\."
   )
 })
+
+# ── budesonide excluded by known_steroids filter (v0.2.5) ─────────────────────
+
+test_that("calc_daily_dose_nlp: budesonide (NA equiv_factor) is excluded", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_concept_name        = "budesonide 3 mg oral capsule",
+    route_concept_name       = "Oral",
+    sig                      = "Take 1 capsule daily",
+    drug_exposure_start_date = as.Date("2023-01-01"),
+    drug_exposure_end_date   = as.Date("2023-03-01")
+  )
+  expect_warning(
+    expect_equal(nrow(calc_daily_dose_nlp(df)), 0L),
+    "No oral corticosteroid records found after filtering\\."
+  )
+})

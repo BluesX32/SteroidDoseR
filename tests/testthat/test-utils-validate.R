@@ -101,3 +101,29 @@ test_that("classify_route: 'Intravenous' still classifies as injection (regressi
 test_that("classify_route: intrathecal classifies as injection", {
   expect_equal(classify_route(route_concept = "Intrathecal"), "injection")
 })
+
+# classify_route() inhaler device names (v0.2.5) -------------------------
+
+test_that("classify_route: 'diskus' classifies as inhaled", {
+  expect_equal(classify_route(drug_source = "fluticasone 100mcg diskus"), "inhaled")
+})
+
+test_that("classify_route: 'turbuhaler' classifies as inhaled", {
+  expect_equal(classify_route(drug_source = "budesonide 200mcg turbuhaler"), "inhaled")
+})
+
+test_that("classify_route: 'flexhaler' classifies as inhaled", {
+  expect_equal(classify_route(drug_source = "budesonide 90mcg flexhaler"), "inhaled")
+})
+
+test_that("classify_route: 'ellipta' classifies as inhaled", {
+  expect_equal(classify_route(drug_source = "fluticasone furoate 100mcg ellipta"), "inhaled")
+})
+
+test_that("classify_route: standalone 'inh' abbreviation classifies as inhaled", {
+  expect_equal(classify_route(drug_source = "budesonide 90mcg/act inh"), "inhaled")
+})
+
+test_that("classify_route: 'mdi' classifies as inhaled", {
+  expect_equal(classify_route(drug_source = "beclomethasone 40mcg mdi"), "inhaled")
+})

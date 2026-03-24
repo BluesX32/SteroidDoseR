@@ -153,7 +153,15 @@ classify_route <- function(route_concept = NULL, route_source = NULL,
   combined[is.na(combined)] <- ""
 
   dplyr::case_when(
-    stringr::str_detect(combined, "inhal|metered|aerosol|dry powder|actuat|nebul|pulmicort") ~ "inhaled",
+    # inhaled: OMOP concept names, free-text route values, device brand names,
+    #   and the standalone abbreviation INH/MDI.
+    stringr::str_detect(combined,
+      paste0(
+        "inhal|metered|aerosol|dry powder|actuat|nebul|",
+        "pulmicort|diskus|turbuhaler|flexhaler|ellipta|respimat|",
+        "twisthaler|rotadisk|rotahaler|autohaler|evohaler|handihaler|",
+        "pressurized|\\binh\\b|\\bmdi\\b"
+      )) ~ "inhaled",
     stringr::str_detect(combined, "ophthalm|eye|ocular|otic|ear") ~ "ophthalmic",
     stringr::str_detect(combined, "topical|cream|ointment|lotion|gel|patch|transdermal|rectal|nasal") ~ "topical",
     # injection: covers INJECT/INJEC, IM, IV, INTRAVENOUS, INTRAMUS,

@@ -611,7 +611,7 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
 
   # --- non-steroid exclusion (always) ------------------------------------------
   .etbl          <- if (is.null(equiv_table)) .pred_equiv_table else equiv_table
-  known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std)]
+  known_steroids <- .etbl$drug_name_std[!is.na(.etbl$drug_name_std) & !is.na(.etbl$equiv_factor)]
   drug_df <- drug_df[drug_df$drug_name_std %in% known_steroids, ]
 
   # --- filter to oral corticosteroids ------------------------------------------
