@@ -1,3 +1,37 @@
+# SteroidDoseR 0.3.1
+
+## New features — SAFER Desktop / Discovery HPC connection (REACH-Templates convention)
+
+* **`create_discovery_connection()`** (`connection.R`): New connection function
+  that reads credentials using the REACH-Templates `R.env` variable names
+  (`DATABRICKS_HOST`, `DATABRICKS_DATA_CATALOG`, `DATABRICKS_USER_CATALOG`,
+  `DATABRICKS_USERNAME`). `cdm_schema` is auto-constructed as
+  `"{data_catalog}.omop"` (default: `deid.omop`) and `results_schema` as
+  `"{user_catalog}.{username}"` when not set explicitly. Works from both
+  SAFER Desktop (Windows virtual desktop with direct Databricks access) and
+  Discovery HPC (Linux HPC via OnDemand). Delegates to
+  `create_safer_connection()` after resolving all parameters.
+
+* **`create_connection_from_discovery_env()`** (`connection.R`): Convenience
+  wrapper that loads `R.env` (or any env file) using `dotenv::load_dot_env()`
+  when the `dotenv` package is installed, otherwise falls back to the built-in
+  parser. Also searches `~/REACH-Templates/R.env` and `~/.env` as fallbacks.
+  This mirrors `REACH-Templates/scripts/databricks_connect.R`'s
+  `connect_databricks("R.env")` pattern.
+
+* **`dotenv` added to `Suggests`** (`DESCRIPTION`): Optional dependency that
+  enables `dotenv::load_dot_env()` for loading `R.env` files, matching the
+  REACH-Templates convention.
+
+* **`tests/run_analysis.R`**: New `USE_DISCOVERY` flag (Mode D) and
+  `DISCOVERY_ENV_FILE` variable. Set `USE_DISCOVERY = TRUE` to connect via
+  the REACH-Templates `R.env` convention with auto-constructed schemas.
+
+* **`.env` template**: Extended with a Discovery/REACH Back-end 3 section
+  documenting all REACH-Templates env vars and auto-schema-construction logic.
+
+---
+
 # SteroidDoseR 0.3.0
 
 ## New features — SAFER / REACH Databricks connection

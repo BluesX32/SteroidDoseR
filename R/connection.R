@@ -775,6 +775,251 @@ create_connection_from_safer_env <- function(env_file = "R.env") {
 }
 
 # ---------------------------------------------------------------------------
+# SAFER Desktop / Discovery HPC connection  (REACH-Templates convention)
+# ---------------------------------------------------------------------------
+
+#' Create a Databricks connection using the REACH-Templates env var convention
+#'
+#' Connects to Databricks using `rJava` + `RJDBC` + `DBI`, reading credentials
+#' from the REACH-Templates standard env vars (`DATABRICKS_HOST`,
+#' `DATABRICKS_DATA_CATALOG`, `DATABRICKS_USER_CATALOG`,
+#' `DATABRICKS_USERNAME`). This mirrors the `connect_databricks()` helper in
+#' `REACH-Templates/scripts/databricks_connect.R` and works from both:
+#'
+#' - **SAFER Desktop** (Windows Citrix virtual desktop — direct Databricks
+#'   access, no special Java setup needed)
+#' - **Discovery HPC** (Linux OnDemand — requires rJava source build; see
+#'   [create_connection_from_safer_env()] and the REACH-Templates Path A-R
+#'   setup guide)
+#'
+#' The key differences from [create_safer_connection()]:
+#' - Reads `DATABRICKS_HOST` (full URL with `https://`) and
+#'   `DATABRICKS_DATA_CATALOG` / `DATABRICKS_USER_CATALOG` /
+#'   `DATABRICKS_USERNAME` from the REACH-Templates `R.env` format.
+#' - Auto-constructs `cdm_schema` as `{data_catalog}.omop` and
+#'   `results_schema` as `{user_catalog}.{username}` when not set explicitly.
+#'
+#' ## Required environment variables
+#'
+#' | Variable | Description |
+#' |---|---|
+#' | `DATABRICKS_HOST` | Workspace URL with `https://` (or use `DATABRICKS_SERVER_HOSTNAME`) |
+#' | `DATABRICKS_HTTP_PATH` | SQL Warehouse HTTP path |
+#' | `DATABRICKS_TOKEN` | Personal Access Token (`dapi...`) |
+#' | `DATABRICKS_JDBC_JAR` | Path to JDBC jar (default: `~/jdbc/databricks-jdbc.jar`) |
+#' | `DATABRICKS_DATA_CATALOG` | Data catalog (default: `"deid"`) |
+#' | `DATABRICKS_USER_CATALOG` | User/scratch catalog (default: `"reach_users"`) |
+#' | `DATABRICKS_USERNAME` | Your JHED ID (e.g. `mxiong5`) |
+#'
+#' ## Optional overrides
+#'
+#' | Variable | Description |
+#' |---|---|
+#' | `DATABRICKS_CDM_SCHEMA` | Full CDM schema overriding auto-construction |
+#' | `DATABRICKS_VOCAB_SCHEMA` | Vocabulary schema (defaults to `cdm_schema`) |
+#' | `DATABRICKS_RESULTS_SCHEMA` | Results schema overriding auto-construction |
+#'
+#' @param host Databricks workspace URL (with `https://`) or hostname.
+#' @param http_path SQL Warehouse HTTP path.
+#' @param token Personal Access Token.
+#' @param jdbc_jar Path to the Databricks JDBC driver jar. Auto-detected from
+#'   `~/jdbc/` when `NULL`.
+#' @param data_catalog Top-level data catalog. Default `"deid"`.
+#' @param user_catalog User scratch catalog. Default `"reach_users"`.
+#' @param username Your JHED ID (used to build the results schema).
+#' @param cdm_schema Full CDM schema (`catalog.schema`). When `NULL`, auto-built
+#'   as `paste0(data_catalog, ".omop")`.
+#' @param vocab_schema Vocabulary schema. Defaults to `cdm_schema`.
+#' @param results_schema Results schema. When `NULL`, auto-built as
+#'   `paste0(user_catalog, ".", username)` (if `username` is known).
+#' @param use_env Logical. Load unset parameters from environment variables.
+#'   Default `TRUE`.
+#'
+#' @return An `omop_connector` with `$use_rjdbc = TRUE`. Pass directly to
+#'   [run_pipeline()], [fetch_drug_exposure()], etc.
+#'   Call [disconnect_connector()] when finished.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Simplest: load from the REACH-Templates R.env file
+#' con <- create_connection_from_discovery_env("~/REACH-Templates/R.env")
+#' drug_df <- with_connector(con, function(active) {
+#'   fetch_drug_exposure(active, start_date = "2020-01-01")
+#' })
+#' episodes <- run_pipeline(drug_df, method = "baseline")
+#' disconnect_connector(con)
+#'
+#' # Explicit arguments
+#' con <- create_discovery_connection(
+#'   host        = "https://adb-1234.7.azuredatabricks.net",
+#'   http_path   = "/sql/1.0/warehouses/abc123",
+#'   token       = Sys.getenv("DATABRICKS_TOKEN"),
+#'   username    = "mxiong5"
+#' )
+#' }
+create_discovery_connection <- function(
+    host          = NULL,
+    http_path     = NULL,
+    token         = NULL,
+    jdbc_jar      = NULL,
+    data_catalog  = NULL,
+    user_catalog  = NULL,
+    username      = NULL,
+    cdm_schema    = NULL,
+    vocab_schema  = NULL,
+    results_schema = NULL,
+    use_env       = TRUE
+) {
+  .check_rjdbc_packages()
+
+  # ------------------------------------------------------------------
+  # Load from REACH-Templates R.env convention
+  # ------------------------------------------------------------------
+  if (use_env) {
+    if (is.null(host) || !nzchar(host %||% "")) {
+      v <- Sys.getenv("DATABRICKS_SERVER_HOSTNAME")
+      if (!nzchar(v)) v <- sub("^https?://", "", Sys.getenv("DATABRICKS_HOST"))
+      if (!nzchar(v)) v <- Sys.getenv("DATABRICKS_HOST")
+      if (nzchar(v)) host <- v
+    }
+    if (is.null(http_path) || !nzchar(http_path %||% "")) {
+      v <- Sys.getenv("DATABRICKS_HTTP_PATH")
+      if (nzchar(v)) http_path <- v
+    }
+    if (is.null(token) || !nzchar(token %||% "")) {
+      v <- Sys.getenv("DATABRICKS_TOKEN")
+      if (nzchar(v)) token <- v
+    }
+    if (is.null(jdbc_jar)) {
+      v <- Sys.getenv("DATABRICKS_JDBC_JAR")
+      if (nzchar(v)) {
+        jdbc_jar <- path.expand(v)
+      } else {
+        candidates <- c(
+          path.expand("~/jdbc/databricks-jdbc.jar"),
+          path.expand("~/jdbc/databricks-jdbc-2.6.36.jar"),
+          file.path(getwd(), "jdbc_drivers", "databricks", "DatabricksJDBC.jar")
+        )
+        found <- candidates[file.exists(candidates)]
+        if (length(found) > 0L) jdbc_jar <- found[[1L]]
+      }
+    }
+    if (is.null(data_catalog) || !nzchar(data_catalog %||% "")) {
+      v <- Sys.getenv("DATABRICKS_DATA_CATALOG")
+      data_catalog <- if (nzchar(v)) v else "deid"
+    }
+    if (is.null(user_catalog) || !nzchar(user_catalog %||% "")) {
+      v <- Sys.getenv("DATABRICKS_USER_CATALOG")
+      user_catalog <- if (nzchar(v)) v else "reach_users"
+    }
+    if (is.null(username) || !nzchar(username %||% "")) {
+      v <- Sys.getenv("DATABRICKS_USERNAME")
+      if (nzchar(v)) username <- v
+    }
+    # Schema overrides
+    if (is.null(cdm_schema) || !nzchar(cdm_schema %||% "")) {
+      v <- Sys.getenv("DATABRICKS_CDM_SCHEMA")
+      if (nzchar(v)) cdm_schema <- v
+    }
+    if (is.null(vocab_schema) || !nzchar(vocab_schema %||% "")) {
+      v <- Sys.getenv("DATABRICKS_VOCAB_SCHEMA")
+      if (nzchar(v)) vocab_schema <- v
+    }
+    if (is.null(results_schema) || !nzchar(results_schema %||% "")) {
+      v <- Sys.getenv("DATABRICKS_RESULTS_SCHEMA")
+      if (nzchar(v)) results_schema <- v
+    }
+  }
+
+  # ------------------------------------------------------------------
+  # Auto-construct schema names from catalog parts
+  # ------------------------------------------------------------------
+  if (is.null(cdm_schema) || !nzchar(cdm_schema %||% "")) {
+    cdm_schema <- paste0(data_catalog %||% "deid", ".omop")
+    message(sprintf("  cdm_schema auto-set to: %s", cdm_schema))
+  }
+  if (is.null(vocab_schema) || !nzchar(vocab_schema %||% "")) {
+    vocab_schema <- cdm_schema
+  }
+  if ((is.null(results_schema) || !nzchar(results_schema %||% "")) &&
+      !is.null(username) && nzchar(username %||% "")) {
+    results_schema <- paste0(user_catalog %||% "reach_users", ".", username)
+    message(sprintf("  results_schema auto-set to: %s", results_schema))
+  }
+
+  # Strip leading https:// and trailing slash from host
+  host <- sub("^https?://", "", host %||% "")
+  host <- sub("/$", "", host)
+
+  # Delegate to create_safer_connection() with the resolved parameters
+  create_safer_connection(
+    server_hostname = host,
+    http_path       = http_path,
+    token           = token,
+    jdbc_jar        = jdbc_jar,
+    cdm_schema      = cdm_schema,
+    vocab_schema    = vocab_schema,
+    results_schema  = results_schema,
+    use_env         = FALSE   # already resolved above
+  )
+}
+
+#' Create a SAFER Desktop / Discovery HPC connection from an env file
+#'
+#' Loads credentials from an env file using `dotenv::load_dot_env()` (if
+#' the `dotenv` package is installed) or the built-in parser, then calls
+#' [create_discovery_connection()]. This matches the usage pattern from
+#' `REACH-Templates/scripts/databricks_connect.R`:
+#'
+#' ```r
+#' # REACH-Templates pattern:
+#' source("scripts/databricks_connect.R")
+#' con <- connect_databricks("R.env")
+#'
+#' # SteroidDoseR equivalent:
+#' con <- create_connection_from_discovery_env("R.env")
+#' ```
+#'
+#' @param env_file Path to the env file. Accepts `R.env` (REACH-Templates
+#'   convention), `.env`, or `~/.env` (Discovery HPC home-dir convention).
+#'   Tries each candidate in order if `env_file` does not exist.
+#'
+#' @return An `omop_connector` with `$use_rjdbc = TRUE`.
+#' @export
+create_connection_from_discovery_env <- function(env_file = "R.env") {
+  # Try the supplied file first, then common fallbacks
+  candidates <- unique(c(
+    env_file,
+    "R.env",
+    path.expand("~/REACH-Templates/R.env"),
+    path.expand("~/.env"),
+    ".env"
+  ))
+
+  loaded <- FALSE
+  for (f in candidates) {
+    if (file.exists(f)) {
+      # Prefer dotenv::load_dot_env() to match REACH-Templates convention
+      if (requireNamespace("dotenv", quietly = TRUE)) {
+        dotenv::load_dot_env(f)
+      } else {
+        .load_env_file(f)
+      }
+      message("\u2713 Loaded environment variables from ", f)
+      loaded <- TRUE
+      break
+    }
+  }
+  if (!loaded) {
+    message("No env file found (tried: ", paste(candidates, collapse = ", "),
+            "). Proceeding with system environment variables.")
+  }
+  create_discovery_connection(use_env = TRUE)
+}
+
+# ---------------------------------------------------------------------------
 # .env file loader
 # ---------------------------------------------------------------------------
 

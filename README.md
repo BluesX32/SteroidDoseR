@@ -60,7 +60,7 @@ For more control over each stage, call the functions individually:
 
 ### 1. Connect / load data
 
-Three connection modes are available:
+Four connection modes are available:
 
 ```r
 # --- Mode A: from a data frame (no database required) ---
@@ -70,14 +70,21 @@ con <- create_df_connector(drug_exp)
 # Requires: DatabaseConnector, SqlRender
 # Populate .env with SQL_SERVER, SQL_DATABASE, USE_WINDOWS_AUTH, etc.
 con <- create_connection_from_env(".env")
-con <- detect_capabilities(con)   # auto-detect available columns
+con <- detect_capabilities(con)
 
-# --- Mode C: Databricks via SAFER / REACH HPC (rJava + RJDBC + DBI) ---
-# Requires: rJava, RJDBC, DBI (no DatabaseConnector needed)
+# --- Mode C: Databricks / SAFER RJDBC (explicit CDM schema) ---
+# Requires: rJava, RJDBC, DBI — no DatabaseConnector needed
 # Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
-# DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, and DATABRICKS_JDBC_JAR.
-# See the SAFER connection setup section below for HPC prerequisites.
+# DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, DATABRICKS_JDBC_JAR
 con <- create_connection_from_safer_env("R.env")
+con <- detect_capabilities(con)
+
+# --- Mode D: SAFER Desktop / Discovery HPC (REACH-Templates R.env convention) ---
+# Requires: rJava, RJDBC, DBI; dotenv optional but recommended
+# Populate R.env with DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN,
+# DATABRICKS_USERNAME. cdm_schema auto-set to "deid.omop".
+# Mirrors: REACH-Templates/scripts/databricks_connect.R connect_databricks()
+con <- create_connection_from_discovery_env("R.env")
 con <- detect_capabilities(con)
 ```
 
@@ -252,64 +259,100 @@ All methods apply `filter_oral = TRUE` by default and cap doses at `max_daily_do
 
 ---
 
-## SAFER / REACH Databricks connection (HPC)
+## Databricks connections (SAFER Desktop / Discovery HPC)
 
-This section covers connecting from the Johns Hopkins SAFER / REACH HPC cluster,
-where the Databricks JDBC driver is accessed via `rJava` + `RJDBC` + `DBI`
-(no `DatabaseConnector` needed).
+Both connection back-ends (Mode C and D) use `rJava` + `RJDBC` + `DBI` —
+no `DatabaseConnector` or `SqlRender` required.
 
-### Prerequisites
+### Shared prerequisites
 
 ```bash
-# 1. Identify Java on the HPC
-ls /programs/x86_64-linux/java/
-export JAVA_HOME=/programs/x86_64-linux/java/jdk1.8.0_144
-
-# 2. Build rJava from source in /tmp (WekaFS home dir has shell issues)
+# On Discovery HPC (Linux): build rJava from source in /tmp
+# (WekaFS home directory has shell builtins that break the standard build)
 mkdir -p /tmp/$USER/rjava-build && cd /tmp/$USER/rjava-build
 wget https://cran.r-project.org/src/contrib/rJava_1.0-11.tar.gz
 tar xzf rJava_1.0-11.tar.gz && cd rJava
 sed -i 's/ test / \/usr\/bin\/test /g' configure
+sed -i 's/ test / \/usr\/bin\/test /g' src/jri/configure
 R CMD INSTALL /tmp/$USER/rjava-build/rJava
 
-# 3. Add dyn.load to ~/.Rprofile so the JVM loads automatically
+# Add to ~/.Rprofile so the JVM loads automatically each session
 echo 'dyn.load("/programs/x86_64-linux/java/jdk1.8.0_144/jre/lib/amd64/server/libjvm.so")' >> ~/.Rprofile
 
-# 4. Download Databricks JDBC driver
-mkdir -p ~/jdbc && cd ~/jdbc
-wget https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/databricks-jdbc-2.6.36.jar
+# Download Databricks JDBC driver
+mkdir -p ~/jdbc
+wget -P ~/jdbc https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/databricks-jdbc-2.6.36.jar
 ```
 
 ```r
-# 5. Install R packages
-install.packages(c("RJDBC", "DBI"))
+# R packages (both modes)
+install.packages(c("RJDBC", "DBI", "dotenv"))
 ```
 
-### R.env file (SAFER credential file)
+On SAFER Desktop (Windows) Java is typically pre-installed — skip the `rJava`
+source-build steps above and just `install.packages("rJava")`.
+
+---
+
+### Mode C — SAFER RJDBC (explicit CDM schema)
+
+Use when you know the full `catalog.schema` path for your CDM. Reads from
+the same `R.env` file used in REACH-Templates.
+
+**R.env** (place in your project directory, `chmod 600 R.env`):
 
 ```ini
 DATABRICKS_SERVER_HOSTNAME=adb-1234567890123456.7.azuredatabricks.net
 DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
-DATABRICKS_TOKEN=dapi...your-token-here...
+DATABRICKS_TOKEN=dapi...
 DATABRICKS_JDBC_JAR=~/jdbc/databricks-jdbc-2.6.36.jar
 DATABRICKS_CDM_SCHEMA=deid.omop
-DATABRICKS_VOCAB_SCHEMA=deid.omop
-DATABRICKS_RESULTS_SCHEMA=reach_users.your_username
+DATABRICKS_RESULTS_SCHEMA=reach_users.mxiong5
 ```
 
-Restrict permissions: `chmod 600 R.env`. Never commit this file.
+```r
+con <- create_connection_from_safer_env("R.env")
+con <- detect_capabilities(con)
+```
 
-### Connect and run
+---
+
+### Mode D — Discovery / SAFER Desktop (REACH-Templates `R.env` convention)
+
+Mirrors `connect_databricks("R.env")` from
+`REACH-Templates/scripts/databricks_connect.R`. `cdm_schema` is
+auto-constructed as `{DATABRICKS_DATA_CATALOG}.omop` (default: `deid.omop`)
+and `results_schema` as `{DATABRICKS_USER_CATALOG}.{DATABRICKS_USERNAME}`.
+
+**R.env** (same file as REACH-Templates — no changes needed):
+
+```ini
+DATABRICKS_HOST=https://adb-1234567890123456.7.azuredatabricks.net
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
+DATABRICKS_TOKEN=dapi...
+DATABRICKS_JDBC_JAR=~/jdbc/databricks-jdbc.jar
+DATABRICKS_DATA_CATALOG=deid
+DATABRICKS_USER_CATALOG=reach_users
+DATABRICKS_USERNAME=mxiong5
+```
+
+```r
+# Uses dotenv::load_dot_env() if dotenv is installed (REACH-Templates convention)
+con <- create_connection_from_discovery_env("R.env")
+con <- detect_capabilities(con)
+```
+
+`cdm_schema` is auto-set to `deid.omop`, `results_schema` to `reach_users.mxiong5`.
+Override with `DATABRICKS_CDM_SCHEMA` / `DATABRICKS_RESULTS_SCHEMA` if needed.
+
+---
+
+### Run the pipeline (same for both modes)
 
 ```r
 library(SteroidDoseR)
 library(dplyr)
 
-# Load credentials and connect (uses rJava + RJDBC + DBI)
-con <- create_connection_from_safer_env("R.env")
-con <- detect_capabilities(con)
-
-# Fetch steroid drug_exposure rows
 steroid_ids <- as.integer(read_csv(
   system.file("extdata", "steroid_concept_ids.csv", package = "SteroidDoseR"),
   col_names = FALSE, show_col_types = FALSE
@@ -323,14 +366,12 @@ drug_df <- with_connector(con, function(active) {
   )
 })
 
-# All downstream pipeline functions work identically to other connection modes
 episodes <- run_pipeline(drug_df, method = "baseline")
-
 disconnect_connector(con)
 ```
 
-Note: `cdm_schema` uses three-part Databricks catalog.schema format (e.g. `deid.omop`),
-so table references resolve to `deid.omop.drug_exposure` etc.
+Table references use three-part Databricks names automatically:
+`deid.omop.drug_exposure`, `deid.omop.concept`, etc.
 
 ---
 

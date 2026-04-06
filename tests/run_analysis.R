@@ -20,22 +20,33 @@
 #
 # Configuration
 # -------------
-#   Three connection modes (set USE_SYNTHETIC / USE_SAFER below):
+#   Four connection modes (set USE_SYNTHETIC / USE_SAFER / USE_DISCOVERY below):
 #
 #   Mode A — Synthetic data (no database required):
 #     USE_SYNTHETIC = TRUE
 #
 #   Mode B — SQL Server via DatabaseConnector (original / on-premise):
-#     USE_SYNTHETIC = FALSE, USE_SAFER = FALSE
+#     USE_SYNTHETIC = FALSE, USE_SAFER = FALSE, USE_DISCOVERY = FALSE
 #     Populate .env with SQL_SERVER, SQL_DATABASE, USE_WINDOWS_AUTH, etc.
 #     Required packages: DatabaseConnector, SqlRender
 #
-#   Mode C — Databricks via SAFER/REACH RJDBC (HPC cluster):
-#     USE_SYNTHETIC = FALSE, USE_SAFER = TRUE
+#   Mode C — Databricks via SAFER/REACH RJDBC (SAFER Desktop or HPC,
+#             explicit CDM schema via DATABRICKS_CDM_SCHEMA):
+#     USE_SYNTHETIC = FALSE, USE_SAFER = TRUE, USE_DISCOVERY = FALSE
 #     Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
 #     DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, and DATABRICKS_JDBC_JAR.
-#     Required packages: rJava, RJDBC, DBI (no DatabaseConnector needed)
+#     Required packages: rJava, RJDBC, DBI
 #     See: REACH-Templates/notebooks/08_databricks_R_connect.qmd for HPC setup.
+#
+#   Mode D — Databricks via REACH-Templates R.env convention (SAFER Desktop
+#             or Discovery HPC, schema auto-built from catalog + username):
+#     USE_SYNTHETIC = FALSE, USE_SAFER = FALSE, USE_DISCOVERY = TRUE
+#     Populate R.env with DATABRICKS_HOST (or DATABRICKS_SERVER_HOSTNAME),
+#     DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN, DATABRICKS_USERNAME.
+#     cdm_schema auto-set to "{DATABRICKS_DATA_CATALOG}.omop" (default: deid.omop).
+#     results_schema auto-set to "{DATABRICKS_USER_CATALOG}.{DATABRICKS_USERNAME}".
+#     Required packages: rJava, RJDBC, DBI (dotenv optional but recommended)
+#     Mirrors: REACH-Templates/scripts/databricks_connect.R connect_databricks()
 
 
 # This script is designed for interactive use in RStudio.
@@ -52,9 +63,11 @@ library(ggplot2)
 # 0. Configuration
 # ---------------------------------------------------------------------------
 USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
-USE_SAFER      <- FALSE   # set TRUE for SAFER/REACH Databricks (RJDBC path)
-ENV_FILE       <- ".env"  # path to .env file for SQL Server (Mode B)
-SAFER_ENV_FILE <- "R.env" # path to env file for SAFER Databricks (Mode C)
+USE_SAFER      <- FALSE   # set TRUE for SAFER/REACH RJDBC path (Mode C)
+USE_DISCOVERY  <- FALSE   # set TRUE for REACH-Templates R.env convention (Mode D)
+ENV_FILE            <- ".env"  # .env file for SQL Server (Mode B)
+SAFER_ENV_FILE      <- "R.env" # env file for SAFER Databricks (Mode C)
+DISCOVERY_ENV_FILE  <- "R.env" # env file for Discovery/SAFER Desktop (Mode D)
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 30L
@@ -116,17 +129,35 @@ if (USE_SYNTHETIC) {
   con <- create_df_connector(drug_exp)
 } else if (USE_SAFER) {
   # -----------------------------------------------------------------------
-  # Mode C: SAFER / REACH Databricks (rJava + RJDBC + DBI, no DatabaseConnector)
+  # Mode C: SAFER / REACH Databricks (rJava + RJDBC + DBI)
+  #   Uses DATABRICKS_SERVER_HOSTNAME + DATABRICKS_CDM_SCHEMA explicitly.
+  #   Suitable when the full cdm_schema is known (e.g. "deid.omop").
   #
-  # Prerequisites on HPC:
-  #   1. Build rJava from source (see REACH-Templates 08_databricks_R_connect.qmd)
+  # Prerequisites:
+  #   1. rJava: on Discovery HPC, build from source (see REACH-Templates
+  #      notebooks/08_databricks_R_connect.qmd); on SAFER Desktop, standard install
   #   2. install.packages(c("RJDBC", "DBI"))
-  #   3. Download Databricks JDBC jar to ~/jdbc/databricks-jdbc-2.6.36.jar
+  #   3. JDBC jar at ~/jdbc/databricks-jdbc-2.6.36.jar (or set DATABRICKS_JDBC_JAR)
   #   4. Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
   #      DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, DATABRICKS_JDBC_JAR
   # -----------------------------------------------------------------------
-  message("=== Connecting to SAFER / REACH Databricks ===")
+  message("=== Connecting via SAFER/RJDBC (Mode C) ===")
   con <- create_connection_from_safer_env(SAFER_ENV_FILE)
+} else if (USE_DISCOVERY) {
+  # -----------------------------------------------------------------------
+  # Mode D: SAFER Desktop / Discovery HPC via REACH-Templates R.env convention
+  #   Mirrors REACH-Templates/scripts/databricks_connect.R connect_databricks().
+  #   cdm_schema auto-built as "{DATABRICKS_DATA_CATALOG}.omop" (default: deid.omop).
+  #   results_schema auto-built as "{DATABRICKS_USER_CATALOG}.{DATABRICKS_USERNAME}".
+  #   Loads env with dotenv::load_dot_env() if the dotenv package is installed.
+  #
+  # Prerequisites:
+  #   Same as Mode C, plus populate R.env with DATABRICKS_HOST (or
+  #   DATABRICKS_SERVER_HOSTNAME), DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN,
+  #   DATABRICKS_USERNAME, and optionally DATABRICKS_DATA_CATALOG.
+  # -----------------------------------------------------------------------
+  message("=== Connecting via Discovery/SAFER Desktop R.env convention (Mode D) ===")
+  con <- create_connection_from_discovery_env(DISCOVERY_ENV_FILE)
 } else {
   # -----------------------------------------------------------------------
   # Mode B: SQL Server via DatabaseConnector (original on-premise connection)
