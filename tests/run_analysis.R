@@ -20,14 +20,22 @@
 #
 # Configuration
 # -------------
-#   Set environment variables (or populate a .env file) before running:
-#     JDBC_DRIVER_PATH   path to folder containing JDBC driver JARs
-#     OMOP_SERVER        database server address (e.g. myserver.esm.johnshopkins.edu)
-#     OMOP_CDM_SCHEMA    CDM schema  (default: "Myositis_OMOP.dbo")
-#     OMOP_RESULTS_SCHEMA result schema (default: "Myositis_OMOP.Results")
+#   Three connection modes (set USE_SYNTHETIC / USE_SAFER below):
 #
-#   The script also works without a live database: set USE_SYNTHETIC = TRUE
-#   below to run against the bundled 29-record synthetic dataset.
+#   Mode A — Synthetic data (no database required):
+#     USE_SYNTHETIC = TRUE
+#
+#   Mode B — SQL Server via DatabaseConnector (original / on-premise):
+#     USE_SYNTHETIC = FALSE, USE_SAFER = FALSE
+#     Populate .env with SQL_SERVER, SQL_DATABASE, USE_WINDOWS_AUTH, etc.
+#     Required packages: DatabaseConnector, SqlRender
+#
+#   Mode C — Databricks via SAFER/REACH RJDBC (HPC cluster):
+#     USE_SYNTHETIC = FALSE, USE_SAFER = TRUE
+#     Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
+#     DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, and DATABRICKS_JDBC_JAR.
+#     Required packages: rJava, RJDBC, DBI (no DatabaseConnector needed)
+#     See: REACH-Templates/notebooks/08_databricks_R_connect.qmd for HPC setup.
 
 
 # This script is designed for interactive use in RStudio.
@@ -44,10 +52,21 @@ library(ggplot2)
 # 0. Configuration
 # ---------------------------------------------------------------------------
 USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
-ENV_FILE       <- ".env"  # path to .env file (relative to working directory)
+USE_SAFER      <- FALSE   # set TRUE for SAFER/REACH Databricks (RJDBC path)
+ENV_FILE       <- ".env"  # path to .env file for SQL Server (Mode B)
+SAFER_ENV_FILE <- "R.env" # path to env file for SAFER Databricks (Mode C)
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 30L
+
+# Dose-agreement thresholds for the episode-level binary agreement table.
+# A computed day is "acceptable" if the dose is within the threshold.
+#   DOSE_THRESHOLD_MG  — absolute difference in mg pred-equiv  (e.g. 10)
+#   DOSE_THRESHOLD_PCT — relative difference in %              (e.g. 20)
+# Set either to NULL to disable that criterion.
+# If both are non-NULL, a day passes if it meets EITHER criterion (OR logic).
+DOSE_THRESHOLD_MG  <- 10     # mg pred-equiv; NULL to disable
+DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 
 GOLD_STD_PATH  <- "H:/Myositis/DoseCalculation/Version2/GoldStandard/qc_gold_standard/corticosteroids_metrics_per_record.csv"
 
@@ -85,6 +104,9 @@ STEROID_CONCEPT_IDS <- as.integer(readr::read_csv(
 # 1. Connect / load data
 # ---------------------------------------------------------------------------
 if (USE_SYNTHETIC) {
+  # -----------------------------------------------------------------------
+  # Mode A: bundled synthetic data — no database required
+  # -----------------------------------------------------------------------
   message("=== Using bundled synthetic data ===")
   extdata  <- system.file("extdata", package = "SteroidDoseR")
   drug_exp <- readr::read_csv(
@@ -92,8 +114,24 @@ if (USE_SYNTHETIC) {
     show_col_types = FALSE
   )
   con <- create_df_connector(drug_exp)
+} else if (USE_SAFER) {
+  # -----------------------------------------------------------------------
+  # Mode C: SAFER / REACH Databricks (rJava + RJDBC + DBI, no DatabaseConnector)
+  #
+  # Prerequisites on HPC:
+  #   1. Build rJava from source (see REACH-Templates 08_databricks_R_connect.qmd)
+  #   2. install.packages(c("RJDBC", "DBI"))
+  #   3. Download Databricks JDBC jar to ~/jdbc/databricks-jdbc-2.6.36.jar
+  #   4. Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
+  #      DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, DATABRICKS_JDBC_JAR
+  # -----------------------------------------------------------------------
+  message("=== Connecting to SAFER / REACH Databricks ===")
+  con <- create_connection_from_safer_env(SAFER_ENV_FILE)
 } else {
-  message("=== Connecting to live OMOP CDM ===")
+  # -----------------------------------------------------------------------
+  # Mode B: SQL Server via DatabaseConnector (original on-premise connection)
+  # -----------------------------------------------------------------------
+  message("=== Connecting to live OMOP CDM (SQL Server) ===")
   con <- create_connection_from_env(ENV_FILE)
 }
 
@@ -186,13 +224,185 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
 
 
 # ===========================================================================
+# Helper: day-level dose agreement (dose-accuracy-aware binary classification)
+# ===========================================================================
+# Unit of analysis: patient-day (within each patient's gold observation window).
+#
+# A patient-day is classified as:
+#   TP — in a gold episode AND in a computed episode AND dose within threshold
+#   FP — NOT in a gold episode BUT in a computed episode  (spurious episode day)
+#   FN — in a gold episode but dose NOT acceptable         (missed or wrong dose)
+#   TN — NOT in a gold episode AND NOT in a computed episode
+#
+# Parameters
+#   threshold_mg  — acceptable absolute dose difference (mg pred-equiv); NULL = off
+#   threshold_pct — acceptable relative dose difference (%);             NULL = off
+#   If both non-NULL, a day is acceptable when it meets EITHER criterion (OR).
+#
+compute_episode_dose_agreement <- function(
+    computed_episodes,
+    gold_df,
+    threshold_mg   = 10,
+    threshold_pct  = NULL,
+    gold_id_col    = "patient_id",
+    gold_start_col = "episode_start",
+    gold_end_col   = "episode_end",
+    gold_dose_col  = "median_daily_dose",
+    comp_dose_col  = "median_daily_dose") {
+
+  if (is.null(threshold_mg) && is.null(threshold_pct))
+    stop("At least one of threshold_mg or threshold_pct must be non-NULL.")
+
+  comp_pts    <- unique(as.integer(computed_episodes$person_id))
+  gold_pts    <- unique(as.integer(gold_df[[gold_id_col]]))
+  overlap_pts <- intersect(comp_pts, gold_pts)
+
+  if (length(overlap_pts) == 0L) {
+    warning("No overlapping patients — returning NA metrics.")
+    return(tibble::tibble(
+      Threshold = NA_character_,
+      TP = NA_integer_, FP = NA_integer_, FN = NA_integer_, TN = NA_integer_,
+      Sensitivity = NA_real_, Specificity = NA_real_,
+      PPV = NA_real_, NPV = NA_real_, F1 = NA_real_, Kappa = NA_real_
+    ))
+  }
+
+  # Expand episodes to (pt_id, day, dose) — one row per patient-day per episode
+  expand_to_days_dose <- function(df, id_col, start_col, end_col, dose_col) {
+    df |>
+      dplyr::filter(as.integer(.data[[id_col]]) %in% overlap_pts) |>
+      dplyr::select(
+        pt_id   = dplyr::all_of(id_col),
+        e_start = dplyr::all_of(start_col),
+        e_end   = dplyr::all_of(end_col),
+        dose    = dplyr::all_of(dose_col)
+      ) |>
+      dplyr::mutate(
+        pt_id   = as.integer(.data$pt_id),
+        e_start = as.Date(.data$e_start),
+        e_end   = as.Date(.data$e_end),
+        dose    = as.numeric(.data$dose)
+      ) |>
+      dplyr::rowwise() |>
+      dplyr::mutate(day = list(seq.Date(.data$e_start, .data$e_end, by = "day"))) |>
+      dplyr::ungroup() |>
+      tidyr::unnest(cols = day) |>
+      dplyr::select(pt_id, day, dose) |>
+      dplyr::distinct(pt_id, day, .keep_all = TRUE)   # keep first if episodes overlap
+  }
+
+  gold_days <- expand_to_days_dose(
+    gold_df, gold_id_col, gold_start_col, gold_end_col, gold_dose_col)
+  comp_days <- expand_to_days_dose(
+    computed_episodes, "person_id", "episode_start", "episode_end", comp_dose_col)
+
+  # Per-patient observation window = date range of that patient's gold episodes
+  gold_windows <- gold_df |>
+    dplyr::filter(as.integer(.data[[gold_id_col]]) %in% overlap_pts) |>
+    dplyr::group_by(pt_id = as.integer(.data[[gold_id_col]])) |>
+    dplyr::summarise(
+      win_start = min(as.Date(.data[[gold_start_col]]), na.rm = TRUE),
+      win_end   = max(as.Date(.data[[gold_end_col]]),   na.rm = TRUE),
+      .groups   = "drop"
+    )
+
+  # Enumerate all patient-days within gold observation windows
+  all_days <- gold_windows |>
+    dplyr::rowwise() |>
+    dplyr::mutate(day = list(seq.Date(.data$win_start, .data$win_end, by = "day"))) |>
+    dplyr::ungroup() |>
+    tidyr::unnest(cols = day) |>
+    dplyr::select(pt_id, day)
+
+  # Join gold and computed doses onto the full patient-day grid
+  day_tbl <- all_days |>
+    dplyr::left_join(
+      gold_days |> dplyr::rename(gold_dose = dose),
+      by = c("pt_id", "day")
+    ) |>
+    dplyr::left_join(
+      comp_days |> dplyr::rename(comp_dose = dose),
+      by = c("pt_id", "day")
+    ) |>
+    dplyr::mutate(
+      gold_on = !is.na(.data$gold_dose),
+      comp_on = !is.na(.data$comp_dose)
+    )
+
+  # Dose-acceptability criterion (vectorised, outside mutate)
+  dose_diff     <- abs(day_tbl$comp_dose - day_tbl$gold_dose)
+  dose_diff_pct <- 100 * dose_diff / day_tbl$gold_dose
+
+  within_abs <- if (!is.null(threshold_mg)) {
+    !is.na(dose_diff) & dose_diff <= threshold_mg
+  } else {
+    rep(FALSE, nrow(day_tbl))
+  }
+
+  within_pct <- if (!is.null(threshold_pct)) {
+    !is.na(dose_diff_pct) & dose_diff_pct <= threshold_pct
+  } else {
+    rep(FALSE, nrow(day_tbl))
+  }
+
+  dose_ok_criterion <- if (!is.null(threshold_mg) && !is.null(threshold_pct)) {
+    within_abs | within_pct   # OR: either criterion is sufficient
+  } else if (!is.null(threshold_mg)) {
+    within_abs
+  } else {
+    within_pct
+  }
+
+  day_tbl$dose_ok <- day_tbl$gold_on & day_tbl$comp_on & dose_ok_criterion
+
+  TP <- sum( day_tbl$dose_ok)
+  FP <- sum(!day_tbl$gold_on &  day_tbl$comp_on)  # computed day with no gold episode
+  FN <- sum( day_tbl$gold_on & !day_tbl$dose_ok)  # gold day missed or dose wrong
+  TN <- sum(!day_tbl$gold_on & !day_tbl$comp_on)  # correctly no episode
+  N  <- TP + FP + FN + TN
+
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
+  ppv         <- TP / (TP + FP)
+  npv         <- TN / (TN + FN)
+  f1          <- 2L * TP / (2L * TP + FP + FN)
+
+  po    <- (TP + TN) / N
+  pe    <- ((TP + FN) * (TP + FP) + (TN + FP) * (TN + FN)) / N^2
+  kappa <- (po - pe) / (1 - pe)
+
+  thr_label <- if (!is.null(threshold_mg) && !is.null(threshold_pct)) {
+    sprintf("%g mg OR %g%%", threshold_mg, threshold_pct)
+  } else if (!is.null(threshold_mg)) {
+    sprintf("%g mg", threshold_mg)
+  } else {
+    sprintf("%g%%", threshold_pct)
+  }
+
+  tibble::tibble(
+    Threshold   = thr_label,
+    TP          = TP,
+    FP          = FP,
+    FN          = FN,
+    TN          = TN,
+    Sensitivity = round(sensitivity, 3),
+    Specificity = round(specificity, 3),
+    PPV         = round(ppv,         3),
+    NPV         = round(npv,         3),
+    F1          = round(f1,          3),
+    Kappa       = round(kappa,       3)
+  )
+}
+
+
+# ===========================================================================
 # 4. BASELINE METHOD
 # ===========================================================================
 message("\n=== [1/3] Baseline method ===")
 
 baseline_df <- calc_daily_dose_baseline(
   drug_df,
-  m2_sig_parse      = "auto",
+  m2_sig_parse      = "warn",
   max_daily_dose_mg = 2000,
   filter_oral       = TRUE
 )
@@ -223,7 +433,7 @@ print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg
 baseline_episodes <- run_pipeline(
   drug_df,
   method       = "baseline",
-  m2_sig_parse = "auto",
+  m2_sig_parse = "warn",
   return_level = "episode",
   gap_days     = GAP_DAYS
 )
@@ -679,21 +889,83 @@ cat(sprintf("  Unique patients:        %d\n", dplyr::n_distinct(drug_df$person_i
 cat(sprintf("  Study window:           %s to %s\n", START_DATE, END_DATE))
 cat(sprintf("  Episode gap tolerance:  %d days\n\n", GAP_DAYS))
 
-cat("EPISODE COUNTS BY METHOD\n")
+cat("PATIENT OVERLAP\n")
+cat(strrep("-", 40), "\n")
+db_patients_rpt      <- unique(as.integer(drug_df$person_id))
+gold_patients_rpt    <- unique(as.integer(gold_std$patient_id))
+overlap_patients_rpt <- intersect(db_patients_rpt, gold_patients_rpt)
+cat(sprintf("  Database (drug_exposure): %d unique patients\n",  length(db_patients_rpt)))
+cat(sprintf("  Gold standard:            %d unique patients\n",  length(gold_patients_rpt)))
+cat(sprintf("  Overlapping patients:     %d\n\n",               length(overlap_patients_rpt)))
+
+cat("EPISODE COUNTS BY SOURCE\n")
 cat(strrep("-", 40), "\n")
 episode_counts <- tibble::tibble(
-  Method    = c("Baseline", "NLP", "Advanced NLP"),
-  Patients  = c(dplyr::n_distinct(baseline_episodes$person_id),
-                dplyr::n_distinct(nlp_episodes$person_id),
-                dplyr::n_distinct(adv_nlp_episodes$person_id)),
-  Episodes  = c(nrow(baseline_episodes),
-                nrow(nlp_episodes),
-                nrow(adv_nlp_episodes)),
-  Median_mg = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
-                stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
-                stats::median(adv_nlp_episodes$median_daily_dose,   na.rm = TRUE))
+  Source            = c("Baseline", "NLP", "Advanced NLP", "Gold Standard"),
+  Patients          = c(dplyr::n_distinct(baseline_episodes$person_id),
+                        dplyr::n_distinct(nlp_episodes$person_id),
+                        dplyr::n_distinct(adv_nlp_episodes$person_id),
+                        dplyr::n_distinct(gold_std$patient_id)),
+  Episodes          = c(nrow(baseline_episodes),
+                        nrow(nlp_episodes),
+                        nrow(adv_nlp_episodes),
+                        nrow(gold_std)),
+  Overlap_with_Gold = c(ev_baseline$summary$n_matched_periods,
+                        ev_nlp$summary$n_matched_periods,
+                        ev_adv$summary$n_matched_periods,
+                        NA_integer_),
+  Median_mg         = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
+                        stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
+                        stats::median(adv_nlp_episodes$median_daily_dose,   na.rm = TRUE),
+                        stats::median(gold_std$median_daily_dose,           na.rm = TRUE))
 )
 print(as.data.frame(episode_counts), row.names = FALSE)
+cat("\n")
+
+cat("EPISODE-LEVEL DOSE AGREEMENT (day-level, overlapping patients)\n")
+cat(strrep("-", 40), "\n")
+cat("  Observation window per patient = range of that patient's gold episodes.\n")
+cat("  TP = patient-day in gold episode AND computed dose within threshold.\n")
+cat("  FP = patient-day in computed episode but no gold episode (spurious).\n")
+cat("  FN = patient-day in gold episode but dose missing or outside threshold.\n")
+cat("  TN = patient-day in neither gold nor computed episode.\n")
+thr_desc <- if (!is.null(DOSE_THRESHOLD_MG) && !is.null(DOSE_THRESHOLD_PCT)) {
+  sprintf("Threshold: %g mg pred-equiv OR %g%%\n\n", DOSE_THRESHOLD_MG, DOSE_THRESHOLD_PCT)
+} else if (!is.null(DOSE_THRESHOLD_MG)) {
+  sprintf("Threshold: %g mg pred-equiv\n\n", DOSE_THRESHOLD_MG)
+} else {
+  sprintf("Threshold: %g%%\n\n", DOSE_THRESHOLD_PCT)
+}
+cat(thr_desc)
+
+message("  Computing dose agreement — Baseline ...")
+agr_baseline <- compute_episode_dose_agreement(
+  baseline_episodes,  gold_std,
+  threshold_mg  = DOSE_THRESHOLD_MG,
+  threshold_pct = DOSE_THRESHOLD_PCT,
+  gold_id_col   = "patient_id"
+)
+message("  Computing dose agreement — NLP ...")
+agr_nlp      <- compute_episode_dose_agreement(
+  nlp_episodes,       gold_std,
+  threshold_mg  = DOSE_THRESHOLD_MG,
+  threshold_pct = DOSE_THRESHOLD_PCT,
+  gold_id_col   = "patient_id"
+)
+message("  Computing dose agreement — Advanced NLP ...")
+agr_adv      <- compute_episode_dose_agreement(
+  adv_nlp_episodes,   gold_std,
+  threshold_mg  = DOSE_THRESHOLD_MG,
+  threshold_pct = DOSE_THRESHOLD_PCT,
+  gold_id_col   = "patient_id"
+)
+
+agreement_tbl <- dplyr::bind_rows(
+  dplyr::mutate(agr_baseline, Method = "Baseline",     .before = 1),
+  dplyr::mutate(agr_nlp,      Method = "NLP",          .before = 1),
+  dplyr::mutate(agr_adv,      Method = "Advanced NLP", .before = 1)
+)
+print(as.data.frame(agreement_tbl), row.names = FALSE)
 cat("\n")
 
 cat("GOLD STANDARD COMPARISON (episode-level, median dose)\n")

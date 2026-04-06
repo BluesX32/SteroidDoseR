@@ -1,3 +1,49 @@
+# SteroidDoseR 0.3.0
+
+## New features — SAFER / REACH Databricks connection
+
+* **`create_safer_connection()`** (`connection.R`): New connection function that
+  uses `rJava` + `RJDBC` + `DBI` instead of `DatabaseConnector` to connect to a
+  Databricks SQL Warehouse. Reads credentials from env vars
+  `DATABRICKS_SERVER_HOSTNAME`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_TOKEN`, and
+  `DATABRICKS_CDM_SCHEMA`. Auto-detects the JDBC jar from common HPC locations
+  (`~/jdbc/databricks-jdbc-2.6.36.jar`). Returns the same `omop_connector`
+  interface, so all downstream functions (`run_pipeline()`,
+  `fetch_drug_exposure()`, `detect_capabilities()`, etc.) work unchanged.
+
+* **`create_connection_from_safer_env()`** (`connection.R`): Convenience wrapper
+  that loads a `R.env` or `.env` file and calls `create_safer_connection()`.
+  This is the recommended single-call entry point on the SAFER/REACH HPC cluster.
+
+* **RJDBC/DBI query path** (`connector.R`): `omop_connector` gains a
+  `use_rjdbc` flag (default `FALSE`). When `TRUE`, all data fetching and
+  capability detection use `DBI::dbGetQuery()` against the RJDBC/DBI connection
+  instead of `DatabaseConnector::querySql()`. The SQL query is built with plain
+  Spark SQL (`DATE('...')` syntax, three-part `catalog.schema.table` names) —
+  no `SqlRender` or `DatabaseConnector` dependency is required on the SAFER path.
+
+* **`disconnect_connector()`** (`connector.R`): Now calls `DBI::dbDisconnect()`
+  when `use_rjdbc = TRUE`, `DatabaseConnector::disconnect()` otherwise.
+
+* **`with_connector.omop_connector()`** (`connector.R`): SAFER/RJDBC connectors
+  always use the persistent-connection branch (connection opened during
+  `create_safer_connection()`). `DatabaseConnector::dbms()` is not called on
+  RJDBC connections; `dbms` is set to `"spark"` at construction time.
+
+* **`detect_capabilities.omop_connector()`** (`connector.R`): Added RJDBC-aware
+  probe using `DBI::dbGetQuery()` for the SAFER path.
+
+* **`tests/run_analysis.R`**: New `USE_SAFER` flag (default `FALSE`) selects
+  the SAFER/REACH Databricks connection path. Set `USE_SAFER = TRUE` and
+  populate `R.env` with SAFER credentials to run the full analysis on Databricks.
+
+* **`.env` template**: Extended with a commented-out SAFER/REACH Databricks
+  section documenting all required env vars and setup steps.
+
+* **`DESCRIPTION`**: Added `RJDBC` and `DBI` to `Suggests`.
+
+---
+
 # SteroidDoseR 0.2.5
 
 ## Enhancements

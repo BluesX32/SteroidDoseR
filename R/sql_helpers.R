@@ -45,6 +45,15 @@ query_omop <- function(connector, sql_path, params) {
       "query_omop() requires an active connection. Use with_connector()."
     )
   }
+  # SAFER/RJDBC path: the SQL is already plain Spark SQL built by
+  # .fetch_drug_exposure_rjdbc(), so query_omop() is only called on the
+  # DatabaseConnector path. Guard here as a safety net.
+  if (isTRUE(connector$use_rjdbc)) {
+    rlang::abort(paste0(
+      "query_omop() should not be called on a SAFER/RJDBC connector.\n",
+      "Use .fetch_drug_exposure_rjdbc() or DBI::dbGetQuery() directly."
+    ))
+  }
   sql <- render_translate_sql(sql_path, params, dbms = connector$dbms)
   DatabaseConnector::querySql(connector$conn, sql,
                                snakeCaseToCamelCase = FALSE)

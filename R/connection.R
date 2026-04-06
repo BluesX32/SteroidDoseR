@@ -508,6 +508,273 @@ create_connection_from_env <- function(env_file = ".env") {
 }
 
 # ---------------------------------------------------------------------------
+# SAFER / REACH Databricks connection  (rJava + RJDBC + DBI)
+# ---------------------------------------------------------------------------
+
+#' Create a Databricks connection for the SAFER / REACH HPC environment
+#'
+#' Uses `rJava`, `RJDBC`, and `DBI` instead of `DatabaseConnector` to connect
+#' to a Databricks SQL Warehouse. This is the native approach for the Johns
+#' Hopkins SAFER / REACH HPC cluster where the Databricks JDBC driver is
+#' accessed directly without the OHDSI DatabaseConnector layer.
+#'
+#' The returned connector satisfies the same interface as the one produced by
+#' [create_omop_connection()]: pass it directly to [run_pipeline()],
+#' [fetch_drug_exposure()], [detect_capabilities()], etc.
+#' Call [disconnect_connector()] when finished.
+#'
+#' ## Required environment variables
+#'
+#' | Variable | Description |
+#' |---|---|
+#' | `DATABRICKS_SERVER_HOSTNAME` | Workspace hostname (e.g. `adb-1234.7.azuredatabricks.net`) |
+#' | `DATABRICKS_HTTP_PATH` | SQL Warehouse HTTP path (e.g. `/sql/1.0/warehouses/abc123`) |
+#' | `DATABRICKS_TOKEN` | Personal Access Token |
+#' | `DATABRICKS_JDBC_JAR` | Path to Databricks JDBC jar (default: `~/jdbc/databricks-jdbc.jar`) |
+#' | `DATABRICKS_CDM_SCHEMA` | CDM schema in `catalog.schema` format (e.g. `deid.omop`) |
+#' | `DATABRICKS_VOCAB_SCHEMA` | Vocabulary schema (defaults to `cdm_schema`) |
+#' | `DATABRICKS_RESULTS_SCHEMA` | Results schema (optional) |
+#'
+#' ## Prerequisites
+#'
+#' Install the required R packages and the Databricks JDBC driver.
+#' On SAFER / REACH HPC, follow the notebook
+#' `notebooks/08_databricks_R_connect.qmd` in the REACH-Templates repository:
+#'
+#' ```r
+#' install.packages(c("rJava", "RJDBC", "DBI"))
+#' # Download driver from Maven Central:
+#' # https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/
+#' # Place the jar at ~/jdbc/databricks-jdbc-2.6.36.jar
+#' ```
+#'
+#' @param server_hostname Databricks workspace hostname.
+#'   Strip the leading `https://` if present.
+#' @param http_path SQL Warehouse or cluster HTTP path.
+#' @param token Personal Access Token (`dapi...`).
+#' @param jdbc_jar Path to the Databricks JDBC driver `.jar`. Auto-detected
+#'   from common locations when `NULL`: `~/jdbc/databricks-jdbc*.jar` and the
+#'   package's bundled `jdbc_drivers/databricks/` folder.
+#' @param cdm_schema CDM schema in `catalog.schema` format, e.g. `"deid.omop"`.
+#' @param vocab_schema Vocabulary schema (defaults to `cdm_schema`).
+#' @param results_schema Results / scratch schema (optional).
+#' @param use_env Logical. Load unset parameters from environment variables.
+#'   Default `TRUE`.
+#'
+#' @return An `omop_connector` object (`c("omop_connector", "steroid_connector")`)
+#'   with an open RJDBC/DBI connection and `$use_rjdbc = TRUE`.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Simplest: load everything from R.env (SAFER/REACH convention)
+#' con <- create_connection_from_safer_env("R.env")
+#' drug_df <- with_connector(con, function(active) {
+#'   fetch_drug_exposure(active, start_date = "2020-01-01")
+#' })
+#' episodes <- run_pipeline(drug_df, method = "baseline")
+#' disconnect_connector(con)
+#'
+#' # Explicit arguments
+#' con <- create_safer_connection(
+#'   server_hostname = "adb-1234.7.azuredatabricks.net",
+#'   http_path       = "/sql/1.0/warehouses/abc123",
+#'   token           = Sys.getenv("DATABRICKS_TOKEN"),
+#'   cdm_schema      = "deid.omop"
+#' )
+#' }
+create_safer_connection <- function(
+    server_hostname = NULL,
+    http_path       = NULL,
+    token           = NULL,
+    jdbc_jar        = NULL,
+    cdm_schema      = NULL,
+    vocab_schema    = NULL,
+    results_schema  = NULL,
+    use_env         = TRUE
+) {
+  .check_rjdbc_packages()
+
+  # ------------------------------------------------------------------
+  # Load unset parameters from environment variables
+  # ------------------------------------------------------------------
+  if (use_env) {
+    if (is.null(server_hostname) || !nzchar(server_hostname %||% "")) {
+      v <- Sys.getenv("DATABRICKS_SERVER_HOSTNAME")
+      if (nzchar(v)) server_hostname <- v
+    }
+    if (is.null(http_path) || !nzchar(http_path %||% "")) {
+      v <- Sys.getenv("DATABRICKS_HTTP_PATH")
+      if (nzchar(v)) http_path <- v
+    }
+    if (is.null(token) || !nzchar(token %||% "")) {
+      v <- Sys.getenv("DATABRICKS_TOKEN")
+      if (nzchar(v)) token <- v
+    }
+    if (is.null(jdbc_jar)) {
+      v <- Sys.getenv("DATABRICKS_JDBC_JAR")
+      if (nzchar(v)) {
+        jdbc_jar <- path.expand(v)
+      } else {
+        # Auto-detect from common locations
+        candidates <- c(
+          path.expand("~/jdbc/databricks-jdbc-2.6.36.jar"),
+          path.expand("~/jdbc/databricks-jdbc.jar"),
+          file.path(getwd(), "jdbc_drivers", "databricks", "DatabricksJDBC.jar")
+        )
+        found <- candidates[file.exists(candidates)]
+        if (length(found) > 0L) jdbc_jar <- found[[1L]]
+      }
+    }
+    if (is.null(cdm_schema) || !nzchar(cdm_schema %||% "")) {
+      v <- Sys.getenv("DATABRICKS_CDM_SCHEMA")
+      if (!nzchar(v)) v <- Sys.getenv("CDM_SCHEMA")
+      if (nzchar(v)) cdm_schema <- v
+    }
+    if (is.null(vocab_schema) || !nzchar(vocab_schema %||% "")) {
+      v <- Sys.getenv("DATABRICKS_VOCAB_SCHEMA")
+      if (nzchar(v)) vocab_schema <- v
+    }
+    if (is.null(results_schema) || !nzchar(results_schema %||% "")) {
+      v <- Sys.getenv("DATABRICKS_RESULTS_SCHEMA")
+      if (nzchar(v)) results_schema <- v
+    }
+  }
+
+  # ------------------------------------------------------------------
+  # Validate
+  # ------------------------------------------------------------------
+  if (!nzchar(server_hostname %||% ""))
+    rlang::abort(paste0(
+      "Databricks server hostname is required.\n",
+      "Set DATABRICKS_SERVER_HOSTNAME in your env file ",
+      "or supply the `server_hostname` argument."
+    ))
+  if (!nzchar(http_path %||% ""))
+    rlang::abort(paste0(
+      "Databricks HTTP path is required.\n",
+      "Set DATABRICKS_HTTP_PATH in your env file ",
+      "or supply the `http_path` argument."
+    ))
+  if (!nzchar(token %||% ""))
+    rlang::abort(paste0(
+      "Databricks access token is required.\n",
+      "Set DATABRICKS_TOKEN in your env file ",
+      "or supply the `token` argument."
+    ))
+  if (is.null(jdbc_jar) || !file.exists(jdbc_jar))
+    rlang::abort(paste0(
+      "Databricks JDBC driver jar not found.\n",
+      "Download from Maven Central and place at ~/jdbc/databricks-jdbc-2.6.36.jar,\n",
+      "or set DATABRICKS_JDBC_JAR in your env file.\n",
+      "URL: https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/"
+    ))
+  if (!nzchar(cdm_schema %||% ""))
+    rlang::abort(paste0(
+      "CDM schema is required (e.g. 'deid.omop').\n",
+      "Set DATABRICKS_CDM_SCHEMA in your env file ",
+      "or supply the `cdm_schema` argument."
+    ))
+
+  # ------------------------------------------------------------------
+  # Defaults
+  # ------------------------------------------------------------------
+  if (is.null(vocab_schema) || !nzchar(vocab_schema)) vocab_schema <- cdm_schema
+
+  # Strip leading https:// and trailing slash from hostname
+  server_hostname <- sub("^https?://", "", server_hostname)
+  server_hostname <- sub("/$", "", server_hostname)
+
+  # ------------------------------------------------------------------
+  # Build JDBC URL  (SAFER / REACH format)
+  # ------------------------------------------------------------------
+  jdbc_url <- paste0(
+    "jdbc:databricks://", server_hostname, ":443;",
+    "transportMode=http;ssl=1;",
+    "httpPath=", http_path, ";",
+    "AuthMech=3;UID=token;PWD=", token
+  )
+
+  # ------------------------------------------------------------------
+  # Initialise RJDBC driver and open connection
+  # ------------------------------------------------------------------
+  drv <- tryCatch(
+    RJDBC::JDBC(
+      driverClass = "com.databricks.client.jdbc.Driver",
+      classPath   = jdbc_jar
+    ),
+    error = function(e) rlang::abort(paste0(
+      "Failed to initialise Databricks JDBC driver.\n",
+      "JAR path: ", jdbc_jar, "\n",
+      "Error: ", conditionMessage(e)
+    ))
+  )
+
+  conn <- tryCatch(
+    DBI::dbConnect(drv, jdbc_url),
+    error = function(e) rlang::abort(paste0(
+      "Failed to connect to Databricks at ", server_hostname, ".\n",
+      "Error: ", conditionMessage(e)
+    ))
+  )
+
+  message(sprintf(
+    "\u2713 safer_connector ready  |  server: %s  |  cdm_schema: %s",
+    server_hostname, cdm_schema
+  ))
+
+  # ------------------------------------------------------------------
+  # Build and return the omop_connector (use_rjdbc = TRUE)
+  # ------------------------------------------------------------------
+  structure(
+    list(
+      type           = "omop",
+      connectionDetails = NULL,   # not used for RJDBC path
+      cdm_schema     = cdm_schema,
+      vocab_schema   = vocab_schema,
+      results_schema = results_schema,
+      temp_schema    = NULL,
+      cdm_version    = "5.4",
+      conn           = conn,
+      dbms           = "spark",
+      capabilities   = NULL,
+      use_rjdbc      = TRUE
+    ),
+    class = c("omop_connector", "steroid_connector")
+  )
+}
+
+#' Create a SAFER/REACH Databricks connection from an env file
+#'
+#' Loads credentials from a `.env` or `R.env` file and calls
+#' [create_safer_connection()]. This is the recommended entry point for
+#' scripts running on the Johns Hopkins SAFER / REACH HPC cluster.
+#'
+#' @param env_file Path to the credentials file. Default `"R.env"` (the SAFER
+#'   convention); falls back to `".env"` if `"R.env"` does not exist.
+#'
+#' @return An `omop_connector` object with `$use_rjdbc = TRUE`.
+#' @export
+create_connection_from_safer_env <- function(env_file = "R.env") {
+  candidates <- unique(c(env_file, "R.env", ".env"))
+  loaded <- FALSE
+  for (f in candidates) {
+    if (file.exists(f)) {
+      .load_env_file(f)
+      message("\u2713 Loaded environment variables from ", f)
+      loaded <- TRUE
+      break
+    }
+  }
+  if (!loaded) {
+    message("No env file found (tried: ", paste(candidates, collapse = ", "),
+            "). Proceeding with system environment variables.")
+  }
+  create_safer_connection(use_env = TRUE)
+}
+
+# ---------------------------------------------------------------------------
 # .env file loader
 # ---------------------------------------------------------------------------
 

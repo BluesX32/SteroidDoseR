@@ -60,14 +60,25 @@ For more control over each stage, call the functions individually:
 
 ### 1. Connect / load data
 
+Three connection modes are available:
+
 ```r
-# --- From a data frame (no database required) ---
+# --- Mode A: from a data frame (no database required) ---
 con <- create_df_connector(drug_exp)
 
-# --- From a live OMOP CDM database ---
-# Set env vars: JDBC_DRIVER_PATH, OMOP_SERVER, OMOP_CDM_SCHEMA
+# --- Mode B: SQL Server via DatabaseConnector (original / on-premise) ---
+# Requires: DatabaseConnector, SqlRender
+# Populate .env with SQL_SERVER, SQL_DATABASE, USE_WINDOWS_AUTH, etc.
 con <- create_connection_from_env(".env")
 con <- detect_capabilities(con)   # auto-detect available columns
+
+# --- Mode C: Databricks via SAFER / REACH HPC (rJava + RJDBC + DBI) ---
+# Requires: rJava, RJDBC, DBI (no DatabaseConnector needed)
+# Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
+# DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, and DATABRICKS_JDBC_JAR.
+# See the SAFER connection setup section below for HPC prerequisites.
+con <- create_connection_from_safer_env("R.env")
+con <- detect_capabilities(con)
 ```
 
 ### 2. Fetch drug-exposure records
@@ -238,6 +249,88 @@ ggplot2::ggsave("dose_review.pdf", p, width = 12, height = 8)
 | **Advanced NLP** | `calc_daily_dose_nlp_advanced()` | NLP + word-form counts, weekly/monthly frequencies, taper decomposition | Taper SIGs that need per-step expansion |
 
 All methods apply `filter_oral = TRUE` by default and cap doses at `max_daily_dose_mg = 2000`.
+
+---
+
+## SAFER / REACH Databricks connection (HPC)
+
+This section covers connecting from the Johns Hopkins SAFER / REACH HPC cluster,
+where the Databricks JDBC driver is accessed via `rJava` + `RJDBC` + `DBI`
+(no `DatabaseConnector` needed).
+
+### Prerequisites
+
+```bash
+# 1. Identify Java on the HPC
+ls /programs/x86_64-linux/java/
+export JAVA_HOME=/programs/x86_64-linux/java/jdk1.8.0_144
+
+# 2. Build rJava from source in /tmp (WekaFS home dir has shell issues)
+mkdir -p /tmp/$USER/rjava-build && cd /tmp/$USER/rjava-build
+wget https://cran.r-project.org/src/contrib/rJava_1.0-11.tar.gz
+tar xzf rJava_1.0-11.tar.gz && cd rJava
+sed -i 's/ test / \/usr\/bin\/test /g' configure
+R CMD INSTALL /tmp/$USER/rjava-build/rJava
+
+# 3. Add dyn.load to ~/.Rprofile so the JVM loads automatically
+echo 'dyn.load("/programs/x86_64-linux/java/jdk1.8.0_144/jre/lib/amd64/server/libjvm.so")' >> ~/.Rprofile
+
+# 4. Download Databricks JDBC driver
+mkdir -p ~/jdbc && cd ~/jdbc
+wget https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/databricks-jdbc-2.6.36.jar
+```
+
+```r
+# 5. Install R packages
+install.packages(c("RJDBC", "DBI"))
+```
+
+### R.env file (SAFER credential file)
+
+```ini
+DATABRICKS_SERVER_HOSTNAME=adb-1234567890123456.7.azuredatabricks.net
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
+DATABRICKS_TOKEN=dapi...your-token-here...
+DATABRICKS_JDBC_JAR=~/jdbc/databricks-jdbc-2.6.36.jar
+DATABRICKS_CDM_SCHEMA=deid.omop
+DATABRICKS_VOCAB_SCHEMA=deid.omop
+DATABRICKS_RESULTS_SCHEMA=reach_users.your_username
+```
+
+Restrict permissions: `chmod 600 R.env`. Never commit this file.
+
+### Connect and run
+
+```r
+library(SteroidDoseR)
+library(dplyr)
+
+# Load credentials and connect (uses rJava + RJDBC + DBI)
+con <- create_connection_from_safer_env("R.env")
+con <- detect_capabilities(con)
+
+# Fetch steroid drug_exposure rows
+steroid_ids <- as.integer(read_csv(
+  system.file("extdata", "steroid_concept_ids.csv", package = "SteroidDoseR"),
+  col_names = FALSE, show_col_types = FALSE
+)[[1L]])
+
+drug_df <- with_connector(con, function(active) {
+  fetch_drug_exposure(active,
+    drug_concept_ids = steroid_ids,
+    start_date = "2015-01-01",
+    end_date   = "2025-12-31"
+  )
+})
+
+# All downstream pipeline functions work identically to other connection modes
+episodes <- run_pipeline(drug_df, method = "baseline")
+
+disconnect_connector(con)
+```
+
+Note: `cdm_schema` uses three-part Databricks catalog.schema format (e.g. `deid.omop`),
+so table references resolve to `deid.omop.drug_exposure` etc.
 
 ---
 
