@@ -18,6 +18,7 @@
 data/
 *.rds
 *.RData
+*.Rproj
 
 # Vignette build artifacts
 vignettes/*.html

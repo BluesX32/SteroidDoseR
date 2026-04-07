@@ -724,6 +724,9 @@ create_safer_connection <- function(
     "transportMode=http;ssl=1;",
     "httpPath=", http_path, ";",
     "AuthMech=3;UID=token;PWD=", token, ";",
+    "UseProxy=1;",
+    "ProxyHost=proxy.jh.edu;",
+    "ProxyPort=3129;",
     "EnableArrow=0"
   )
 
