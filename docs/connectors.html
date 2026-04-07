@@ -178,13 +178,16 @@ episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con,
 </code></pre>
 
 <h3>Databricks / Spark</h3>
+<p>For JHU SAFER/REACH, <code>cdm_schema</code> must be in <code>catalog.schema</code> format.
+The correct value is <code>"deid.omop"</code> (catalog: <code>deid</code>, schema: <code>omop</code>).
+SQL queries reference tables as <code>deid.omop.&lt;table&gt;</code> or <code>deid.derived.&lt;table&gt;</code>.</p>
 <pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
   dbms          <span class="op">=</span> <span class="st">"databricks"</span>,
-  server        <span class="op">=</span> <span class="st">"workspace.cloud.databricks.com"</span>,
+  server        <span class="op">=</span> <span class="st">"adb-1234567890123456.7.azuredatabricks.net"</span>,
   database      <span class="op">=</span> <span class="st">"default"</span>,
   user          <span class="op">=</span> <span class="st">"token"</span>,
   password      <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DATABRICKS_TOKEN"</span>),
-  cdm_schema    <span class="op">=</span> <span class="st">"omop.data"</span>,
+  cdm_schema    <span class="op">=</span> <span class="st">"deid.omop"</span>,
   extraSettings <span class="op">=</span> <span class="st">"httpPath=/sql/1.0/warehouses/&lt;warehouse-id&gt;"</span>
 )
 </code></pre>

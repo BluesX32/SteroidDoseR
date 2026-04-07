@@ -137,9 +137,13 @@ if (USE_SYNTHETIC) {
   #   1. rJava: on Discovery HPC, build from source (see REACH-Templates
   #      notebooks/08_databricks_R_connect.qmd); on SAFER Desktop, standard install
   #   2. install.packages(c("RJDBC", "DBI"))
-  #   3. JDBC jar at ~/jdbc/databricks-jdbc-2.6.36.jar (or set DATABRICKS_JDBC_JAR)
+  #   3. JDBC jar:
+  #      SAFER Desktop: C:/jdbc/databricks-jdbc-2.6.36.jar  (auto-detected)
+  #      Discovery HPC: ~/jdbc/databricks-jdbc-2.6.36.jar   (auto-detected)
   #   4. Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
-  #      DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, DATABRICKS_JDBC_JAR
+  #      DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA (= "deid.omop" for JHU SAFER/HPC)
+  #   5. SAFER Desktop only: also add DATABRICKS_PROXY_HOST=proxy.jh.edu
+  #      and DATABRICKS_PROXY_PORT=3129  (direct Azure connections are blocked)
   # -----------------------------------------------------------------------
   message("=== Connecting via SAFER/RJDBC (Mode C) ===")
   con <- create_connection_from_safer_env(SAFER_ENV_FILE)

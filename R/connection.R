@@ -104,14 +104,15 @@ NULL
 #'   cdm_schema = "dbo"
 #' )
 #'
-#' # Databricks with token authentication
+#' # Databricks / JHU SAFER with token authentication
+#' # cdm_schema uses catalog.schema format: "deid.omop" for JHU SAFER/REACH
 #' con <- create_omop_connection(
 #'   dbms          = "databricks",
-#'   server        = "workspace.cloud.databricks.com",
+#'   server        = "adb-1234567890123456.7.azuredatabricks.net",
 #'   database      = "default",
 #'   user          = "token",
 #'   password      = Sys.getenv("DATABRICKS_TOKEN"),
-#'   cdm_schema    = "omop.data",
+#'   cdm_schema    = "deid.omop",
 #'   extraSettings = "httpPath=/sql/1.0/warehouses/warehouse_id"
 #' )
 #'
