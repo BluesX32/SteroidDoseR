@@ -660,6 +660,58 @@ exercising, not rely on the full default cascade.
 
 ---
 
+## 16. New exported functions not found after package update
+
+**Symptom**
+
+```
+Error in create_connection_from_safer_env(...) :
+  could not find function "create_connection_from_safer_env"
+```
+
+Also manifests as `R CMD check` WARNING:
+
+```
+Warning: create_safer_connection: no documentation for 'create_safer_connection'
+Warning: create_connection_from_safer_env: no documentation for ...
+```
+
+**Root cause**
+
+When new functions are added to `R/` with `@export` roxygen tags and the
+`NAMESPACE` is updated (manually or via `devtools::document()`), `R CMD check`
+requires a corresponding `man/<fn>.Rd` file for every exported symbol.
+Without it, the check emits "undocumented objects" warnings and the installed
+package may fail to load the function into the search path.
+
+In v0.3.0–v0.3.1, four new connection functions were added and exported:
+`create_safer_connection`, `create_connection_from_safer_env`,
+`create_discovery_connection`, and `create_connection_from_discovery_env`.
+Their `man/*.Rd` files were not created at the same time, causing the check
+failure and the runtime "could not find function" error.
+
+**Fix**
+
+Create `man/<fn>.Rd` for every new exported function at the time it is added.
+Each Rd file must have `\name{}`, `\alias{}`, `\title{}`, `\usage{}` (matching
+the exact function signature), `\arguments{}` (one `\item` per parameter), and
+`\value{}`. Missing or mismatched `\usage{}` triggers a separate codoc ERROR
+(see entry #7).
+
+**Prevention**: adopt as a standing rule — every `@export` tag in `R/` needs a
+corresponding entry in `man/`. After adding any exported function, run:
+
+```r
+devtools::check(document = FALSE)   # confirm no "undocumented" warnings
+```
+
+If using roxygen2 workflow, run `devtools::document()` first so roxygen
+generates the Rd and updates NAMESPACE together. If editing NAMESPACE manually,
+create the Rd manually at the same time. Never commit an `export(fn)` line in
+NAMESPACE without a matching `man/fn.Rd`.
+
+---
+
 ## Quick reference
 
 | Check level | Issue | File(s) to edit |
@@ -680,3 +732,4 @@ exercising, not rely on the full default cascade.
 | Logic bug | Gold in native units vs pred-equiv | Convert gold with `convert_pred_equiv()` before eval |
 | Logic bug | Injection contamination in drug map | Use oral-filtered df (not `drug_df`) as join source |
 | Logic bug | Wrong imputation_method in test | Pin explicit `methods = c("supply_based")` in test |
+| WARNING | Exported function missing Rd file | Create `man/<fn>.Rd` at same time as `@export` |

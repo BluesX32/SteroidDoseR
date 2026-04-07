@@ -10,3 +10,7 @@
 ^\.env$
 ^\.env\.example$
 ^CICD-experiences\.md$
+^.*\.Rproj$
+^\.Rproj\.user$
+^.*\.tar\.gz$
+^R\.env$
