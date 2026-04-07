@@ -1,3 +1,30 @@
+# SteroidDoseR 0.3.2
+
+## Bug fixes — SAFER Desktop JDBC connection
+
+* **`create_safer_connection()` — JDBC jar auto-detection** (`connection.R`):
+  Added `C:/jdbc/databricks-jdbc-2.6.36.jar` as the first candidate in the
+  auto-detection list. On SAFER Desktop (Windows) the driver is installed at
+  the drive root `C:/jdbc/`, not in the user home directory `~/jdbc/`; the
+  previous list checked `~/jdbc/` first and never found the Windows driver.
+
+* **`create_safer_connection()` — proxy support** (`connection.R`):
+  Added `proxy_host` and `proxy_port` parameters. When set (or read from
+  `DATABRICKS_PROXY_HOST` / `DATABRICKS_PROXY_PORT` env vars), appends
+  `UseProxy=1;ProxyHost=...;ProxyPort=...` to the JDBC URL. **Required on
+  SAFER Desktop** — direct HTTPS connections to Azure Databricks are blocked;
+  all traffic must route through `proxy.jh.edu:3129`. Discovery HPC does not
+  need the proxy; leave those env vars commented out in your HPC `R.env`.
+
+* **`.env` template** — new proxy documentation: Added `DATABRICKS_PROXY_HOST`
+  / `DATABRICKS_PROXY_PORT` commented-out example lines to the Back-end 2
+  section with instructions on when each is required.
+
+* **`man/create_safer_connection.Rd`**: Updated to document the two new
+  parameters and describe the SAFER Desktop proxy requirement.
+
+---
+
 # SteroidDoseR 0.3.1
 
 ## New features — SAFER Desktop / Discovery HPC connection (REACH-Templates convention)

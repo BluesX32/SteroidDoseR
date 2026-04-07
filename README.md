@@ -264,11 +264,35 @@ All methods apply `filter_oral = TRUE` by default and cap doses at `max_daily_do
 Both connection back-ends (Mode C and D) use `rJava` + `RJDBC` + `DBI` —
 no `DatabaseConnector` or `SqlRender` required.
 
-### Shared prerequisites
+### SAFER Desktop prerequisites (Windows)
+
+Java 17 (64-bit) must be installed. Verify with `Sys.getenv("JAVA_HOME")` and
+`system("java -version")`. Then:
+
+```r
+# R packages
+install.packages(c("rJava", "RJDBC", "DBI", "dotenv"))
+```
+
+```r
+# Download JDBC driver to C:/jdbc/ (standard SAFER Desktop location)
+dir.create("C:/jdbc", showWarnings = FALSE, recursive = TRUE)
+download.file(
+  url      = paste0("https://repo1.maven.org/maven2/com/databricks/",
+                    "databricks-jdbc/2.6.36/databricks-jdbc-2.6.36.jar"),
+  destfile = "C:/jdbc/databricks-jdbc-2.6.36.jar",
+  mode     = "wb"
+)
+```
+
+> **Proxy required:** SAFER Desktop blocks direct Azure connections. Always
+> include `DATABRICKS_PROXY_HOST=proxy.jh.edu` and `DATABRICKS_PROXY_PORT=3129`
+> in your `R.env` file.
+
+### Discovery HPC prerequisites (Linux)
 
 ```bash
-# On Discovery HPC (Linux): build rJava from source in /tmp
-# (WekaFS home directory has shell builtins that break the standard build)
+# Build rJava from source in /tmp (WekaFS home breaks standard build)
 mkdir -p /tmp/$USER/rjava-build && cd /tmp/$USER/rjava-build
 wget https://cran.r-project.org/src/contrib/rJava_1.0-11.tar.gz
 tar xzf rJava_1.0-11.tar.gz && cd rJava
@@ -279,33 +303,42 @@ R CMD INSTALL /tmp/$USER/rjava-build/rJava
 # Add to ~/.Rprofile so the JVM loads automatically each session
 echo 'dyn.load("/programs/x86_64-linux/java/jdk1.8.0_144/jre/lib/amd64/server/libjvm.so")' >> ~/.Rprofile
 
-# Download Databricks JDBC driver
+# Download Databricks JDBC driver to ~/jdbc/
 mkdir -p ~/jdbc
 wget -P ~/jdbc https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/databricks-jdbc-2.6.36.jar
 ```
 
 ```r
-# R packages (both modes)
 install.packages(c("RJDBC", "DBI", "dotenv"))
 ```
 
-On SAFER Desktop (Windows) Java is typically pre-installed — skip the `rJava`
-source-build steps above and just `install.packages("rJava")`.
+No proxy required on Discovery HPC.
 
 ---
 
 ### Mode C — SAFER RJDBC (explicit CDM schema)
 
-Use when you know the full `catalog.schema` path for your CDM. Reads from
-the same `R.env` file used in REACH-Templates.
+Use when you know the full `catalog.schema` path for your CDM.
 
-**R.env** (place in your project directory, `chmod 600 R.env`):
+**R.env for SAFER Desktop:**
 
 ```ini
 DATABRICKS_SERVER_HOSTNAME=adb-1234567890123456.7.azuredatabricks.net
 DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
 DATABRICKS_TOKEN=dapi...
-DATABRICKS_JDBC_JAR=~/jdbc/databricks-jdbc-2.6.36.jar
+DATABRICKS_CDM_SCHEMA=deid.omop
+DATABRICKS_RESULTS_SCHEMA=reach_users.mxiong5
+# Required on SAFER Desktop — remove on Discovery HPC
+DATABRICKS_PROXY_HOST=proxy.jh.edu
+DATABRICKS_PROXY_PORT=3129
+```
+
+**R.env for Discovery HPC** (omit proxy lines):
+
+```ini
+DATABRICKS_SERVER_HOSTNAME=adb-1234567890123456.7.azuredatabricks.net
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
+DATABRICKS_TOKEN=dapi...
 DATABRICKS_CDM_SCHEMA=deid.omop
 DATABRICKS_RESULTS_SCHEMA=reach_users.mxiong5
 ```
@@ -324,7 +357,21 @@ Mirrors `connect_databricks("R.env")` from
 auto-constructed as `{DATABRICKS_DATA_CATALOG}.omop` (default: `deid.omop`)
 and `results_schema` as `{DATABRICKS_USER_CATALOG}.{DATABRICKS_USERNAME}`.
 
-**R.env** (same file as REACH-Templates — no changes needed):
+**R.env for SAFER Desktop** (add proxy lines):
+
+```ini
+DATABRICKS_HOST=https://adb-1234567890123456.7.azuredatabricks.net
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
+DATABRICKS_TOKEN=dapi...
+DATABRICKS_DATA_CATALOG=deid
+DATABRICKS_USER_CATALOG=reach_users
+DATABRICKS_USERNAME=mxiong5
+# Required on SAFER Desktop — remove on Discovery HPC
+DATABRICKS_PROXY_HOST=proxy.jh.edu
+DATABRICKS_PROXY_PORT=3129
+```
+
+**R.env for Discovery HPC** (same as REACH-Templates — no changes needed):
 
 ```ini
 DATABRICKS_HOST=https://adb-1234567890123456.7.azuredatabricks.net

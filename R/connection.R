@@ -530,34 +530,48 @@ create_connection_from_env <- function(env_file = ".env") {
 #' | `DATABRICKS_SERVER_HOSTNAME` | Workspace hostname (e.g. `adb-1234.7.azuredatabricks.net`) |
 #' | `DATABRICKS_HTTP_PATH` | SQL Warehouse HTTP path (e.g. `/sql/1.0/warehouses/abc123`) |
 #' | `DATABRICKS_TOKEN` | Personal Access Token |
-#' | `DATABRICKS_JDBC_JAR` | Path to Databricks JDBC jar (default: `~/jdbc/databricks-jdbc.jar`) |
+#' | `DATABRICKS_JDBC_JAR` | Path to Databricks JDBC jar (auto-detected when absent) |
 #' | `DATABRICKS_CDM_SCHEMA` | CDM schema in `catalog.schema` format (e.g. `deid.omop`) |
 #' | `DATABRICKS_VOCAB_SCHEMA` | Vocabulary schema (defaults to `cdm_schema`) |
 #' | `DATABRICKS_RESULTS_SCHEMA` | Results schema (optional) |
 #'
-#' ## Prerequisites
+#' ## Proxy (SAFER Desktop only)
 #'
-#' Install the required R packages and the Databricks JDBC driver.
-#' On SAFER / REACH HPC, follow the notebook
-#' `notebooks/08_databricks_R_connect.qmd` in the REACH-Templates repository:
+#' Direct HTTPS connections to Azure Databricks are **blocked** on SAFER Desktop.
+#' All connections must route through the JHU corporate proxy. Add these two
+#' variables to your `R.env`:
 #'
-#' ```r
-#' install.packages(c("rJava", "RJDBC", "DBI"))
-#' # Download driver from Maven Central:
-#' # https://repo1.maven.org/maven2/com/databricks/databricks-jdbc/2.6.36/
-#' # Place the jar at ~/jdbc/databricks-jdbc-2.6.36.jar
 #' ```
+#' DATABRICKS_PROXY_HOST=proxy.jh.edu
+#' DATABRICKS_PROXY_PORT=3129
+#' ```
+#'
+#' They are ignored automatically on Discovery HPC where no proxy is needed.
+#'
+#' ## JDBC driver location
+#'
+#' Auto-detection checks these paths in order:
+#' 1. `C:/jdbc/databricks-jdbc-2.6.36.jar` (SAFER Desktop standard)
+#' 2. `~/jdbc/databricks-jdbc-2.6.36.jar` (Discovery HPC standard)
+#' 3. `~/jdbc/databricks-jdbc.jar`
+#' 4. Package `jdbc_drivers/databricks/` folder
+#'
+#' Set `DATABRICKS_JDBC_JAR` in your env file to override.
 #'
 #' @param server_hostname Databricks workspace hostname.
 #'   Strip the leading `https://` if present.
 #' @param http_path SQL Warehouse or cluster HTTP path.
 #' @param token Personal Access Token (`dapi...`).
 #' @param jdbc_jar Path to the Databricks JDBC driver `.jar`. Auto-detected
-#'   from common locations when `NULL`: `~/jdbc/databricks-jdbc*.jar` and the
-#'   package's bundled `jdbc_drivers/databricks/` folder.
+#'   from common locations when `NULL` (see above).
 #' @param cdm_schema CDM schema in `catalog.schema` format, e.g. `"deid.omop"`.
 #' @param vocab_schema Vocabulary schema (defaults to `cdm_schema`).
 #' @param results_schema Results / scratch schema (optional).
+#' @param proxy_host HTTP proxy hostname. Set `DATABRICKS_PROXY_HOST` in your
+#'   env file (e.g. `proxy.jh.edu`) or supply directly. Required on SAFER
+#'   Desktop; leave `NULL` on Discovery HPC.
+#' @param proxy_port HTTP proxy port number. Set `DATABRICKS_PROXY_PORT` in
+#'   your env file (e.g. `3129`) or supply directly.
 #' @param use_env Logical. Load unset parameters from environment variables.
 #'   Default `TRUE`.
 #'
@@ -569,6 +583,7 @@ create_connection_from_env <- function(env_file = ".env") {
 #' @examples
 #' \dontrun{
 #' # Simplest: load everything from R.env (SAFER/REACH convention)
+#' # R.env must include DATABRICKS_PROXY_HOST / DATABRICKS_PROXY_PORT on SAFER Desktop
 #' con <- create_connection_from_safer_env("R.env")
 #' drug_df <- with_connector(con, function(active) {
 #'   fetch_drug_exposure(active, start_date = "2020-01-01")
@@ -576,12 +591,14 @@ create_connection_from_env <- function(env_file = ".env") {
 #' episodes <- run_pipeline(drug_df, method = "baseline")
 #' disconnect_connector(con)
 #'
-#' # Explicit arguments
+#' # Explicit arguments (SAFER Desktop with proxy)
 #' con <- create_safer_connection(
 #'   server_hostname = "adb-1234.7.azuredatabricks.net",
 #'   http_path       = "/sql/1.0/warehouses/abc123",
 #'   token           = Sys.getenv("DATABRICKS_TOKEN"),
-#'   cdm_schema      = "deid.omop"
+#'   cdm_schema      = "deid.omop",
+#'   proxy_host      = "proxy.jh.edu",
+#'   proxy_port      = 3129L
 #' )
 #' }
 create_safer_connection <- function(
@@ -592,6 +609,8 @@ create_safer_connection <- function(
     cdm_schema      = NULL,
     vocab_schema    = NULL,
     results_schema  = NULL,
+    proxy_host      = NULL,
+    proxy_port      = NULL,
     use_env         = TRUE
 ) {
   .check_rjdbc_packages()
@@ -617,8 +636,11 @@ create_safer_connection <- function(
       if (nzchar(v)) {
         jdbc_jar <- path.expand(v)
       } else {
-        # Auto-detect from common locations
+        # Auto-detect from common locations.
+        # C:/jdbc/ is the SAFER Desktop standard (Windows).
+        # ~/jdbc/ is the Discovery HPC standard (Linux).
         candidates <- c(
+          "C:/jdbc/databricks-jdbc-2.6.36.jar",
           path.expand("~/jdbc/databricks-jdbc-2.6.36.jar"),
           path.expand("~/jdbc/databricks-jdbc.jar"),
           file.path(getwd(), "jdbc_drivers", "databricks", "DatabricksJDBC.jar")
@@ -626,6 +648,14 @@ create_safer_connection <- function(
         found <- candidates[file.exists(candidates)]
         if (length(found) > 0L) jdbc_jar <- found[[1L]]
       }
+    }
+    if (is.null(proxy_host) || !nzchar(proxy_host %||% "")) {
+      v <- Sys.getenv("DATABRICKS_PROXY_HOST")
+      if (nzchar(v)) proxy_host <- v
+    }
+    if (is.null(proxy_port)) {
+      v <- Sys.getenv("DATABRICKS_PROXY_PORT")
+      if (nzchar(v)) proxy_port <- as.integer(v)
     }
     if (is.null(cdm_schema) || !nzchar(cdm_schema %||% "")) {
       v <- Sys.getenv("DATABRICKS_CDM_SCHEMA")
@@ -693,8 +723,21 @@ create_safer_connection <- function(
     "jdbc:databricks://", server_hostname, ":443;",
     "transportMode=http;ssl=1;",
     "httpPath=", http_path, ";",
-    "AuthMech=3;UID=token;PWD=", token
+    "AuthMech=3;UID=token;PWD=", token, ";",
+    "EnableArrow=0"
   )
+
+  # Proxy settings — required on SAFER Desktop (direct Azure connections blocked)
+  if (!is.null(proxy_host) && nzchar(proxy_host)) {
+    port_str <- if (!is.null(proxy_port)) as.character(proxy_port) else "3129"
+    jdbc_url <- paste0(
+      jdbc_url, ";",
+      "UseProxy=1;",
+      "ProxyHost=", proxy_host, ";",
+      "ProxyPort=", port_str
+    )
+    message(sprintf("  Proxy: %s:%s", proxy_host, port_str))
+  }
 
   # ------------------------------------------------------------------
   # Initialise RJDBC driver and open connection

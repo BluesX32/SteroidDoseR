@@ -712,6 +712,69 @@ NAMESPACE without a matching `man/fn.Rd`.
 
 ---
 
+## 17. SAFER Desktop: JDBC jar not found and connection reset
+
+**Symptoms**
+
+```
+Error in `create_safer_connection()`:
+! Databricks JDBC driver jar not found.
+Download from Maven Central and place at ~/jdbc/databricks-jdbc-2.6.36.jar
+```
+
+or (after fixing the jar):
+
+```
+com.databricks.client.jdbc.common.DatabricksJdbcException:
+[Databricks][JDBCDriver](500593) Communication link failure.
+java.net.SocketException: Connection reset
+```
+
+**Root cause — jar not found**
+
+The auto-detection looked for `~/jdbc/databricks-jdbc-2.6.36.jar` first, which
+on Windows expands to `C:/Users/<user>/jdbc/`. On SAFER Desktop the standard
+driver location is `C:/jdbc/` (drive root), not the user home directory. The
+jar was present but not found because the auto-detection list was wrong for
+Windows.
+
+**Root cause — connection reset**
+
+SAFER Desktop (Windows Citrix) blocks direct HTTPS connections to Azure
+Databricks. All JDBC connections must route through the JHU corporate proxy
+(`proxy.jh.edu:3129`). Without the proxy parameters in the JDBC URL the
+connection is refused or reset immediately.
+
+**Fix**
+
+1. Place (or verify) the JDBC driver at `C:/jdbc/databricks-jdbc-2.6.36.jar`.
+   Download with binary mode:
+   ```r
+   dir.create("C:/jdbc", showWarnings = FALSE, recursive = TRUE)
+   download.file(
+     url      = paste0("https://repo1.maven.org/maven2/com/databricks/",
+                       "databricks-jdbc/2.6.36/databricks-jdbc-2.6.36.jar"),
+     destfile = "C:/jdbc/databricks-jdbc-2.6.36.jar",
+     mode     = "wb"
+   )
+   ```
+
+2. Add proxy settings to your `R.env`:
+   ```
+   DATABRICKS_PROXY_HOST=proxy.jh.edu
+   DATABRICKS_PROXY_PORT=3129
+   ```
+
+3. `create_safer_connection()` v0.3.2 now:
+   - Checks `C:/jdbc/databricks-jdbc-2.6.36.jar` first in auto-detection
+   - Reads `DATABRICKS_PROXY_HOST` / `DATABRICKS_PROXY_PORT` from env file
+   - Appends `UseProxy=1;ProxyHost=...;ProxyPort=...` to the JDBC URL when set
+
+**On Discovery HPC** the proxy is not required and `~/jdbc/` is the correct
+driver location. Leave the proxy env vars commented out in your HPC `R.env`.
+
+---
+
 ## Quick reference
 
 | Check level | Issue | File(s) to edit |
@@ -733,3 +796,5 @@ NAMESPACE without a matching `man/fn.Rd`.
 | Logic bug | Injection contamination in drug map | Use oral-filtered df (not `drug_df`) as join source |
 | Logic bug | Wrong imputation_method in test | Pin explicit `methods = c("supply_based")` in test |
 | WARNING | Exported function missing Rd file | Create `man/<fn>.Rd` at same time as `@export` |
+| Runtime | SAFER Desktop JDBC jar not found | Place jar at `C:/jdbc/`; or set `DATABRICKS_JDBC_JAR` |
+| Runtime | SAFER Desktop connection reset | Add `DATABRICKS_PROXY_HOST` + `DATABRICKS_PROXY_PORT` to R.env |
