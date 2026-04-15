@@ -61,7 +61,7 @@ GAP_DAYS       <- 30L
 DOSE_THRESHOLD_MG  <- 10     # mg pred-equiv; NULL to disable
 DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 
-GOLD_STD_PATH  <- "H:/Myositis/DoseCalculation/Version2/GoldStandard/qc_gold_standard/corticosteroids_metrics_per_record.csv"
+GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 
 # ---------------------------------------------------------------------------
 # STEP 1 of the analysis workflow: Patient cohort selection
@@ -111,22 +111,16 @@ if (USE_SYNTHETIC) {
   # -----------------------------------------------------------------------
   message("=== Connecting to live OMOP CDM ===")
 
-  server       <- "Esmpmdbpr4.esm.johnshopkins.edu"
-  database     <- "Myositis_OMOP"
+  server       <- "your-server"
+  database     <- "your-database"
   port         <- 1433L
-  cdm_schema   <- paste0(database, ".dbo")
-  vocab_schema <- paste0(database, ".dbo")
-
-  jdbc_url <- sprintf(
-    paste0("jdbc:sqlserver://%s:%d;databaseName=%s;",
-           "integratedSecurity=true;encrypt=true;trustServerCertificate=true;"),
-    server, port, database
-  )
+  cdm_schema   <- paste0(database, ".dbo") # your CDM schema
+  vocab_schema <- paste0(database, ".dbo") # your vocab schema
 
   connectionDetails <- DatabaseConnector::createConnectionDetails(
     dbms             = "sql server",
-    connectionString = jdbc_url,
-    pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+    connectionString = "",
+    pathToDriver     = ""
   )
 
   conn <- DatabaseConnector::connect(connectionDetails)
@@ -144,11 +138,11 @@ if (USE_SYNTHETIC) {
     end_date       = END_DATE,
     concept_filter = paste(STEROID_CONCEPT_IDS, collapse = ","),
     person_filter  = if (!is.null(COHORT_PERSON_IDS))
-                       paste(COHORT_PERSON_IDS, collapse = ",") else "",
+      paste(COHORT_PERSON_IDS, collapse = ",") else "",
     snakeCaseToCamelCase = FALSE
   )
 
-  DatabaseConnector::disconnect(conn)
+  # DatabaseConnector::disconnect(conn)
 
   names(drug_df) <- tolower(names(drug_df))
   drug_df$drug_exposure_start_date <- as.Date(drug_df$drug_exposure_start_date)
@@ -609,8 +603,8 @@ cat(sprintf(
 ))
 cat("\nGold standard preview (with pred-equiv dose):\n")
 print(head(gold_std[, c("patient_id", "episode_start", "episode_end",
-                         "drug_name_std", "median_daily_dose_raw",
-                         "median_daily_dose", "days_covered")]))
+                        "drug_name_std", "median_daily_dose_raw",
+                        "median_daily_dose", "days_covered")]))
 
 cat("\nGold standard dose distribution (pred-equiv):\n")
 print(summary(gold_std$median_daily_dose))
@@ -634,7 +628,7 @@ dist_method_colors <- c(
 
 dist_df_all <- dplyr::bind_rows(dist_df, gold_dist_df) |>
   dplyr::mutate(method = factor(method,
-    levels = c("Baseline", "NLP", "Advanced NLP", "Gold")))
+                                levels = c("Baseline", "NLP", "Advanced NLP", "Gold")))
 
 p_dist <- ggplot2::ggplot(
   dist_df_all,
@@ -811,7 +805,7 @@ ba_limits <- ba_df |>
 
 cat("\nBland-Altman limits of agreement by method:\n")
 print(as.data.frame(ba_limits |>
-  dplyr::mutate(dplyr::across(where(is.numeric), ~ round(., 2)))))
+                      dplyr::mutate(dplyr::across(where(is.numeric), ~ round(., 2)))))
 
 p_ba <- ggplot2::ggplot(ba_df, ggplot2::aes(x = mean_dose, y = diff)) +
   ggplot2::geom_hline(yintercept = 0,
@@ -976,26 +970,26 @@ metrics_tbl <- tibble::tibble(
                        ev_nlp$n_common_patients,
                        ev_adv$n_common_patients),
   Coverage_pct     = round(c(ev_baseline$summary$coverage_pct,
-                              ev_nlp$summary$coverage_pct,
-                              ev_adv$summary$coverage_pct), 1),
+                             ev_nlp$summary$coverage_pct,
+                             ev_adv$summary$coverage_pct), 1),
   MAE_mg           = round(c(ev_baseline$summary$MAE,
-                              ev_nlp$summary$MAE,
-                              ev_adv$summary$MAE), 2),
+                             ev_nlp$summary$MAE,
+                             ev_adv$summary$MAE), 2),
   MBE_mg           = round(c(ev_baseline$summary$MBE,
-                              ev_nlp$summary$MBE,
-                              ev_adv$summary$MBE), 2),
+                             ev_nlp$summary$MBE,
+                             ev_adv$summary$MBE), 2),
   RMSE_mg          = round(c(ev_baseline$summary$RMSE,
-                              ev_nlp$summary$RMSE,
-                              ev_adv$summary$RMSE), 2),
+                             ev_nlp$summary$RMSE,
+                             ev_adv$summary$RMSE), 2),
   MAPE_pct         = round(c(ev_baseline$summary$MAPE,
-                              ev_nlp$summary$MAPE,
-                              ev_adv$summary$MAPE), 1),
+                             ev_nlp$summary$MAPE,
+                             ev_adv$summary$MAPE), 1),
   Pearson_r        = round(c(ev_baseline$summary$pearson_corr,
-                              ev_nlp$summary$pearson_corr,
-                              ev_adv$summary$pearson_corr), 3),
+                             ev_nlp$summary$pearson_corr,
+                             ev_adv$summary$pearson_corr), 3),
   Spearman_rho     = round(c(ev_baseline$summary$spearman_corr,
-                              ev_nlp$summary$spearman_corr,
-                              ev_adv$summary$spearman_corr), 3)
+                             ev_nlp$summary$spearman_corr,
+                             ev_adv$summary$spearman_corr), 3)
 )
 print(as.data.frame(metrics_tbl), row.names = FALSE)
 
@@ -1129,7 +1123,8 @@ launch_dose_dashboard(
 # 13. Disconnect (live DB only)
 # ===========================================================================
 if (!USE_SYNTHETIC) {
-  disconnect_connector(con)
+  DatabaseConnector::disconnect(conn)
 }
 
 message("\n=== Analysis complete ===")
+

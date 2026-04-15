@@ -42,5 +42,6 @@ jdbc_drivers/
 .Renviron
 Renviron
 
+CodeToRun_jh.R
 
 test_package.R
