@@ -96,7 +96,10 @@ df_taper <- tibble::tibble(
   person_id              = 1L,
   drug_concept_name      = "prednisone 10 MG oral tablet",
   route_concept_name     = "oral",
-  sig                    = "60 mg daily for 2 weeks, then 40 mg daily for 2 weeks, then 20 mg daily for 2 weeks",
+  sig                    = paste(
+    "60 mg daily for 2 weeks, then 40 mg daily for 2 weeks,",
+    "then 20 mg daily for 2 weeks"
+  ),
   drug_exposure_start_date = as.Date("2023-01-01"),
   drug_exposure_end_date   = as.Date("2023-07-01")
 )

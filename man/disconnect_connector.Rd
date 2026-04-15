@@ -13,7 +13,6 @@ disconnect_connector(connector)
 \code{connector} invisibly, with \verb{$conn} set to \code{NULL}.
 }
 \description{
-Disconnects the live database connection held in an \code{omop_connector} that
-was created by \code{\link[=create_omop_connection]{create_omop_connection()}} or \code{\link[=create_connection_from_env]{create_connection_from_env()}}.
+Disconnects the live database connection held in an \code{omop_connector}.
 Safe to call even if the connector has no open connection (no-op).
 }
