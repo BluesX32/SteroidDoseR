@@ -1,8 +1,9 @@
-# run_analysis.R
-# Full SteroidDoseR analysis: Baseline, NLP, Advanced NLP.
-# All comparisons are performed at the EPISODE level.
-# Gold-standard evaluation matches computed episodes to gold episodes via
-# date-overlap join (evaluate_against_gold), one row per gold episode.
+# CodeToRun.R
+# SteroidDoseR — Main Study Analysis Script
+#
+# Primary execution script for the corticosteroid dose study.
+# Computes prednisone-equivalent daily doses using three methods
+# (Baseline, NLP, Advanced NLP) and evaluates against a gold standard.
 #
 # Analysis workflow
 # -----------------
@@ -16,42 +17,26 @@
 # Usage
 # -----
 #   Source this file interactively in RStudio, or run:
-#     Rscript tests/run_analysis.R
+#     Rscript CodeToRun.R
 #
-# Configuration
-# -------------
-#   Four connection modes (set USE_SYNTHETIC / USE_SAFER / USE_DISCOVERY below):
+# Supplementary analyses (run after this script, in the same R session):
+#   source("extras/ErrorAnalysis.R")       # deep-dive into high-error episodes
+#   source("extras/EligibilityAnalysis.R") # patient/episode funnel
 #
+# Connection modes (set USE_SYNTHETIC below)
+# ------------------------------------------
 #   Mode A — Synthetic data (no database required):
 #     USE_SYNTHETIC = TRUE
 #
-#   Mode B — SQL Server via DatabaseConnector (original / on-premise):
-#     USE_SYNTHETIC = FALSE, USE_SAFER = FALSE, USE_DISCOVERY = FALSE
-#     Populate .env with SQL_SERVER, SQL_DATABASE, USE_WINDOWS_AUTH, etc.
+#   Mode B — Live OMOP CDM via DatabaseConnector (OHDSI standard):
+#     USE_SYNTHETIC = FALSE
+#     Create connectionDetails with DatabaseConnector::createConnectionDetails()
+#     and wrap with create_omop_connector(). Supports SQL Server, PostgreSQL,
+#     Databricks/Spark, Redshift, BigQuery, Snowflake, and more.
 #     Required packages: DatabaseConnector, SqlRender
-#
-#   Mode C — Databricks via SAFER/REACH RJDBC (SAFER Desktop or HPC,
-#             explicit CDM schema via DATABRICKS_CDM_SCHEMA):
-#     USE_SYNTHETIC = FALSE, USE_SAFER = TRUE, USE_DISCOVERY = FALSE
-#     Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
-#     DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, and DATABRICKS_JDBC_JAR.
-#     Required packages: rJava, RJDBC, DBI
-#     See: REACH-Templates/notebooks/08_databricks_R_connect.qmd for HPC setup.
-#
-#   Mode D — Databricks via REACH-Templates R.env convention (SAFER Desktop
-#             or Discovery HPC, schema auto-built from catalog + username):
-#     USE_SYNTHETIC = FALSE, USE_SAFER = FALSE, USE_DISCOVERY = TRUE
-#     Populate R.env with DATABRICKS_HOST (or DATABRICKS_SERVER_HOSTNAME),
-#     DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN, DATABRICKS_USERNAME.
-#     cdm_schema auto-set to "{DATABRICKS_DATA_CATALOG}.omop" (default: deid.omop).
-#     results_schema auto-set to "{DATABRICKS_USER_CATALOG}.{DATABRICKS_USERNAME}".
-#     Required packages: rJava, RJDBC, DBI (dotenv optional but recommended)
-#     Mirrors: REACH-Templates/scripts/databricks_connect.R connect_databricks()
 
 
 # This script is designed for interactive use in RStudio.
-# R CMD check runs every .R file in tests/ via R CMD BATCH (non-interactive).
-# Exit immediately and cleanly when not in an interactive session.
 if (!interactive()) quit(status = 0L, save = "no")
 
 
@@ -63,11 +48,6 @@ library(ggplot2)
 # 0. Configuration
 # ---------------------------------------------------------------------------
 USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
-USE_SAFER      <- FALSE   # set TRUE for SAFER/REACH RJDBC path (Mode C)
-USE_DISCOVERY  <- FALSE   # set TRUE for REACH-Templates R.env convention (Mode D)
-ENV_FILE            <- ".env"  # .env file for SQL Server (Mode B)
-SAFER_ENV_FILE      <- "R.env" # env file for SAFER Databricks (Mode C)
-DISCOVERY_ENV_FILE  <- "R.env" # env file for Discovery/SAFER Desktop (Mode D)
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 30L
@@ -127,47 +107,60 @@ if (USE_SYNTHETIC) {
     show_col_types = FALSE
   )
   con <- create_df_connector(drug_exp)
-} else if (USE_SAFER) {
-  # -----------------------------------------------------------------------
-  # Mode C: SAFER / REACH Databricks (rJava + RJDBC + DBI)
-  #   Uses DATABRICKS_SERVER_HOSTNAME + DATABRICKS_CDM_SCHEMA explicitly.
-  #   Suitable when the full cdm_schema is known (e.g. "deid.omop").
-  #
-  # Prerequisites:
-  #   1. rJava: on Discovery HPC, build from source (see REACH-Templates
-  #      notebooks/08_databricks_R_connect.qmd); on SAFER Desktop, standard install
-  #   2. install.packages(c("RJDBC", "DBI"))
-  #   3. JDBC jar:
-  #      SAFER Desktop: C:/jdbc/databricks-jdbc-2.6.36.jar  (auto-detected)
-  #      Discovery HPC: ~/jdbc/databricks-jdbc-2.6.36.jar   (auto-detected)
-  #   4. Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
-  #      DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA (= "deid.omop" for JHU SAFER/HPC)
-  #   5. SAFER Desktop only: also add DATABRICKS_PROXY_HOST=proxy.jh.edu
-  #      and DATABRICKS_PROXY_PORT=3129  (direct Azure connections are blocked)
-  # -----------------------------------------------------------------------
-  message("=== Connecting via SAFER/RJDBC (Mode C) ===")
-  con <- create_connection_from_safer_env(SAFER_ENV_FILE)
-} else if (USE_DISCOVERY) {
-  # -----------------------------------------------------------------------
-  # Mode D: SAFER Desktop / Discovery HPC via REACH-Templates R.env convention
-  #   Mirrors REACH-Templates/scripts/databricks_connect.R connect_databricks().
-  #   cdm_schema auto-built as "{DATABRICKS_DATA_CATALOG}.omop" (default: deid.omop).
-  #   results_schema auto-built as "{DATABRICKS_USER_CATALOG}.{DATABRICKS_USERNAME}".
-  #   Loads env with dotenv::load_dot_env() if the dotenv package is installed.
-  #
-  # Prerequisites:
-  #   Same as Mode C, plus populate R.env with DATABRICKS_HOST (or
-  #   DATABRICKS_SERVER_HOSTNAME), DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN,
-  #   DATABRICKS_USERNAME, and optionally DATABRICKS_DATA_CATALOG.
-  # -----------------------------------------------------------------------
-  message("=== Connecting via Discovery/SAFER Desktop R.env convention (Mode D) ===")
-  con <- create_connection_from_discovery_env(DISCOVERY_ENV_FILE)
 } else {
   # -----------------------------------------------------------------------
-  # Mode B: SQL Server via DatabaseConnector (original on-premise connection)
+  # Mode B: Live OMOP CDM via DatabaseConnector (OHDSI standard)
+  #
+  # Create connectionDetails using DatabaseConnector::createConnectionDetails().
+  # This supports SQL Server, PostgreSQL, Databricks/Spark, Redshift,
+  # BigQuery, Snowflake, and more — no site-specific wrappers required.
+  #
+  # Example — SQL Server with Windows integrated security:
+  #   jdbc_url <- sprintf(
+  #     "jdbc:sqlserver://%s:%d;databaseName=%s;integratedSecurity=true;encrypt=true;trustServerCertificate=true;",
+  #     "Esmpmdbpr4.esm.johnshopkins.edu", 1433L, "Myositis_OMOP"
+  #   )
+  #   connectionDetails <- DatabaseConnector::createConnectionDetails(
+  #     dbms             = "sql server",
+  #     connectionString = jdbc_url,
+  #     pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+  #   )
+  #
+  # Example — Databricks/Spark:
+  #   connectionDetails <- DatabaseConnector::createConnectionDetails(
+  #     dbms             = "spark",
+  #     connectionString = paste0(
+  #       "jdbc:databricks://", Sys.getenv("DATABRICKS_SERVER_HOSTNAME"), ":443;",
+  #       "httpPath=", Sys.getenv("DATABRICKS_HTTP_PATH"), ";",
+  #       "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
+  #     ),
+  #     pathToDriver = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+  #   )
+  #
+  # See ?DatabaseConnector::createConnectionDetails for all supported platforms.
   # -----------------------------------------------------------------------
-  message("=== Connecting to live OMOP CDM (SQL Server) ===")
-  con <- create_connection_from_env(ENV_FILE)
+  message("=== Connecting to live OMOP CDM ===")
+
+  server   <- "Esmpmdbpr4.esm.johnshopkins.edu"
+  database <- "Myositis_OMOP"
+  port     <- 1433
+
+  jdbc_url <- sprintf(
+    "jdbc:sqlserver://%s:%d;databaseName=%s;integratedSecurity=true;encrypt=true;trustServerCertificate=true;",
+    server, port, database
+  )
+
+  connectionDetails <- DatabaseConnector::createConnectionDetails(
+    dbms             = "sql server",
+    connectionString = jdbc_url,
+    pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+  )
+
+  con <- create_omop_connector(
+    connectionDetails,
+    cdm_schema   = paste0(database, ".dbo"),
+    vocab_schema = paste0(database, ".dbo")
+  )
 }
 
 # ---------------------------------------------------------------------------

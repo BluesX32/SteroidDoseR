@@ -28,29 +28,6 @@
   }
 }
 
-.check_rjdbc_packages <- function() {
-  if (!requireNamespace("rJava", quietly = TRUE)) {
-    rlang::abort(paste0(
-      "Package 'rJava' is required for SAFER/Databricks JDBC connectivity.\n",
-      "Install with: install.packages('rJava')\n",
-      "On SAFER/REACH HPC, build from source per the REACH-Templates guide\n",
-      "(notebooks/08_databricks_R_connect.qmd)."
-    ))
-  }
-  if (!requireNamespace("RJDBC", quietly = TRUE)) {
-    rlang::abort(paste0(
-      "Package 'RJDBC' is required for SAFER/Databricks JDBC connectivity.\n",
-      "Install with: install.packages('RJDBC')"
-    ))
-  }
-  if (!requireNamespace("DBI", quietly = TRUE)) {
-    rlang::abort(paste0(
-      "Package 'DBI' is required for SAFER/Databricks JDBC connectivity.\n",
-      "Install with: install.packages('DBI')"
-    ))
-  }
-}
-
 # ---------------------------------------------------------------------------
 # Constructors
 # ---------------------------------------------------------------------------
@@ -201,10 +178,9 @@ create_omop_connector <- function(connectionDetails,
       results_schema     = results_schema,
       temp_schema        = temp_schema,
       cdm_version        = cdm_version,
-      conn               = NULL,    # set by with_connector() or create_safer_connection()
-      dbms               = NULL,    # set by with_connector() or create_safer_connection()
-      capabilities       = NULL,    # set by detect_capabilities()
-      use_rjdbc          = FALSE    # TRUE for SAFER/REACH RJDBC path
+      conn               = NULL,    # populated by with_connector()
+      dbms               = NULL,    # populated by with_connector()
+      capabilities       = NULL     # set by detect_capabilities()
     ),
     class = c("omop_connector", "steroid_connector")
   )
@@ -301,8 +277,7 @@ print.df_connector <- function(x, ...) {
 
 #' Close a persistent omop_connector connection
 #'
-#' Disconnects the live database connection held in an `omop_connector` that
-#' was created by [create_omop_connection()] or [create_connection_from_env()].
+#' Disconnects the live database connection held in an `omop_connector`.
 #' Safe to call even if the connector has no open connection (no-op).
 #'
 #' @param connector An `omop_connector` object.
@@ -311,11 +286,7 @@ print.df_connector <- function(x, ...) {
 #' @export
 disconnect_connector <- function(connector) {
   if (inherits(connector, "omop_connector") && !is.null(connector$conn)) {
-    if (isTRUE(connector$use_rjdbc)) {
-      DBI::dbDisconnect(connector$conn)
-    } else {
-      DatabaseConnector::disconnect(connector$conn)
-    }
+    DatabaseConnector::disconnect(connector$conn)
     connector$conn <- NULL
     message("\u2713 Disconnected.")
   }
@@ -343,20 +314,10 @@ with_connector <- function(connector, fn, ...) {
 
 #' @export
 with_connector.omop_connector <- function(connector, fn, ...) {
-  # SAFER/RJDBC path: connection is always persistent (opened by
-  # create_safer_connection()), so we only need the persistent branch.
-  if (isTRUE(connector$use_rjdbc)) {
-    active <- connector
-    if (is.null(active$dbms)) active$dbms <- "spark"
-    return(fn(active, ...))
-  }
-
-  # DatabaseConnector path
   .check_db_packages()
 
   if (!is.null(connector$conn)) {
-    # Persistent connection already open (set by create_omop_connection).
-    # Use it directly and do NOT disconnect when done.
+    # Persistent connection already open; use it directly without closing.
     active <- connector
     if (is.null(active$dbms))
       active$dbms <- DatabaseConnector::dbms(active$conn)
@@ -428,28 +389,6 @@ detect_capabilities.df_connector <- function(connector) {
 
 #' @export
 detect_capabilities.omop_connector <- function(connector) {
-  if (isTRUE(connector$use_rjdbc)) {
-    # SAFER/RJDBC path: probe using DBI::dbGetQuery
-    probe_field_rjdbc <- function(conn, cdm_schema, field) {
-      sql <- sprintf("SELECT %s FROM %s.drug_exposure WHERE 1 = 0",
-                     field, cdm_schema)
-      tryCatch({
-        DBI::dbGetQuery(conn, sql)
-        TRUE
-      }, error = function(e) FALSE)
-    }
-    connector$capabilities <- list(
-      has_sig          = probe_field_rjdbc(connector$conn, connector$cdm_schema, "sig"),
-      has_days_supply  = probe_field_rjdbc(connector$conn, connector$cdm_schema, "days_supply"),
-      has_quantity     = probe_field_rjdbc(connector$conn, connector$cdm_schema, "quantity"),
-      has_route        = probe_field_rjdbc(connector$conn, connector$cdm_schema, "route_concept_id"),
-      has_drug_source  = probe_field_rjdbc(connector$conn, connector$cdm_schema, "drug_source_value"),
-      has_drug_concept = probe_field_rjdbc(connector$conn, connector$cdm_schema, "drug_concept_id")
-    )
-    return(connector)
-  }
-
-  # DatabaseConnector path
   .check_db_packages()
 
   probe_field <- function(active_con, field) {
@@ -557,16 +496,6 @@ fetch_drug_exposure <- function(connector,
                                                 start_date       = NULL,
                                                 end_date         = NULL,
                                                 sig_source       = "sig") {
-  # Route SAFER/RJDBC connections to the dedicated DBI implementation.
-  if (isTRUE(connector$use_rjdbc)) {
-    return(.fetch_drug_exposure_rjdbc(connector,
-                                      drug_concept_ids = drug_concept_ids,
-                                      person_ids       = person_ids,
-                                      start_date       = start_date,
-                                      end_date         = end_date,
-                                      sig_source       = sig_source))
-  }
-
   # connector$conn and connector$dbms are set by with_connector()
   if (is.null(connector$conn)) {
     rlang::abort(
@@ -629,82 +558,6 @@ fetch_drug_exposure <- function(connector,
     if (dcol %in% names(df)) df[[dcol]] <- as.Date(df[[dcol]])
   }
 
-  df <- .apply_sig_source(df, sig_source)
-  tibble::as_tibble(df)
-}
-
-# SAFER/RJDBC drug_exposure fetch -- plain Spark SQL, no SqlRender required.
-# Called by .fetch_drug_exposure_omop() when connector$use_rjdbc == TRUE.
-.fetch_drug_exposure_rjdbc <- function(connector,
-                                        drug_concept_ids = NULL,
-                                        person_ids       = NULL,
-                                        start_date       = NULL,
-                                        end_date         = NULL,
-                                        sig_source       = "sig") {
-  if (is.null(connector$conn))
-    rlang::abort("RJDBC fetch_drug_exposure() requires an open connection.")
-
-  sd <- if (is.null(start_date)) "1900-01-01"
-        else format(as.Date(start_date), "%Y-%m-%d")
-  ed <- if (is.null(end_date))   format(Sys.Date(), "%Y-%m-%d")
-        else format(as.Date(end_date), "%Y-%m-%d")
-
-  concept_clause <- if (!is.null(drug_concept_ids) && length(drug_concept_ids) > 0L)
-    sprintf("  AND de.drug_concept_id IN (%s)\n",
-            paste(as.integer(drug_concept_ids), collapse = ","))
-  else ""
-
-  person_clause <- if (!is.null(person_ids) && length(person_ids) > 0L)
-    sprintf("  AND de.person_id IN (%s)\n",
-            paste(person_ids, collapse = ","))
-  else ""
-
-  cdm   <- connector$cdm_schema
-  vocab <- connector$vocab_schema
-
-  sql <- sprintf(
-    "SELECT
-    de.person_id,
-    de.drug_exposure_id,
-    de.drug_concept_id,
-    de.drug_source_concept_id,
-    CAST(de.drug_exposure_start_date AS DATE) AS drug_exposure_start_date,
-    CAST(de.drug_exposure_end_date   AS DATE) AS drug_exposure_end_date,
-    de.quantity,
-    de.days_supply,
-    de.sig,
-    de.route_concept_id,
-    rc.concept_name  AS route_concept_name,
-    de.dose_unit_source_value,
-    de.drug_source_value,
-    c.concept_name   AS drug_concept_name,
-    ds.amount_value,
-    ds.amount_unit_concept_id
-FROM %s.drug_exposure de
-LEFT JOIN %s.concept c
-    ON de.drug_concept_id = c.concept_id
-LEFT JOIN %s.concept rc
-    ON de.route_concept_id = rc.concept_id
-LEFT JOIN (
-    SELECT
-        drug_concept_id,
-        MAX(amount_value)           AS amount_value,
-        MAX(amount_unit_concept_id) AS amount_unit_concept_id
-    FROM %s.drug_strength
-    WHERE amount_value IS NOT NULL
-    GROUP BY drug_concept_id
-) ds ON de.drug_concept_id = ds.drug_concept_id
-WHERE de.drug_exposure_start_date >= DATE('%s')
-  AND de.drug_exposure_start_date <= DATE('%s')
-%s%s",
-    cdm, vocab, vocab, vocab, sd, ed, concept_clause, person_clause
-  )
-
-  df <- DBI::dbGetQuery(connector$conn, sql)
-  names(df) <- tolower(names(df))
-  for (dcol in c("drug_exposure_start_date", "drug_exposure_end_date")) {
-    if (dcol %in% names(df)) df[[dcol]] <- as.Date(df[[dcol]])
-  }
   df <- .apply_sig_source(df, sig_source)
   tibble::as_tibble(df)
 }

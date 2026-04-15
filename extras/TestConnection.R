@@ -1,4 +1,4 @@
-# test_live_connection.R
+# TestConnection.R
 # Manual script to verify the package OMOP connector against a live database.
 # Run interactively; not part of the automated testthat suite.
 #

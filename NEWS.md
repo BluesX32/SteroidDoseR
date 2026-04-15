@@ -1,3 +1,38 @@
+# SteroidDoseR 0.4.0
+
+## Breaking changes — connection layer simplified to OHDSI standard
+
+* **Removed SAFER/RJDBC connection path** (`connection.R`, `connector.R`):
+  `create_safer_connection()`, `create_connection_from_safer_env()`,
+  `create_discovery_connection()`, and `create_connection_from_discovery_env()`
+  have been removed. All database connections now use the OHDSI-standard
+  `DatabaseConnector` + `SqlRender` stack. Databricks/Spark is supported via
+  `DatabaseConnector::createConnectionDetails(dbms = "spark", ...)`.
+
+* **Removed complex connection builder wrappers** (`connection.R`):
+  `create_omop_connection()` and `create_connection_from_env()` have been
+  removed. Users now create `connectionDetails` directly with
+  `DatabaseConnector::createConnectionDetails()` and wrap the result with
+  `create_omop_connector(connectionDetails, cdm_schema = ...)`. This matches
+  the OHDSI study standard pattern (e.g. SemaglutideNaion).
+
+* **`omop_connector` `use_rjdbc` field removed** (`connector.R`):
+  The internal `use_rjdbc` flag and all associated RJDBC/DBI dispatch branches
+  have been removed from `with_connector()`, `detect_capabilities()`, and
+  `fetch_drug_exposure()`.
+
+**Migration** — replace site-specific wrappers with:
+```r
+connectionDetails <- DatabaseConnector::createConnectionDetails(
+  dbms             = "sql server",
+  connectionString = "jdbc:sqlserver://server:1433;databaseName=db;integratedSecurity=true;...",
+  pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+)
+con <- create_omop_connector(connectionDetails, cdm_schema = "db.dbo")
+```
+
+---
+
 # SteroidDoseR 0.3.2
 
 ## Bug fixes — SAFER Desktop JDBC connection

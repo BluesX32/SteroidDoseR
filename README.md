@@ -60,31 +60,41 @@ For more control over each stage, call the functions individually:
 
 ### 1. Connect / load data
 
-Four connection modes are available:
+Two connection modes are available:
 
 ```r
 # --- Mode A: from a data frame (no database required) ---
 con <- create_df_connector(drug_exp)
 
-# --- Mode B: SQL Server via DatabaseConnector (original / on-premise) ---
+# --- Mode B: Live OMOP CDM via DatabaseConnector (OHDSI standard) ---
 # Requires: DatabaseConnector, SqlRender
-# Populate .env with SQL_SERVER, SQL_DATABASE, USE_WINDOWS_AUTH, etc.
-con <- create_connection_from_env(".env")
+# Works with SQL Server, PostgreSQL, Databricks/Spark, Redshift, BigQuery, Snowflake, and more.
+# See ?DatabaseConnector::createConnectionDetails for all supported platforms.
+
+# SQL Server with Windows integrated security (typical at academic medical centres):
+jdbc_url <- sprintf(
+  "jdbc:sqlserver://%s:%d;databaseName=%s;integratedSecurity=true;encrypt=true;trustServerCertificate=true;",
+  "myserver.institution.edu", 1433L, "Myositis_OMOP"
+)
+connectionDetails <- DatabaseConnector::createConnectionDetails(
+  dbms             = "sql server",
+  connectionString = jdbc_url,
+  pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+)
+con <- create_omop_connector(connectionDetails, cdm_schema = "Myositis_OMOP.dbo")
 con <- detect_capabilities(con)
 
-# --- Mode C: Databricks / SAFER RJDBC (explicit CDM schema) ---
-# Requires: rJava, RJDBC, DBI — no DatabaseConnector needed
-# Populate R.env with DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
-# DATABRICKS_TOKEN, DATABRICKS_CDM_SCHEMA, DATABRICKS_JDBC_JAR
-con <- create_connection_from_safer_env("R.env")
-con <- detect_capabilities(con)
-
-# --- Mode D: SAFER Desktop / Discovery HPC (REACH-Templates R.env convention) ---
-# Requires: rJava, RJDBC, DBI; dotenv optional but recommended
-# Populate R.env with DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN,
-# DATABRICKS_USERNAME. cdm_schema auto-set to "deid.omop".
-# Mirrors: REACH-Templates/scripts/databricks_connect.R connect_databricks()
-con <- create_connection_from_discovery_env("R.env")
+# Databricks / Spark:
+connectionDetails <- DatabaseConnector::createConnectionDetails(
+  dbms             = "spark",
+  connectionString = paste0(
+    "jdbc:databricks://workspace.azuredatabricks.net:443;",
+    "httpPath=/sql/1.0/warehouses/<id>;",
+    "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
+  ),
+  pathToDriver = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
+)
+con <- create_omop_connector(connectionDetails, cdm_schema = "deid.omop")
 con <- detect_capabilities(con)
 ```
 

@@ -1,8 +1,8 @@
-# eligibility_analysis.R
+# EligibilityAnalysis.R
 # Tracks how many patients/episodes survive each step of the pipeline,
 # and identifies who was dropped and why.
 #
-# Prerequisite: run run_analysis.R first so these objects are in session:
+# Prerequisite: run CodeToRun.R first so these objects are in session:
 #   drug_df           — raw fetched drug_exposure records
 #   baseline_df       — record-level baseline output (post oral filter)
 #   baseline_episodes — built episodes (Baseline, pred-equiv)
@@ -11,7 +11,8 @@
 #   gold_std          — gold standard (with pred-equiv doses and drug_name_std)
 #   ev_baseline / ev_nlp / ev_adv — evaluate_against_gold() results
 #
-# Usage: Source interactively in RStudio after run_analysis.R.
+# Usage: Source interactively in RStudio after CodeToRun.R.
+#   source("extras/EligibilityAnalysis.R")
 
 if (!interactive()) quit(status = 0L, save = "no")
 

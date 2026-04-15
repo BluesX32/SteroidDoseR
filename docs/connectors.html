@@ -54,7 +54,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.2.5</p>
+    <p>Package Manual v0.4.0</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -111,9 +111,7 @@
 <table>
   <tr><th>Constructor</th><th>Use case</th></tr>
   <tr><td><code>create_df_connector(df)</code></td><td>In-memory data frame, synthetic data, unit tests — no database packages required</td></tr>
-  <tr><td><code>create_omop_connection(...)</code></td><td>Live OMOP CDM — high-level builder, reads config from env vars. Recommended for most sites.</td></tr>
-  <tr><td><code>create_connection_from_env(".env")</code></td><td>Load a <code>.env</code> file and open a connection in one call — simplest setup</td></tr>
-  <tr><td><code>create_omop_connector(connectionDetails, ...)</code></td><td>Low-level — supply a pre-built <code>connectionDetails</code> object from DatabaseConnector</td></tr>
+  <tr><td><code>create_omop_connector(connectionDetails, cdm_schema)</code></td><td>Live OMOP CDM — supply a <code>connectionDetails</code> object from <code>DatabaseConnector::createConnectionDetails()</code></td></tr>
 </table>
 </div>
 
@@ -138,75 +136,49 @@ DatabaseConnector::<span class="fn">downloadJdbcDrivers</span>(<span class="st">
 <span class="cm"># JDBC_DRIVER_PATH=/path/to/jdbc</span>
 </code></pre>
 
-<h3>Using a .env file (recommended)</h3>
-<pre><code>con      <span class="op">&lt;-</span> <span class="fn">create_connection_from_env</span>(<span class="st">".env"</span>)
-episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"baseline"</span>)
-<span class="fn">disconnect_connector</span>(con)
-</code></pre>
-
-<h3>SQL Server — Windows integrated auth</h3>
-<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
+<h3>SQL Server — Windows integrated security <span class="badge badge-fix">v0.4.0</span></h3>
+<pre><code>jdbc_url <span class="op">&lt;-</span> <span class="fn">sprintf</span>(
+  <span class="st">"jdbc:sqlserver://%s:%d;databaseName=%s;integratedSecurity=true;encrypt=true;trustServerCertificate=true;"</span>,
+  <span class="st">"myserver.institution.edu"</span>, <span class="nm">1433L</span>, <span class="st">"Myositis_OMOP"</span>
+)
+connectionDetails <span class="op">&lt;-</span> DatabaseConnector::<span class="fn">createConnectionDetails</span>(
   dbms             <span class="op">=</span> <span class="st">"sql server"</span>,
-  server           <span class="op">=</span> <span class="st">"myserver.institution.edu"</span>,
-  database         <span class="op">=</span> <span class="st">"OMOP_CDM"</span>,
-  use_windows_auth <span class="op">=</span> <span class="kw">TRUE</span>,
-  cdm_schema       <span class="op">=</span> <span class="st">"MyDatabase.dbo"</span>
+  connectionString <span class="op">=</span> jdbc_url,
+  pathToDriver     <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DATABASECONNECTOR_JAR_FOLDER"</span>)
 )
-</code></pre>
-
-<h3>SQL Server — username / password</h3>
-<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
-  dbms       <span class="op">=</span> <span class="st">"sql server"</span>,
-  server     <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_SERVER"</span>),
-  database   <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_DATABASE"</span>),
-  user       <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_USER"</span>),
-  password   <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_PASSWORD"</span>),
-  cdm_schema <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"SQL_CDM_SCHEMA"</span>)
-)
+con <span class="op">&lt;-</span> <span class="fn">create_omop_connector</span>(connectionDetails, cdm_schema <span class="op">=</span> <span class="st">"Myositis_OMOP.dbo"</span>)
+con <span class="op">&lt;-</span> <span class="fn">detect_capabilities</span>(con)
+episodes <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"baseline"</span>)
+DatabaseConnector::<span class="fn">disconnect</span>(con<span class="op">$</span>conn)
 </code></pre>
 
 <h3>PostgreSQL</h3>
-<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
-  dbms       <span class="op">=</span> <span class="st">"postgresql"</span>,
-  server     <span class="op">=</span> <span class="st">"localhost"</span>,
-  database   <span class="op">=</span> <span class="st">"omop_cdm"</span>,
-  user       <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DB_USER"</span>),
-  password   <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DB_PASSWORD"</span>),
-  port       <span class="op">=</span> <span class="nm">5432</span>,
-  cdm_schema <span class="op">=</span> <span class="st">"cdm_54"</span>
+<pre><code>connectionDetails <span class="op">&lt;-</span> DatabaseConnector::<span class="fn">createConnectionDetails</span>(
+  dbms         <span class="op">=</span> <span class="st">"postgresql"</span>,
+  server       <span class="op">=</span> <span class="st">"localhost/omop_cdm"</span>,
+  user         <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DB_USER"</span>),
+  password     <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DB_PASSWORD"</span>),
+  port         <span class="op">=</span> <span class="nm">5432</span>,
+  pathToDriver <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DATABASECONNECTOR_JAR_FOLDER"</span>)
 )
+con <span class="op">&lt;-</span> <span class="fn">create_omop_connector</span>(connectionDetails, cdm_schema <span class="op">=</span> <span class="st">"cdm_54"</span>)
 </code></pre>
 
 <h3>Databricks / Spark</h3>
-<p>For JHU SAFER/REACH, <code>cdm_schema</code> must be in <code>catalog.schema</code> format.
-The correct value is <code>"deid.omop"</code> (catalog: <code>deid</code>, schema: <code>omop</code>).
-SQL queries reference tables as <code>deid.omop.&lt;table&gt;</code> or <code>deid.derived.&lt;table&gt;</code>.</p>
-<pre><code>con <span class="op">&lt;-</span> <span class="fn">create_omop_connection</span>(
-  dbms          <span class="op">=</span> <span class="st">"databricks"</span>,
-  server        <span class="op">=</span> <span class="st">"adb-1234567890123456.7.azuredatabricks.net"</span>,
-  database      <span class="op">=</span> <span class="st">"default"</span>,
-  user          <span class="op">=</span> <span class="st">"token"</span>,
-  password      <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DATABRICKS_TOKEN"</span>),
-  cdm_schema    <span class="op">=</span> <span class="st">"deid.omop"</span>,
-  extraSettings <span class="op">=</span> <span class="st">"httpPath=/sql/1.0/warehouses/&lt;warehouse-id&gt;"</span>
+<p><code>cdm_schema</code> must be in <code>catalog.schema</code> format (e.g. <code>"deid.omop"</code>).</p>
+<pre><code>connectionDetails <span class="op">&lt;-</span> DatabaseConnector::<span class="fn">createConnectionDetails</span>(
+  dbms             <span class="op">=</span> <span class="st">"spark"</span>,
+  connectionString <span class="op">=</span> <span class="fn">paste0</span>(
+    <span class="st">"jdbc:databricks://workspace.azuredatabricks.net:443;"</span>,
+    <span class="st">"httpPath=/sql/1.0/warehouses/&lt;id&gt;;"</span>,
+    <span class="st">"AuthMech=3;UID=token;PWD="</span>, <span class="fn">Sys.getenv</span>(<span class="st">"DATABRICKS_TOKEN"</span>)
+  ),
+  pathToDriver <span class="op">=</span> <span class="fn">Sys.getenv</span>(<span class="st">"DATABASECONNECTOR_JAR_FOLDER"</span>)
 )
+con <span class="op">&lt;-</span> <span class="fn">create_omop_connector</span>(connectionDetails, cdm_schema <span class="op">=</span> <span class="st">"deid.omop"</span>)
 </code></pre>
 
-<h3>Environment variables recognised</h3>
-<div class="table-wrap">
-<table>
-  <tr><th>Variable</th><th>Description</th></tr>
-  <tr><td><code>SQL_SERVER</code> / <code>DB_SERVER</code></td><td>Server hostname</td></tr>
-  <tr><td><code>SQL_DATABASE</code> / <code>DB_DATABASE</code></td><td>Database name</td></tr>
-  <tr><td><code>SQL_DBMS</code> / <code>DB_TYPE</code></td><td>DBMS type (default: <code>"sql server"</code>)</td></tr>
-  <tr><td><code>SQL_USER</code> / <code>DB_USER</code></td><td>Username</td></tr>
-  <tr><td><code>SQL_PASSWORD</code> / <code>DB_PASSWORD</code></td><td>Password</td></tr>
-  <tr><td><code>SQL_JDBC_PATH</code> / <code>JDBC_DRIVER_PATH</code></td><td>JDBC driver folder</td></tr>
-  <tr><td><code>SQL_CDM_SCHEMA</code> / <code>CDM_SCHEMA</code></td><td>CDM schema (default: <code>"dbo"</code>)</td></tr>
-  <tr><td><code>USE_WINDOWS_AUTH</code></td><td><code>"true"</code> to enable Windows AD auth</td></tr>
-  <tr><td><code>DB_EXTRA_SETTINGS</code></td><td>Extra JDBC settings (e.g. Databricks HTTPPath)</td></tr>
-</table>
-</div>
+<p>See <code>?DatabaseConnector::createConnectionDetails</code> for all supported platforms (Redshift, BigQuery, Snowflake, Oracle, and more).</p>
 
 <div class="callout callout-note">
   <strong>Separate vocabulary schema <span class="badge badge-new">v0.1.6</span></strong>

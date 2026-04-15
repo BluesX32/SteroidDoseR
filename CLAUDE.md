@@ -60,35 +60,43 @@ Stage only the files relevant to the change. Do not stage unrelated files.
 
 ---
 
-## Package structure
+## Repository structure
 
 ```
+CodeToRun.R                 — PRIMARY: main study execution script (run interactively)
+
 R/
   baseline.R      — calc_daily_dose_baseline() — M1–M4 cascading imputation
   nlp.R           — calc_daily_dose_nlp(), parse_sig(), parse_sig_one()
   nlp_advanced.R  — calc_daily_dose_nlp_advanced(), parse_sig_advanced(),
                     parse_sig_one_advanced(), parse_taper_schedule()
   connector.R     — create_omop_connector(), create_df_connector(), etc.
-  connection.R    — create_omop_connection(), create_connection_from_env()
+  connection.R    — .load_env_file() internal helper
   conversion.R    — convert_pred_equiv()
   episodes.R      — build_episodes()
   eval.R          — evaluate_against_gold()
   pipeline.R      — run_pipeline(), drug_df_contract docs
   sql_helpers.R   — render_translate_sql(), query_omop() (internal)
   utils-validate.R — assert_required_cols(), safe_as_date(), safe_as_numeric()
+  viz.R           — launch_dose_dashboard(), plot_patient_episodes()
 
 inst/sql/
-  extract_drug_exposure.sql — parameterised OMOP query
+  extract_drug_exposure.sql — parameterised OMOP query (SqlRender template)
+
+extras/
+  ErrorAnalysis.R       — deep-dive into high-error episodes; needs CodeToRun.R objects
+  EligibilityAnalysis.R — patient/episode funnel from DB and gold standard; needs CodeToRun.R objects
+  TestConnection.R      — manual smoke-test for live OMOP database connection
+  MakeSyntheticData.R   — generates inst/extdata/ synthetic datasets
 
 tests/
-  run_analysis.R            — live/synthetic end-to-end analysis script
-  error_analysis.R          — deep-dive into high-error patients; requires run_analysis.R objects
-  eligibility_analysis.R    — patient/episode funnel from DB and gold standard; requires run_analysis.R objects
-  testthat/                 — unit tests across 5 files
+  testthat.R            — testthat runner (required by R CMD CHECK)
+  testthat/             — unit tests (6 files)
 
 docs/
-  manual.html               — self-contained HTML package manual
-  reconstruction-manual.md  — how this package was built from legacy notebooks
+  index.html, connectors.html, methods.html, pipeline.html, reference.html
+  manual.html           — redirects to index.html
+  reconstruction-manual.md — how this package was built from legacy notebooks
 
 vignettes/
   baseline-workflow.Rmd

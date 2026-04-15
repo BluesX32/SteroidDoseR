@@ -104,9 +104,7 @@
 <div class="table-wrap">
 <table>
   <tr><th>Function</th><th>Connector?</th><th>Description</th></tr>
-  <tr><td><code>create_omop_connection()</code></td><td>—</td><td>High-level builder; reads config from env vars. Recommended for most sites.</td></tr>
-  <tr><td><code>create_connection_from_env()</code></td><td>—</td><td>Load a <code>.env</code> file and open a connection in one call.</td></tr>
-  <tr><td><code>create_omop_connector()</code></td><td>—</td><td>Low-level; supply a pre-built <code>connectionDetails</code> object.</td></tr>
+  <tr><td><code>create_omop_connector()</code></td><td>—</td><td><span class="badge badge-fix">v0.4.0</span> Wrap a <code>DatabaseConnector::createConnectionDetails()</code> object with schema info. Primary live-DB entry point.</td></tr>
   <tr><td><code>create_df_connector()</code></td><td>—</td><td>Wrap an in-memory data frame. No database packages required.</td></tr>
   <tr><td><code>disconnect_connector()</code></td><td>—</td><td>Close the database connection held by a connector.</td></tr>
   <tr><td><code>detect_capabilities()</code></td><td>—</td><td>Probe which <code>drug_exposure</code> fields are populated at this site.</td></tr>
@@ -218,11 +216,17 @@
   <li>Verify JDBC drivers: <code>pkgbuild::has_build_tools(debug = TRUE)</code></li>
   <li>Test connection independently: <code>DatabaseConnector::connect(connectionDetails)</code></li>
   <li>Check schema: the SQL queries reference <code>@cdm_schema.drug_exposure</code> — confirm your schema name and account permissions.</li>
-  <li>Use <code>create_connection_from_env(".env")</code> to centralise all config and eliminate copy-paste errors.</li>
+  <li>Construct <code>connectionDetails</code> with <code>DatabaseConnector::createConnectionDetails()</code> and test the connection independently with <code>DatabaseConnector::connect(connectionDetails)</code> before wrapping in <code>create_omop_connector()</code>.</li>
 </ol>
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.4.0 <span class="badge badge-fix">Connection layer — OHDSI standard</span></h3>
+<ul>
+  <li><strong>Breaking:</strong> Removed <code>create_safer_connection()</code>, <code>create_connection_from_safer_env()</code>, <code>create_discovery_connection()</code>, <code>create_connection_from_discovery_env()</code>, <code>create_omop_connection()</code>, and <code>create_connection_from_env()</code>. All database connections now use <code>DatabaseConnector::createConnectionDetails()</code> directly (OHDSI standard). Wrap the result with <code>create_omop_connector(connectionDetails, cdm_schema = ...)</code>.</li>
+  <li><strong>Removed RJDBC/DBI path:</strong> The <code>use_rjdbc</code> flag and all <code>rJava</code> / <code>RJDBC</code> / <code>DBI</code> dependencies are gone. Databricks/Spark is supported via <code>DatabaseConnector::createConnectionDetails(dbms = "spark", ...)</code>.</li>
+</ul>
 
 <h3>v0.2.5 <span class="badge badge-new">Dashboard — Raw Records tab</span></h3>
 <ul>

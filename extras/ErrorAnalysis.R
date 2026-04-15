@@ -1,7 +1,7 @@
-# error_analysis.R
+# ErrorAnalysis.R
 # Deep-dive into patients with large dose errors vs gold standard.
 #
-# Prerequisite: run run_analysis.R first (or source it) so the following
+# Prerequisite: run CodeToRun.R first (or source it) so the following
 # objects are in your R session:
 #   drug_df           — raw drug_exposure records
 #   gold_std          — gold standard (with pred-equiv doses)
@@ -12,7 +12,8 @@
 #   nlp_episodes      — built episodes (NLP)
 #   adv_nlp_episodes  — built episodes (Advanced NLP)
 #
-# Usage: Source interactively in RStudio after run_analysis.R.
+# Usage: Source interactively in RStudio after CodeToRun.R.
+#   source("extras/ErrorAnalysis.R")
 
 if (!interactive()) quit(status = 0L, save = "no")
 

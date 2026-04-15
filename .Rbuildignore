@@ -1,8 +1,9 @@
 ^\.github$
+^CodeToRun\.R$
+^extras$
 ^package-test\.qmd$
 ^test_package\.R$
 ^bug\.md$
-^data-raw$
 ^jdbc_drivers$
 ^docs$
 ^CLAUDE\.md$
