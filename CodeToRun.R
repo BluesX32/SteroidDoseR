@@ -35,7 +35,7 @@
 #     Databricks/Spark, Redshift, BigQuery, Snowflake, and more.
 #     Required packages: DatabaseConnector, SqlRender
 
-
+devtools::install_local(getwd())
 # This script is designed for interactive use in RStudio.
 if (!interactive()) quit(status = 0L, save = "no")
 
@@ -75,7 +75,7 @@ GOLD_STD_PATH  <- "H:/Myositis/DoseCalculation/Version2/GoldStandard/qc_gold_sta
 #                             FROM @cdm_schema.condition_occurrence
 #                            WHERE condition_concept_id IN (80809, ...)"
 #     COHORT_PERSON_IDS <- as.integer(DatabaseConnector::querySql(
-#                            con$connection, cohort_sql)$PERSON_ID)
+#                            conn, cohort_sql)$PERSON_ID)
 #
 #   Gold-standard patients only (validation mode):
 #     gold_std          <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
@@ -101,52 +101,25 @@ if (USE_SYNTHETIC) {
   # Mode A: bundled synthetic data — no database required
   # -----------------------------------------------------------------------
   message("=== Using bundled synthetic data ===")
-  extdata  <- system.file("extdata", package = "SteroidDoseR")
-  drug_exp <- readr::read_csv(
-    file.path(extdata, "synthetic_drug_exposure.csv"),
+  drug_df <- readr::read_csv(
+    system.file("extdata", "synthetic_drug_exposure.csv", package = "SteroidDoseR"),
     show_col_types = FALSE
   )
-  con <- create_df_connector(drug_exp)
 } else {
   # -----------------------------------------------------------------------
   # Mode B: Live OMOP CDM via DatabaseConnector (OHDSI standard)
-  #
-  # Create connectionDetails using DatabaseConnector::createConnectionDetails().
-  # This supports SQL Server, PostgreSQL, Databricks/Spark, Redshift,
-  # BigQuery, Snowflake, and more — no site-specific wrappers required.
-  #
-  # Example — SQL Server with Windows integrated security:
-  #   jdbc_url <- sprintf(
-  #     "jdbc:sqlserver://%s:%d;databaseName=%s;integratedSecurity=true;encrypt=true;trustServerCertificate=true;",
-  #     "Esmpmdbpr4.esm.johnshopkins.edu", 1433L, "Myositis_OMOP"
-  #   )
-  #   connectionDetails <- DatabaseConnector::createConnectionDetails(
-  #     dbms             = "sql server",
-  #     connectionString = jdbc_url,
-  #     pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
-  #   )
-  #
-  # Example — Databricks/Spark:
-  #   connectionDetails <- DatabaseConnector::createConnectionDetails(
-  #     dbms             = "spark",
-  #     connectionString = paste0(
-  #       "jdbc:databricks://", Sys.getenv("DATABRICKS_SERVER_HOSTNAME"), ":443;",
-  #       "httpPath=", Sys.getenv("DATABRICKS_HTTP_PATH"), ";",
-  #       "AuthMech=3;UID=token;PWD=", Sys.getenv("DATABRICKS_TOKEN")
-  #     ),
-  #     pathToDriver = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
-  #   )
-  #
-  # See ?DatabaseConnector::createConnectionDetails for all supported platforms.
   # -----------------------------------------------------------------------
   message("=== Connecting to live OMOP CDM ===")
 
-  server   <- "Esmpmdbpr4.esm.johnshopkins.edu"
-  database <- "Myositis_OMOP"
-  port     <- 1433
+  server       <- "Esmpmdbpr4.esm.johnshopkins.edu"
+  database     <- "Myositis_OMOP"
+  port         <- 1433L
+  cdm_schema   <- paste0(database, ".dbo")
+  vocab_schema <- paste0(database, ".dbo")
 
   jdbc_url <- sprintf(
-    "jdbc:sqlserver://%s:%d;databaseName=%s;integratedSecurity=true;encrypt=true;trustServerCertificate=true;",
+    paste0("jdbc:sqlserver://%s:%d;databaseName=%s;",
+           "integratedSecurity=true;encrypt=true;trustServerCertificate=true;"),
     server, port, database
   )
 
@@ -156,33 +129,32 @@ if (USE_SYNTHETIC) {
     pathToDriver     = Sys.getenv("DATABASECONNECTOR_JAR_FOLDER")
   )
 
-  con <- create_omop_connector(
-    connectionDetails,
-    cdm_schema   = paste0(database, ".dbo"),
-    vocab_schema = paste0(database, ".dbo")
+  conn <- DatabaseConnector::connect(connectionDetails)
+
+  sql <- SqlRender::readSql(
+    system.file("sql", "extract_drug_exposure.sql", package = "SteroidDoseR")
   )
+
+  drug_df <- DatabaseConnector::renderTranslateQuerySql(
+    connection     = conn,
+    sql            = sql,
+    cdm_schema     = cdm_schema,
+    vocab_schema   = vocab_schema,
+    start_date     = START_DATE,
+    end_date       = END_DATE,
+    concept_filter = paste(STEROID_CONCEPT_IDS, collapse = ","),
+    person_filter  = if (!is.null(COHORT_PERSON_IDS))
+                       paste(COHORT_PERSON_IDS, collapse = ",") else "",
+    snakeCaseToCamelCase = FALSE
+  )
+
+  DatabaseConnector::disconnect(conn)
+
+  names(drug_df) <- tolower(names(drug_df))
+  drug_df$drug_exposure_start_date <- as.Date(drug_df$drug_exposure_start_date)
+  drug_df$drug_exposure_end_date   <- as.Date(drug_df$drug_exposure_end_date)
 }
 
-# ---------------------------------------------------------------------------
-# 2. Detect available fields
-# ---------------------------------------------------------------------------
-con <- detect_capabilities(con)
-message("\nCapabilities:")
-print(con$capabilities)
-
-# ---------------------------------------------------------------------------
-# 3. Fetch raw drug-exposure rows (shared by all methods)
-# ---------------------------------------------------------------------------
-message("\n=== Fetching drug_exposure ===")
-drug_df <- with_connector(con, function(active) {
-  fetch_drug_exposure(
-    active,
-    drug_concept_ids = STEROID_CONCEPT_IDS,
-    person_ids       = COHORT_PERSON_IDS,   # STEP 1: cohort filter at SQL level
-    start_date       = START_DATE,
-    end_date         = END_DATE
-  )
-})
 message(sprintf(
   "Fetched %d rows | %d unique persons | %s | concept filter: %d steroid concept IDs",
   nrow(drug_df),
