@@ -45,3 +45,4 @@ Renviron
 CodeToRun_jh.R
 
 test_package.R
+test_connection.R

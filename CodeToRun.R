@@ -62,6 +62,7 @@ DOSE_THRESHOLD_MG  <- 10     # mg pred-equiv; NULL to disable
 DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
+OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
 # ---------------------------------------------------------------------------
 # STEP 1 of the analysis workflow: Patient cohort selection
@@ -1080,7 +1081,30 @@ cat(paste0(
 cat(strrep("=", 70), "\n")
 
 # ===========================================================================
-# 12. Interactive dose review dashboard
+# 12. Save results to output folder
+# ===========================================================================
+message("\n=== Saving results to output folder ===")
+
+if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
+
+readr::write_csv(baseline_episodes,      file.path(OUTPUT_DIR, "baseline_episodes.csv"))
+readr::write_csv(nlp_episodes,           file.path(OUTPUT_DIR, "nlp_episodes.csv"))
+readr::write_csv(adv_nlp_episodes,       file.path(OUTPUT_DIR, "adv_nlp_episodes.csv"))
+readr::write_csv(ev_baseline$comparison, file.path(OUTPUT_DIR, "comparison_baseline.csv"))
+readr::write_csv(ev_nlp$comparison,      file.path(OUTPUT_DIR, "comparison_nlp.csv"))
+readr::write_csv(ev_adv$comparison,      file.path(OUTPUT_DIR, "comparison_adv_nlp.csv"))
+readr::write_csv(agreement_tbl,          file.path(OUTPUT_DIR, "agreement_table.csv"))
+readr::write_csv(metrics_tbl,            file.path(OUTPUT_DIR, "metrics_table.csv"))
+readr::write_csv(ba_limits,              file.path(OUTPUT_DIR, "bland_altman_limits.csv"))
+
+ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 10, dpi = 150)
+ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_scatter.png"),           p_scatter, width = 10, height = 5,  dpi = 150)
+ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_bland_altman.png"),      p_ba,      width = 10, height = 5,  dpi = 150)
+
+message(sprintf("Results saved to: %s", OUTPUT_DIR))
+
+# ===========================================================================
+# 13. Interactive dose review dashboard
 # ===========================================================================
 # launch_dose_dashboard() opens a Shiny app in the browser.
 # Pass raw_list (record-level data frames) to populate the Raw Records tab
@@ -1120,7 +1144,7 @@ launch_dose_dashboard(
 )
 
 # ===========================================================================
-# 13. Disconnect (live DB only)
+# 14. Disconnect (live DB only)
 # ===========================================================================
 if (!USE_SYNTHETIC) {
   DatabaseConnector::disconnect(conn)
