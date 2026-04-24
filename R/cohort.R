@@ -1,8 +1,8 @@
-# cohort.R — JSON-driven OMOP cohort selection for SteroidDoseR
+# cohort.R -- JSON-driven OMOP cohort selection for SteroidDoseR
 #
 # Two public functions:
-#   fetch_cohort_ids()  — connect, run, return integer vector of person_ids
-#   build_cohort_sql()  — compile a JSON cohort config into an executable SQL string
+#   fetch_cohort_ids()  -- connect, run, return integer vector of person_ids
+#   build_cohort_sql()  -- compile a JSON cohort config into an executable SQL string
 #
 # Bundled cohort definitions live in inst/json/. Reference them with:
 #   system.file("json", "cohort_VZV_antivirals.json", package = "SteroidDoseR")
@@ -80,7 +80,7 @@ fetch_cohort_ids <- function(conn,
 
   if (verbose) {
     message(sprintf(
-      "[cohort] '%s' — %d person_ids selected",
+      "[cohort] '%s' -- %d person_ids selected",
       config$cohort_name %||% basename(json_path),
       length(ids)
     ))
@@ -155,7 +155,7 @@ build_cohort_sql <- function(config,
   index_conc_col <- ie$concept_field %||% .domain_concept_col(index_domain)
 
   # ------------------------------------------------------------------
-  # 2. Required exposures — build one CTE + one EXISTS clause per item
+  # 2. Required exposures -- build one CTE + one EXISTS clause per item
   # ------------------------------------------------------------------
   req_list  <- .normalise_exposures(config$required_exposures)
   req_ctes  <- character(length(req_list))
