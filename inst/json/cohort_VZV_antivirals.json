@@ -1,0 +1,59 @@
+{
+  "cohort_name": "VZV Antivirals",
+  "description": "Adults with VZV/herpes zoster who received antiviral treatment while on immunosuppressive therapy. Designed for steroid-exposed myositis/rheumatology patients.",
+  "version": "1.0",
+
+  "index_event": {
+    "domain": "condition_occurrence",
+    "date_field": "condition_start_date",
+    "concept_field": "condition_concept_id",
+    "concept_ids": [
+      4205455, 35205739, 443943, 138682, 45770836, 436336, 440329,
+      45590840, 4151978, 192239, 381504, 45542548, 45556927,
+      35205737, 35205738, 35205740, 35205741, 141374, 37165237,
+      4221382, 4066727, 37165216, 4080937, 4299673, 37110753,
+      4064036, 4067067, 40175007, 37165342, 4080929, 4063440,
+      4272156, 4033204, 4033778, 4206461, 135618, 4033777
+    ],
+    "include_descendants": true,
+    "note": "VZV / herpes zoster and related diagnoses. Ancestor IDs for descendant expansion: 4205455 (herpes zoster), 443943 (varicella), 35205737-35205741 (VZV variants)."
+  },
+
+  "required_exposures": [
+    {
+      "name": "antiviral_drugs",
+      "label": "Antiviral drugs (acyclovir, valacyclovir, famciclovir)",
+      "domain": "drug_exposure",
+      "date_field": "drug_exposure_start_date",
+      "concept_field": "drug_concept_id",
+      "concept_ids": [1703687, 1703603, 1717704],
+      "include_descendants": true,
+      "timing": "on_or_after_index",
+      "note": "1703687=valacyclovir, 1703603=acyclovir, 1717704=famciclovir"
+    },
+    {
+      "name": "immunosuppressants",
+      "label": "Immunosuppressant / DMARD therapy",
+      "domain": "drug_exposure",
+      "date_field": "drug_exposure_start_date",
+      "concept_field": "drug_concept_id",
+      "concept_ids": [
+        19014878, 19068900, 19003999, 1361580, 42904205, 40171288, 1305058,
+        1101898,  1594587,  1310317,  1314273, 701470,   40236987, 45892883,
+        746895,   1119119,  937368,   1151789, 1593700,  40161532, 1511348,
+        1186087,  1777087
+      ],
+      "include_descendants": true,
+      "timing": "anytime",
+      "note": "Broad immunosuppressant / DMARD class. Patients on these drugs are at elevated VZV reactivation risk."
+    }
+  ],
+
+  "inclusion_rules": [
+    {
+      "type": "age_min",
+      "value": 18,
+      "note": "Adults only"
+    }
+  ]
+}
