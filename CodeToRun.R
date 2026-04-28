@@ -1087,16 +1087,36 @@ message("\n=== Saving results to output folder ===")
 
 if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
-readr::write_csv(baseline_episodes,      file.path(OUTPUT_DIR, "baseline_episodes.csv"))
-readr::write_csv(nlp_episodes,           file.path(OUTPUT_DIR, "nlp_episodes.csv"))
-readr::write_csv(adv_nlp_episodes,       file.path(OUTPUT_DIR, "adv_nlp_episodes.csv"))
+# Record-level dose data (one row per drug-exposure record)
+readr::write_csv(baseline_df,            file.path(OUTPUT_DIR, "records_baseline.csv"))
+readr::write_csv(nlp_df,                 file.path(OUTPUT_DIR, "records_nlp.csv"))
+readr::write_csv(adv_nlp_df,             file.path(OUTPUT_DIR, "records_adv_nlp.csv"))
+
+# Episode-level summaries (one row per patient-drug episode)
+readr::write_csv(baseline_episodes,      file.path(OUTPUT_DIR, "episodes_baseline.csv"))
+readr::write_csv(nlp_episodes,           file.path(OUTPUT_DIR, "episodes_nlp.csv"))
+readr::write_csv(adv_nlp_episodes,       file.path(OUTPUT_DIR, "episodes_adv_nlp.csv"))
+
+# Gold standard (with pred-equiv conversion applied)
+readr::write_csv(gold_std,               file.path(OUTPUT_DIR, "gold_standard.csv"))
+
+# Evaluation: episode-level comparison tables (one row per matched gold episode)
 readr::write_csv(ev_baseline$comparison, file.path(OUTPUT_DIR, "comparison_baseline.csv"))
 readr::write_csv(ev_nlp$comparison,      file.path(OUTPUT_DIR, "comparison_nlp.csv"))
 readr::write_csv(ev_adv$comparison,      file.path(OUTPUT_DIR, "comparison_adv_nlp.csv"))
-readr::write_csv(agreement_tbl,          file.path(OUTPUT_DIR, "agreement_table.csv"))
+
+# Summary tables
+readr::write_csv(episode_counts,         file.path(OUTPUT_DIR, "episode_counts.csv"))
 readr::write_csv(metrics_tbl,            file.path(OUTPUT_DIR, "metrics_table.csv"))
+readr::write_csv(agreement_tbl,          file.path(OUTPUT_DIR, "agreement_table.csv"))
+
+# Plot data tables (for reproducing figures without re-running the analysis)
+readr::write_csv(dist_df_all,            file.path(OUTPUT_DIR, "plot_data_dose_distribution.csv"))
+readr::write_csv(scatter_df,             file.path(OUTPUT_DIR, "plot_data_scatter.csv"))
+readr::write_csv(ba_df,                  file.path(OUTPUT_DIR, "plot_data_bland_altman.csv"))
 readr::write_csv(ba_limits,              file.path(OUTPUT_DIR, "bland_altman_limits.csv"))
 
+# Figures
 ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 10, dpi = 150)
 ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_scatter.png"),           p_scatter, width = 10, height = 5,  dpi = 150)
 ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_bland_altman.png"),      p_ba,      width = 10, height = 5,  dpi = 150)
