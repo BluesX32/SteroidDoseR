@@ -1,3 +1,13 @@
+# SteroidDoseR 0.4.0 (development)
+
+## Bug fixes
+
+* `LLMToRun.R`: set `CONDA_PKGS_DIRS` to `C:/Temp/conda_pkgs` before any
+  `reticulate::conda_*` call.  In JHU's environment `C:\Users\<name>` is a
+  redirected network folder; conda's libmamba solver fails to lock repodata
+  cache files on SMB shares (errno 22 / `EINVAL`).  Using a guaranteed-local
+  path avoids the lock entirely.
+
 # SteroidDoseR 0.4.0
 
 ## Breaking changes — connection layer simplified to OHDSI standard
