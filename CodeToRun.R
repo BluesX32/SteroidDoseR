@@ -7,8 +7,8 @@
 #
 # Analysis workflow
 # -----------------
-# STEP 1 — Cohort selection : define COHORT_PERSON_IDS (ICD-10, phenotype, etc.)
-#                              Default NULL = all patients in the database.
+# STEP 1 — Extraction       : pull steroid drug_exposure from OMOP CDM.
+#                              Optionally restrict to COHORT_PERSON_IDS.
 # STEP 2 — Medication filter : restrict to steroid concept IDs (SQL) and oral
 #                              route + known steroids (filter_oral = TRUE in R).
 # STEP 3 — Dose calculation  : Baseline (M1-M4), NLP, Advanced NLP.
@@ -69,28 +69,9 @@ DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
-# ---------------------------------------------------------------------------
-# STEP 1 of the analysis workflow: Patient cohort selection (three-tier)
-# ---------------------------------------------------------------------------
-# Three cohort vectors are populated in Section 1 (live DB) or left NULL
-# for synthetic mode:
-#
-#   COHORT_PERSON_IDS        -- base cohort: rheumatic disease + DMARD use
-#                               (inst/sql/cohort_rheum_dmard.sql)
-#   SHINGLES_PERSON_IDS      -- shingles (VZV) infection within base cohort
-#                               (inst/sql/cohort_VZV_antivirals.sql, intersected)
-#   SHINGLES_VAX_PERSON_IDS  -- received zoster vaccine, within shingles cohort
-#                               (inst/sql/cohort_shingrix_vaccine.sql)
-#
-# Drug extraction (Section 1) uses COHORT_PERSON_IDS as the person filter.
-# SHINGLES_PERSON_IDS and SHINGLES_VAX_PERSON_IDS are available for
-# downstream sub-analyses.
-#
-# In synthetic mode all three remain NULL (= no filter on the synthetic data).
-
-COHORT_PERSON_IDS       <- NULL
-SHINGLES_PERSON_IDS     <- NULL
-SHINGLES_VAX_PERSON_IDS <- NULL
+# Optional patient filter — set to an integer vector of person_ids to restrict
+# extraction to a specific cohort, or leave NULL to include all patients in DB.
+COHORT_PERSON_IDS <- NULL
 
 # Steroid drug_concept_id allow-list (matches Version2 Baseline extraction).
 # Loaded from the bundled CSV; each row is one integer concept ID.
@@ -173,61 +154,6 @@ if (USE_SYNTHETIC) {
   )
 } else {
   message("=== Extracting data from live OMOP CDM ===")
-
-  # ── STEP 1: Three-tier cohort selection ──────────────────────────────────
-
-  # 1a. Base cohort: rheumatic disease patients on DMARDs
-  message("=== Cohort [1/3]: base (rheum disease + DMARD) ===")
-  base_sql <- SqlRender::readSql(
-    system.file("sql", "cohort_rheum_dmard.sql", package = "SteroidDoseR")
-  )
-  COHORT_PERSON_IDS <- as.integer(
-    query_omop(base_sql, cdm_schema = cdm_schema, vocab_schema = vocab_schema)[[1L]]
-  )
-  message(sprintf("  Base cohort: %d patients", length(COHORT_PERSON_IDS)))
-
-  # 1b. Shingles infection: any VZV/herpes zoster diagnosis within base cohort
-  message("=== Cohort [2/3]: shingles infection (VZV diagnosis) ===")
-  shingles_sql <- SqlRender::readSql(
-    system.file("sql", "cohort_shingles_infection.sql", package = "SteroidDoseR")
-  )
-  SHINGLES_PERSON_IDS <- as.integer(
-    query_omop(
-      shingles_sql,
-      cdm_schema    = cdm_schema,
-      vocab_schema  = vocab_schema,
-      person_filter = paste(COHORT_PERSON_IDS, collapse = ",")
-    )[[1L]]
-  )
-  message(sprintf("  Shingles cohort: %d patients (VZV diagnosis, subset of base)",
-                  length(SHINGLES_PERSON_IDS)))
-
-  # 1c. Shingles vaccine: zoster vaccine among shingles patients
-  message("=== Cohort [3/3]: shingles vaccine (Shingrix/Zostavax) ===")
-  vax_sql <- SqlRender::readSql(
-    system.file("sql", "cohort_shingrix_vaccine.sql", package = "SteroidDoseR")
-  )
-  SHINGLES_VAX_PERSON_IDS <- as.integer(
-    query_omop(
-      vax_sql,
-      cdm_schema    = cdm_schema,
-      vocab_schema  = vocab_schema,
-      person_filter = if (length(SHINGLES_PERSON_IDS) > 0L)
-                        paste(SHINGLES_PERSON_IDS, collapse = ",")
-                      else ""
-    )[[1L]]
-  )
-  message(sprintf("  Vaccine cohort: %d patients (subset of shingles)",
-                  length(SHINGLES_VAX_PERSON_IDS)))
-
-  message(sprintf(
-    "Cohort summary: %d base | %d shingles | %d vaccinated",
-    length(COHORT_PERSON_IDS),
-    length(SHINGLES_PERSON_IDS),
-    length(SHINGLES_VAX_PERSON_IDS)
-  ))
-
-  # ── STEP 2: Drug exposure extraction (filtered to base cohort) ───────────
 
   sql <- SqlRender::readSql(
     system.file("sql", "extract_drug_exposure.sql", package = "SteroidDoseR")
