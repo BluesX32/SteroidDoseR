@@ -122,12 +122,22 @@ if (!USE_SYNTHETIC) {
 }
 
 # ---------------------------------------------------------------------------
-# 1b. Query helper  —  works with both DatabaseConnector and DBI connections
+# 1b. Helpers  —  work with both DatabaseConnector and DBI connections
 # ---------------------------------------------------------------------------
-# Renders SqlRender template parameters, translates SQL to the target dialect,
-# and executes. Section 1c calls query_omop() and is identical for both options.
 if (!USE_SYNTHETIC) {
 
+  # Locate a bundled SQL file: checks the installed package first, then falls
+  # back to inst/sql/ in the working directory (useful during development before
+  # devtools::install_local() has been re-run).
+  read_pkg_sql <- function(filename) {
+    path <- system.file("sql", filename, package = "SteroidDoseR")
+    if (nchar(path) == 0L) path <- file.path("inst", "sql", filename)
+    if (!file.exists(path)) stop("SQL file not found: ", filename)
+    SqlRender::readSql(path)
+  }
+
+  # Renders SqlRender template parameters, translates to the target SQL dialect,
+  # and executes. Section 1c calls query_omop() unchanged for both options.
   query_omop <- function(sql, ...) {
     if (inherits(conn, "DatabaseConnectorConnection")) {
       DatabaseConnector::renderTranslateQuerySql(
@@ -155,9 +165,7 @@ if (USE_SYNTHETIC) {
 } else {
   message("=== Extracting data from live OMOP CDM ===")
 
-  sql <- SqlRender::readSql(
-    system.file("sql", "extract_drug_exposure.sql", package = "SteroidDoseR")
-  )
+  sql <- read_pkg_sql("extract_drug_exposure.sql")
 
   drug_df <- query_omop(
     sql,
