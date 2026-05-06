@@ -23,17 +23,22 @@
 #   source("extras/ErrorAnalysis.R")       # deep-dive into high-error episodes
 #   source("extras/EligibilityAnalysis.R") # patient/episode funnel
 #
-# Connection modes (set USE_SYNTHETIC below)
-# ------------------------------------------
+# Connection modes  (set USE_SYNTHETIC below)
+# --------------------------------------------
 #   Mode A — Synthetic data (no database required):
 #     USE_SYNTHETIC = TRUE
 #
-#   Mode B — Live OMOP CDM via DatabaseConnector (OHDSI standard):
-#     USE_SYNTHETIC = FALSE
-#     Create connectionDetails with DatabaseConnector::createConnectionDetails()
-#     and wrap with create_omop_connector(). Supports SQL Server, PostgreSQL,
-#     Databricks/Spark, Redshift, BigQuery, Snowflake, and more.
-#     Required packages: DatabaseConnector, SqlRender
+#   Mode B / C — Live OMOP CDM  (USE_SYNTHETIC = FALSE):
+#     Fill in ONE connection block in Section 1a; Sections 1b–1c run unchanged.
+#
+#     Option B  DatabaseConnector (OHDSI standard) — SQL Server, PostgreSQL,
+#               Redshift, Snowflake, BigQuery, Databricks/Spark, and more.
+#               Required packages: DatabaseConnector, SqlRender
+#
+#     Option C  DBI / odbc — Databricks (Simba Spark ODBC driver) or any
+#               other ODBC-compatible source.
+#               Required packages: DBI, odbc, SqlRender
+#               Driver: https://www.databricks.com/spark/odbc-drivers-download
 
 devtools::install_local(getwd())
 # This script is designed for interactive use in RStudio.
@@ -65,27 +70,27 @@ GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
 # ---------------------------------------------------------------------------
-# STEP 1 of the analysis workflow: Patient cohort selection
+# STEP 1 of the analysis workflow: Patient cohort selection (three-tier)
 # ---------------------------------------------------------------------------
-# Default NULL = all patients in the database (no patient-level pre-filter).
-# Replace NULL with a vector of integer person_ids to restrict the analysis
-# to a specific cohort. Common approaches:
+# Three cohort vectors are populated in Section 1 (live DB) or left NULL
+# for synthetic mode:
 #
-#   ICD-10 / computable phenotype (run after connect, Section 1):
-#     cohort_sql        <- "SELECT DISTINCT person_id
-#                             FROM @cdm_schema.condition_occurrence
-#                            WHERE condition_concept_id IN (80809, ...)"
-#     COHORT_PERSON_IDS <- as.integer(DatabaseConnector::querySql(
-#                            conn, cohort_sql)$PERSON_ID)
+#   COHORT_PERSON_IDS        -- base cohort: rheumatic disease + DMARD use
+#                               (inst/sql/cohort_rheum_dmard.sql)
+#   SHINGLES_PERSON_IDS      -- shingles (VZV) infection within base cohort
+#                               (inst/sql/cohort_VZV_antivirals.sql, intersected)
+#   SHINGLES_VAX_PERSON_IDS  -- received zoster vaccine, within shingles cohort
+#                               (inst/sql/cohort_shingrix_vaccine.sql)
 #
-#   Gold-standard patients only (validation mode):
-#     gold_std          <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
-#     COHORT_PERSON_IDS <- unique(as.integer(gold_std$patient_id))
+# Drug extraction (Section 1) uses COHORT_PERSON_IDS as the person filter.
+# SHINGLES_PERSON_IDS and SHINGLES_VAX_PERSON_IDS are available for
+# downstream sub-analyses.
 #
-#   Medication data file (all reviewed myositis patients):
-#     med_data          <- readr::read_csv(MED_DATA_PATH, show_col_types = FALSE)
-#     COHORT_PERSON_IDS <- unique(as.integer(med_data$myositis_omop_person_id))
-COHORT_PERSON_IDS <- NULL   # NULL = no filter (entire database)
+# In synthetic mode all three remain NULL (= no filter on the synthetic data).
+
+COHORT_PERSON_IDS       <- NULL
+SHINGLES_PERSON_IDS     <- NULL
+SHINGLES_VAX_PERSON_IDS <- NULL
 
 # Steroid drug_concept_id allow-list (matches Version2 Baseline extraction).
 # Loaded from the bundled CSV; each row is one integer concept ID.
@@ -95,55 +100,149 @@ STEROID_CONCEPT_IDS <- as.integer(readr::read_csv(
 )[[1L]])
 
 # ---------------------------------------------------------------------------
-# 1. Connect / load data
+# 1a. Connection  —  fill in ONE option below (live DB only; skip for synthetic)
+# ---------------------------------------------------------------------------
+if (!USE_SYNTHETIC) {
+
+  cdm_schema   <- "your_cdm_schema"    # e.g. "my_db.dbo" or "catalog.schema"
+  vocab_schema <- "your_vocab_schema"
+
+  # ── Option B: DatabaseConnector (SQL Server, PostgreSQL, Redshift, Snowflake,
+  #              BigQuery, Databricks/Spark, and more — OHDSI standard)
+  # Required packages: DatabaseConnector, SqlRender
+  # connectionDetails <- DatabaseConnector::createConnectionDetails(
+  #   dbms             = "sql server",   # "postgresql", "redshift", "spark", ...
+  #   connectionString = "",
+  #   pathToDriver     = ""
+  # )
+  # conn <- DatabaseConnector::connect(connectionDetails)
+
+  # ── Option C: DBI / odbc  (Databricks Simba Spark driver or any ODBC source)
+  # Required packages: DBI, odbc, SqlRender
+  # Driver download: https://www.databricks.com/spark/odbc-drivers-download
+  # library(DBI); library(odbc)
+  # DB_DIALECT <- "spark"   # SqlRender targetDialect: "spark", "postgresql", ...
+  # host       <- ""        # e.g. "adb-1234567890.azuredatabricks.net"
+  # http_path  <- ""        # Settings > SQL Warehouse > Connection details
+  # token      <- ""        # Personal Access Token
+  # conn <- DBI::dbConnect(
+  #   odbc::odbc(),
+  #   Driver          = "Simba Spark ODBC Driver",
+  #   Host            = host,
+  #   Port            = 443,
+  #   HTTPPath        = http_path,
+  #   AuthMech        = 3,
+  #   UID             = "token",
+  #   PWD             = token,
+  #   SSL             = 1,
+  #   ThriftTransport = 2
+  # )
+
+}
+
+# ---------------------------------------------------------------------------
+# 1b. Query helper  —  works with both DatabaseConnector and DBI connections
+# ---------------------------------------------------------------------------
+# Renders SqlRender template parameters, translates SQL to the target dialect,
+# and executes. Section 1c calls query_omop() and is identical for both options.
+if (!USE_SYNTHETIC) {
+
+  query_omop <- function(sql, ...) {
+    if (inherits(conn, "DatabaseConnectorConnection")) {
+      DatabaseConnector::renderTranslateQuerySql(
+        conn, sql, ..., snakeCaseToCamelCase = FALSE
+      )
+    } else {
+      DBI::dbGetQuery(
+        conn,
+        SqlRender::translate(SqlRender::render(sql, ...), targetDialect = DB_DIALECT)
+      )
+    }
+  }
+
+}
+
+# ---------------------------------------------------------------------------
+# 1c. Load data  —  Mode A: synthetic CSV  |  Mode B/C: live DB extraction
 # ---------------------------------------------------------------------------
 if (USE_SYNTHETIC) {
-  # -----------------------------------------------------------------------
-  # Mode A: bundled synthetic data — no database required
-  # -----------------------------------------------------------------------
   message("=== Using bundled synthetic data ===")
   drug_df <- readr::read_csv(
     system.file("extdata", "synthetic_drug_exposure.csv", package = "SteroidDoseR"),
     show_col_types = FALSE
   )
 } else {
-  # -----------------------------------------------------------------------
-  # Mode B: Live OMOP CDM via DatabaseConnector (OHDSI standard)
-  # -----------------------------------------------------------------------
-  message("=== Connecting to live OMOP CDM ===")
+  message("=== Extracting data from live OMOP CDM ===")
 
-  server       <- "your-server"
-  database     <- "your-database"
-  port         <- 1433L
-  cdm_schema   <- paste0(database, ".dbo") # your CDM schema
-  vocab_schema <- paste0(database, ".dbo") # your vocab schema
+  # ── STEP 1: Three-tier cohort selection ──────────────────────────────────
 
-  connectionDetails <- DatabaseConnector::createConnectionDetails(
-    dbms             = "sql server",
-    connectionString = "",
-    pathToDriver     = ""
+  # 1a. Base cohort: rheumatic disease patients on DMARDs
+  message("=== Cohort [1/3]: base (rheum disease + DMARD) ===")
+  base_sql <- SqlRender::readSql(
+    system.file("sql", "cohort_rheum_dmard.sql", package = "SteroidDoseR")
   )
+  COHORT_PERSON_IDS <- as.integer(
+    query_omop(base_sql, cdm_schema = cdm_schema, vocab_schema = vocab_schema)[[1L]]
+  )
+  message(sprintf("  Base cohort: %d patients", length(COHORT_PERSON_IDS)))
 
-  conn <- DatabaseConnector::connect(connectionDetails)
+  # 1b. Shingles infection: any VZV/herpes zoster diagnosis within base cohort
+  message("=== Cohort [2/3]: shingles infection (VZV diagnosis) ===")
+  shingles_sql <- SqlRender::readSql(
+    system.file("sql", "cohort_shingles_infection.sql", package = "SteroidDoseR")
+  )
+  SHINGLES_PERSON_IDS <- as.integer(
+    query_omop(
+      shingles_sql,
+      cdm_schema    = cdm_schema,
+      vocab_schema  = vocab_schema,
+      person_filter = paste(COHORT_PERSON_IDS, collapse = ",")
+    )[[1L]]
+  )
+  message(sprintf("  Shingles cohort: %d patients (VZV diagnosis, subset of base)",
+                  length(SHINGLES_PERSON_IDS)))
+
+  # 1c. Shingles vaccine: zoster vaccine among shingles patients
+  message("=== Cohort [3/3]: shingles vaccine (Shingrix/Zostavax) ===")
+  vax_sql <- SqlRender::readSql(
+    system.file("sql", "cohort_shingrix_vaccine.sql", package = "SteroidDoseR")
+  )
+  SHINGLES_VAX_PERSON_IDS <- as.integer(
+    query_omop(
+      vax_sql,
+      cdm_schema    = cdm_schema,
+      vocab_schema  = vocab_schema,
+      person_filter = if (length(SHINGLES_PERSON_IDS) > 0L)
+                        paste(SHINGLES_PERSON_IDS, collapse = ",")
+                      else ""
+    )[[1L]]
+  )
+  message(sprintf("  Vaccine cohort: %d patients (subset of shingles)",
+                  length(SHINGLES_VAX_PERSON_IDS)))
+
+  message(sprintf(
+    "Cohort summary: %d base | %d shingles | %d vaccinated",
+    length(COHORT_PERSON_IDS),
+    length(SHINGLES_PERSON_IDS),
+    length(SHINGLES_VAX_PERSON_IDS)
+  ))
+
+  # ── STEP 2: Drug exposure extraction (filtered to base cohort) ───────────
 
   sql <- SqlRender::readSql(
     system.file("sql", "extract_drug_exposure.sql", package = "SteroidDoseR")
   )
 
-  drug_df <- DatabaseConnector::renderTranslateQuerySql(
-    connection     = conn,
-    sql            = sql,
+  drug_df <- query_omop(
+    sql,
     cdm_schema     = cdm_schema,
     vocab_schema   = vocab_schema,
     start_date     = START_DATE,
     end_date       = END_DATE,
     concept_filter = paste(STEROID_CONCEPT_IDS, collapse = ","),
     person_filter  = if (!is.null(COHORT_PERSON_IDS))
-      paste(COHORT_PERSON_IDS, collapse = ",") else "",
-    snakeCaseToCamelCase = FALSE
+                       paste(COHORT_PERSON_IDS, collapse = ",") else ""
   )
-
-  # DatabaseConnector::disconnect(conn)
 
   names(drug_df) <- tolower(names(drug_df))
   drug_df$drug_exposure_start_date <- as.Date(drug_df$drug_exposure_start_date)
@@ -1167,7 +1266,11 @@ launch_dose_dashboard(
 # 14. Disconnect (live DB only)
 # ===========================================================================
 if (!USE_SYNTHETIC) {
-  DatabaseConnector::disconnect(conn)
+  if (inherits(conn, "DatabaseConnectorConnection")) {
+    DatabaseConnector::disconnect(conn)
+  } else {
+    DBI::dbDisconnect(conn)
+  }
 }
 
 message("\n=== Analysis complete ===")
