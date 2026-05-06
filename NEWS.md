@@ -7,6 +7,30 @@
   redirected network folder; conda's libmamba solver fails to lock repodata
   cache files on SMB shares (errno 22 / `EINVAL`).  Using a guaranteed-local
   path avoids the lock entirely.
+=======
+# SteroidDoseR 0.4.1
+
+## New features
+
+* **Three-tier cohort selection in `CodeToRun.R`** (`CodeToRun.R`): Step 1 now
+  populates three cohort vectors — `COHORT_PERSON_IDS` (rheum disease + DMARD
+  base cohort), `SHINGLES_PERSON_IDS` (VZV infection within base cohort), and
+  `SHINGLES_VAX_PERSON_IDS` (zoster vaccine within shingles cohort) — before
+  the drug-exposure extraction runs.
+
+* **New SQL: `cohort_rheum_dmard.sql`** (`inst/sql/`): CTE-based OMOP query
+  that returns the base cohort of rheumatic disease patients on DMARDs. Concept
+  sets derived from the OHDSI phenotype in
+  `TrajectoryDashboard/inst/sql/templates/rheum-dmard-cohort-omop.sql`. Parameters:
+  `@cdm_schema`, `@vocab_schema`.
+
+* **New SQL: `cohort_shingrix_vaccine.sql`** (`inst/sql/`): CTE-based OMOP
+  query that returns patients who received the herpes zoster vaccine (Shingrix /
+  Zostavax) via `drug_exposure` or `procedure_occurrence`. Concept sets derived
+  from `TrajectoryDashboard/inst/sql/templates/def_shingrix_vaccine.sql`.
+  Parameters: `@cdm_schema`, `@vocab_schema`, `@person_filter`.
+
+---
 
 # SteroidDoseR 0.4.0
 

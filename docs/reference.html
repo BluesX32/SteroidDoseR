@@ -222,6 +222,13 @@
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
 
+<h3>v0.4.1 <span class="badge badge-new">Three-tier cohort selection</span></h3>
+<ul>
+  <li><strong>feat(cohort): <code>cohort_rheum_dmard.sql</code></strong> <span class="badge badge-new">v0.4.1</span> — New CTE-based OMOP SQL that returns the base cohort of rheumatic disease patients with ≥1 DMARD exposure and age&nbsp;&gt;&nbsp;18. Concept sets derived from the OHDSI phenotype in <code>rheum-dmard-cohort-omop.sql</code>. Parameters: <code>@cdm_schema</code>, <code>@vocab_schema</code>.</li>
+  <li><strong>feat(cohort): <code>cohort_shingrix_vaccine.sql</code></strong> <span class="badge badge-new">v0.4.1</span> — New CTE-based OMOP SQL that returns patients who received the herpes zoster vaccine (Shingrix / Zostavax) via <code>drug_exposure</code> or <code>procedure_occurrence</code>. Parameters: <code>@cdm_schema</code>, <code>@vocab_schema</code>, <code>@person_filter</code>.</li>
+  <li><strong>feat(run_analysis): three-tier cohort in <code>CodeToRun.R</code></strong> <span class="badge badge-new">v0.4.1</span> — Step 1 now populates <code>COHORT_PERSON_IDS</code> (rheum+DMARD base), <code>SHINGLES_PERSON_IDS</code> (VZV infection within base), and <code>SHINGLES_VAX_PERSON_IDS</code> (zoster vaccine within shingles). Drug-exposure extraction uses <code>COHORT_PERSON_IDS</code> as the person filter.</li>
+</ul>
+
 <h3>v0.4.0 <span class="badge badge-fix">Connection layer — OHDSI standard</span></h3>
 <ul>
   <li><strong>Breaking:</strong> Removed <code>create_safer_connection()</code>, <code>create_connection_from_safer_env()</code>, <code>create_discovery_connection()</code>, <code>create_connection_from_discovery_env()</code>, <code>create_omop_connection()</code>, and <code>create_connection_from_env()</code>. All database connections now use <code>DatabaseConnector::createConnectionDetails()</code> directly (OHDSI standard). Wrap the result with <code>create_omop_connector(connectionDetails, cdm_schema = ...)</code>.</li>

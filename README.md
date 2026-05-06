@@ -98,6 +98,29 @@ con <- create_omop_connector(connectionDetails, cdm_schema = "deid.omop")
 con <- detect_capabilities(con)
 ```
 
+### 1b. Cohort selection (three-tier, live DB only)
+
+Three bundled SQL files define the patient populations used in `CodeToRun.R`:
+
+| SQL file | Cohort | Logic |
+|---|---|---|
+| `cohort_rheum_dmard.sql` | **Base** | Rheumatic disease diagnosis + ≥1 DMARD exposure + age > 18 |
+| `cohort_VZV_antivirals.sql` | **Shingles infection** | VZV/herpes zoster diagnosis + antiviral; intersected with base cohort in R |
+| `cohort_shingrix_vaccine.sql` | **Shingles vaccine** | Zoster vaccine in `drug_exposure` or `procedure_occurrence`; filtered to shingles cohort |
+
+```r
+# Executed automatically in CodeToRun.R (live DB mode)
+base_sql  <- SqlRender::readSql(system.file("sql", "cohort_rheum_dmard.sql",       package = "SteroidDoseR"))
+vzv_sql   <- SqlRender::readSql(system.file("sql", "cohort_VZV_antivirals.sql",    package = "SteroidDoseR"))
+vax_sql   <- SqlRender::readSql(system.file("sql", "cohort_shingrix_vaccine.sql",  package = "SteroidDoseR"))
+
+COHORT_PERSON_IDS       <- as.integer(DatabaseConnector::renderTranslateQuerySql(conn, base_sql, ...)[[1L]])
+SHINGLES_PERSON_IDS     <- intersect(as.integer(DatabaseConnector::renderTranslateQuerySql(conn, vzv_sql, ...)[[1L]]), COHORT_PERSON_IDS)
+SHINGLES_VAX_PERSON_IDS <- as.integer(DatabaseConnector::renderTranslateQuerySql(conn, vax_sql, ..., person_filter = paste(SHINGLES_PERSON_IDS, collapse = ","))[[1L]])
+```
+
+`COHORT_PERSON_IDS` is passed as the `person_filter` to the drug-exposure extraction below.
+
 ### 2. Fetch drug-exposure records
 
 ```r
