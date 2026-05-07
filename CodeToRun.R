@@ -235,6 +235,7 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
     nrow(episodes_df),
     dplyr::n_distinct(episodes_df$person_id)
   ))
+  cat("    doses shown in mg prednisone-equivalent\n")
 
   # Select patients with the most episodes (most informative trajectories)
   sample_pts <- episodes_df |>

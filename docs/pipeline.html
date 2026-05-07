@@ -314,14 +314,40 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
 </table>
 </div>
 
+<h3>Prednisone-equivalent units throughout</h3>
+<p>
+  <strong>Computed episodes:</strong> <code>run_pipeline()</code> calls
+  <code>convert_pred_equiv()</code> <em>before</em> <code>build_episodes()</code>,
+  so the <code>median_daily_dose</code> column in every episode output is already
+  in <strong>mg prednisone-equivalent</strong>, not in native drug units.
+  When episode trajectories display a drug name (e.g. <code>methylprednisolone</code>)
+  alongside <code>median_daily_dose</code>, the dose is pred-equiv mg —
+  not native methylprednisolone mg.
+</p>
+
 <h3>Gold standard standardization</h3>
 <p>
-  Before calling <code>evaluate_against_gold()</code>, ensure the gold standard
-  <code>median_daily_dose</code> column is in <strong>prednisone-equivalent mg/day</strong> —
-  the same scale as the computed episodes produced by <code>run_pipeline()</code>.
-  Gold standard records are often in native drug units (e.g., methylprednisolone 8 mg
-  rather than 10 mg pred-equiv). Identify the drug for each gold episode by
-  overlapping it with <code>drug_df</code>, then apply <code>convert_pred_equiv()</code>:
+  The gold standard CSV stores <code>median_daily_dose</code> in the
+  <strong>native drug unit</strong> as recorded by the chart reviewer.
+  Before calling <code>evaluate_against_gold()</code> it must be converted
+  to pred-equiv so both sides are on the same scale.
+</p>
+<p>
+  Because the gold standard does not carry a drug-name column, the drug identity
+  is inferred by overlapping each gold episode with <code>baseline_df</code>
+  (oral-filtered) and taking the most-frequent <code>drug_name_std</code>.
+  <strong>Important:</strong> <code>baseline_df</code> is used instead of raw
+  <code>drug_df</code> to exclude injection records — an injection that overlaps
+  the gold window would produce a wrong conversion factor.
+</p>
+<p>
+  After joining the drug name, <code>convert_pred_equiv()</code> is applied.
+  If the drug cannot be identified (no overlapping oral records, or drug not in
+  the equivalency table), the raw dose is kept via
+  <code>coalesce(gold_pred_equiv_mg, median_daily_dose)</code>.
+  These episodes carry <code>pred_equiv_status != "ok"</code> and are counted
+  in the "drug unknown (kept raw)" line printed to the console — their dose
+  errors may be systematically wrong and should be interpreted with caution.
 </p>
 <pre><code><span class="cm"># identify the dominant drug for each gold episode</span>
 gold_drug_map <span class="op">&lt;-</span> drug_df <span class="op">|&gt;</span>
