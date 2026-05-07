@@ -69,6 +69,12 @@ DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
+# Concurrent dose aggregation mode for build_episodes() / run_pipeline().
+#   "per_drug"  — each drug forms its own episode track (default, current behaviour)
+#   "sum_all"   — sum all steroid doses per patient-day (pred-equiv) into one
+#                 "total_steroids" track before gap-bridging
+CONCURRENT_AGG <- "per_drug"
+
 # Optional patient filter — set to an integer vector of person_ids to restrict
 # extraction to a specific cohort, or leave NULL to include all patients in DB.
 COHORT_PERSON_IDS <- NULL
@@ -235,6 +241,7 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
     nrow(episodes_df),
     dplyr::n_distinct(episodes_df$person_id)
   ))
+  cat("    doses shown in mg prednisone-equivalent\n")
 
   # Select patients with the most episodes (most informative trajectories)
   sample_pts <- episodes_df |>
@@ -465,10 +472,11 @@ print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg
 # Person-level: run pipeline to get episodes, then show trajectories
 baseline_episodes <- run_pipeline(
   drug_df,
-  method       = "baseline",
-  m2_sig_parse = "warn",
-  return_level = "episode",
-  gap_days     = GAP_DAYS
+  method         = "baseline",
+  m2_sig_parse   = "warn",
+  return_level   = "episode",
+  gap_days       = GAP_DAYS,
+  concurrent_agg = CONCURRENT_AGG
 )
 
 show_person_trajectories(baseline_episodes, "Baseline")
@@ -496,9 +504,10 @@ nlp_df |>
 # Person-level
 nlp_episodes <- run_pipeline(
   drug_df,
-  method       = "nlp",
-  return_level = "episode",
-  gap_days     = GAP_DAYS
+  method         = "nlp",
+  return_level   = "episode",
+  gap_days       = GAP_DAYS,
+  concurrent_agg = CONCURRENT_AGG
 )
 
 show_person_trajectories(nlp_episodes, "NLP")
@@ -538,9 +547,10 @@ adv_nlp_df <- convert_pred_equiv(
 )
 adv_nlp_episodes <- build_episodes(
   adv_nlp_df,
-  end_col  = "drug_exposure_end_date",
-  dose_col = "pred_equiv_mg",
-  gap_days = GAP_DAYS
+  end_col        = "drug_exposure_end_date",
+  dose_col       = "pred_equiv_mg",
+  gap_days       = GAP_DAYS,
+  concurrent_agg = CONCURRENT_AGG
 )
 
 show_person_trajectories(adv_nlp_episodes, "Advanced NLP")
@@ -939,14 +949,25 @@ episode_counts <- tibble::tibble(
                         dplyr::n_distinct(nlp_episodes$person_id),
                         dplyr::n_distinct(adv_nlp_episodes$person_id),
                         dplyr::n_distinct(gold_std$patient_id)),
+  Records_pre_collapse = c(
+    sum(baseline_episodes$n_records, na.rm = TRUE),
+    sum(nlp_episodes$n_records,      na.rm = TRUE),
+    sum(adv_nlp_episodes$n_records,  na.rm = TRUE),
+    NA_integer_
+  ),
   Episodes          = c(nrow(baseline_episodes),
                         nrow(nlp_episodes),
                         nrow(adv_nlp_episodes),
                         nrow(gold_std)),
-  Overlap_with_Gold = c(ev_baseline$summary$n_matched_periods,
+  Gold_total        = c(rep(ev_baseline$summary$n_gold_periods, 3L), NA_integer_),
+  Matched_to_Gold   = c(ev_baseline$summary$n_matched_periods,
                         ev_nlp$summary$n_matched_periods,
                         ev_adv$summary$n_matched_periods,
                         NA_integer_),
+  Coverage_pct      = c(round(ev_baseline$summary$coverage_pct, 1),
+                        round(ev_nlp$summary$coverage_pct,      1),
+                        round(ev_adv$summary$coverage_pct,      1),
+                        NA_real_),
   Median_mg         = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
                         stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
                         stats::median(adv_nlp_episodes$median_daily_dose,   na.rm = TRUE),

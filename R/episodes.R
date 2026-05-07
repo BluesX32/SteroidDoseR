@@ -32,6 +32,18 @@
 #'   as alternatives -- whichever is present in the data.
 #' @param gap_days `integer(1)`. Maximum gap (in days) between consecutive
 #'   records that are still bridged into the same episode. Default: `30L`.
+#' @param concurrent_agg `character(1)`. How to handle concurrent prescriptions
+#'   of **different** steroids for the same patient on overlapping dates:
+#'   \describe{
+#'     \item{`"per_drug"` (default)}{Each drug is tracked independently. One
+#'       episode track per patient–drug pair. Concurrent prescriptions of
+#'       different steroids appear as separate rows.}
+#'     \item{`"sum_all"`}{Day-expand all records, sum doses across all drugs per
+#'       patient-day, then gap-bridge the daily totals into unified episodes.
+#'       Returns one episode track per patient with
+#'       `drug_name_std = "total_steroids"`. Use `dose_col = "pred_equiv_mg"` so
+#'       all drugs are on a common scale before summing.}
+#'   }
 #' @param drug_concept_ids,person_ids,start_date,end_date
 #'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
 #'   data frame. See [calc_daily_dose_baseline()] for full descriptions.
@@ -75,10 +87,13 @@ build_episodes <- function(connector_or_df,
                            end_col          = NA_character_,
                            dose_col         = NULL,
                            gap_days         = 30L,
+                           concurrent_agg   = c("per_drug", "sum_all"),
                            drug_concept_ids = NULL,
                            person_ids       = NULL,
                            start_date       = NULL,
                            end_date         = NULL) {
+
+  concurrent_agg <- match.arg(concurrent_agg)
 
   drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
                                start_date, end_date)
@@ -128,6 +143,20 @@ build_episodes <- function(connector_or_df,
 
   if (nrow(wd) == 0L) {
     return(.empty_episodes())
+  }
+
+  # --- dispatch on concurrent_agg -------------------------------------------
+  if (concurrent_agg == "sum_all") {
+    n_drugs <- dplyr::n_distinct(wd$.drug)
+    if (n_drugs > 1L && !is.na(dose_col) && dose_col != "pred_equiv_mg") {
+      rlang::warn(paste0(
+        "concurrent_agg = 'sum_all': summing doses across ", n_drugs, " drug(s). ",
+        "For cross-drug summation use dose_col = 'pred_equiv_mg' so all drugs ",
+        "are on a common prednisone-equivalent scale. Current dose_col: '",
+        dose_col, "'."
+      ))
+    }
+    return(.build_episodes_sum_all(wd, gap_days))
   }
 
   # --- gap-bridging algorithm (vectorised) -----------------------------------
@@ -181,6 +210,84 @@ build_episodes <- function(connector_or_df,
       "median_daily_dose", "min_daily_dose", "max_daily_dose", "mean_daily_dose"
     ) |>
     dplyr::arrange(.data$person_id, .data$drug_name_std, .data$episode_start)
+
+  episodes
+}
+
+# ---------------------------------------------------------------------------
+# Internal helpers for concurrent_agg = "sum_all"
+# ---------------------------------------------------------------------------
+
+# Day-expand a normalised working data frame (wd) to one row per active day.
+# Each row in wd becomes `end - start + 1` rows, one per calendar day.
+.expand_to_daily <- function(wd) {
+  seqs <- mapply(
+    function(s, e) seq.Date(s, e, by = "day"),
+    wd$.start, wd$.end,
+    SIMPLIFY = FALSE
+  )
+  lens     <- lengths(seqs)
+  expanded <- wd[rep(seq_len(nrow(wd)), lens), , drop = FALSE]
+  expanded$day <- as.Date(unlist(seqs, use.names = FALSE), origin = "1970-01-01")
+  rownames(expanded) <- NULL
+  expanded
+}
+
+# Build episodes by summing all-drug doses per patient-day, then gap-bridging.
+.build_episodes_sum_all <- function(wd, gap_days) {
+  expanded <- .expand_to_daily(wd)
+
+  # One row per (person, day): sum doses across all overlapping drugs
+  daily <- expanded |>
+    dplyr::group_by(.data$.person, .data$day) |>
+    dplyr::summarise(
+      total_dose = sum(.data$.dose, na.rm = TRUE),
+      .groups    = "drop"
+    ) |>
+    dplyr::mutate(
+      total_dose = dplyr::if_else(.data$total_dose == 0, NA_real_, .data$total_dose)
+    ) |>
+    dplyr::arrange(.data$.person, .data$day)
+
+  # Gap-bridge on the per-patient daily series
+  daily <- daily |>
+    dplyr::group_by(.data$.person) |>
+    dplyr::mutate(
+      .prev_day   = dplyr::lag(.data$day),
+      .gap        = as.integer(.data$day - .data$.prev_day),
+      .new_ep     = is.na(.data$.prev_day) | .data$.gap > as.integer(gap_days),
+      .episode_id = cumsum(.data$.new_ep)
+    ) |>
+    dplyr::ungroup()
+
+  episodes <- daily |>
+    dplyr::group_by(.data$.person, .data$.episode_id) |>
+    dplyr::summarise(
+      episode_start     = min(.data$day),
+      episode_end       = max(.data$day),
+      n_records         = dplyr::n(),
+      median_daily_dose = stats::median(.data$total_dose, na.rm = TRUE),
+      min_daily_dose    = suppressWarnings(min(.data$total_dose, na.rm = TRUE)),
+      max_daily_dose    = suppressWarnings(max(.data$total_dose, na.rm = TRUE)),
+      mean_daily_dose   = mean(.data$total_dose, na.rm = TRUE),
+      .groups           = "drop"
+    ) |>
+    dplyr::mutate(
+      n_days         = as.integer(.data$episode_end - .data$episode_start) + 1L,
+      min_daily_dose = dplyr::if_else(is.infinite(.data$min_daily_dose), NA_real_, .data$min_daily_dose),
+      max_daily_dose = dplyr::if_else(is.infinite(.data$max_daily_dose), NA_real_, .data$max_daily_dose),
+      drug_name_std  = "total_steroids"
+    ) |>
+    dplyr::rename(
+      person_id  = ".person",
+      episode_id = ".episode_id"
+    ) |>
+    dplyr::select(
+      "person_id", "drug_name_std", "episode_id",
+      "episode_start", "episode_end", "n_days", "n_records",
+      "median_daily_dose", "min_daily_dose", "max_daily_dose", "mean_daily_dose"
+    ) |>
+    dplyr::arrange(.data$person_id, .data$episode_start)
 
   episodes
 }
