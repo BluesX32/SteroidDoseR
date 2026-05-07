@@ -38,7 +38,9 @@ docs/news/
 jdbc_drivers/
 
 # Environment files
+LLM/R.env
 .env
+*.env
 .Renviron
 Renviron
 
@@ -51,3 +53,6 @@ test_connection.R
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+.vscode/
+
+
