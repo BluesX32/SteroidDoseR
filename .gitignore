@@ -46,3 +46,8 @@ CodeToRun_jh.R
 
 test_package.R
 test_connection.R
+.venv/*
+.venv/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc

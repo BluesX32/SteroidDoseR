@@ -15,3 +15,5 @@
 ^\.Rproj\.user$
 ^.*\.tar\.gz$
 ^R\.env$
+^\.venv$
+^\.ipynb_checkpoints$
