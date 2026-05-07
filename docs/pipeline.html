@@ -151,9 +151,35 @@
 
 <p>
   Merges overlapping or adjacent prescription records within a patient–drug
-  group into continuous treatment episodes using the OHDSI standard 30-day gap.
-  Records are sorted by start date; any two records whose gap is ≤
-  <code>gap_days</code> are merged into a single episode.
+  group into continuous treatment episodes using OHDSI-standard gap-era logic
+  (equivalent to DrugUtilisation 30-day era). Each drug is tracked
+  <strong>independently</strong> — concurrent prescriptions of different steroids
+  are not summed; each forms its own episode track.
+</p>
+
+<h3>Gap-bridging algorithm</h3>
+<ol>
+  <li>Sort each patient–drug group chronologically by start date.</li>
+  <li>Maintain a <strong>running-maximum end date</strong> across processed records. This means overlapping records (gap &lt; 0) are always merged into the same episode without special handling.</li>
+  <li>Start a <strong>new episode</strong> only when the gap from the running-max end to the next record's start exceeds <code>gap_days</code>.</li>
+  <li>Summarise the merged episode: <code>episode_start = min(start)</code>, <code>episode_end = max(end)</code>, and the dose statistics below.</li>
+</ol>
+
+<h3>Dose summary for an episode</h3>
+<p>All four statistics are computed across the individual records merged into the episode:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Formula</th><th>When to use</th></tr>
+  <tr><td><code>median_daily_dose</code></td><td>Median of record doses</td><td>Default; robust to outlier records within an episode</td></tr>
+  <tr><td><code>mean_daily_dose</code></td><td><code>Σ(dose_i × days_i) / Σ(days_i)</code></td><td>Duration-weighted; longer prescriptions count more — recommended when episode contains dose changes</td></tr>
+  <tr><td><code>min_daily_dose</code></td><td>Minimum across records</td><td>Conservative lower bound</td></tr>
+  <tr><td><code>max_daily_dose</code></td><td>Maximum across records</td><td>Conservative upper bound</td></tr>
+</table>
+</div>
+<p>
+  Pass <code>computed_dose_col = "mean_daily_dose"</code> to
+  <code>evaluate_against_gold()</code> to use duration-weighted mean instead of
+  median for the accuracy comparison.
 </p>
 
 <h3>Output columns (one row per episode)</h3>
@@ -165,12 +191,12 @@
   <tr><td><code>episode_id</code></td><td>Integer episode index within each patient–drug pair</td></tr>
   <tr><td><code>episode_start</code></td><td>Start date of the episode</td></tr>
   <tr><td><code>episode_end</code></td><td>End date of the episode</td></tr>
-  <tr><td><code>n_days</code></td><td>Duration of episode in days</td></tr>
-  <tr><td><code>n_records</code></td><td>Number of prescriptions merged</td></tr>
+  <tr><td><code>n_days</code></td><td>Calendar days from episode_start to episode_end inclusive</td></tr>
+  <tr><td><code>n_records</code></td><td>Number of prescription records collapsed into this episode</td></tr>
   <tr><td><code>median_daily_dose</code></td><td>Median prednisone-equivalent daily dose across records</td></tr>
-  <tr><td><code>min_daily_dose</code></td><td>Minimum daily dose in episode</td></tr>
-  <tr><td><code>max_daily_dose</code></td><td>Maximum daily dose in episode</td></tr>
-  <tr><td><code>mean_daily_dose</code> <span class="badge badge-new">v0.1.3</span></td><td>Duration-weighted mean daily dose: <code>sum(dose_i × days_i) / sum(days_i)</code></td></tr>
+  <tr><td><code>min_daily_dose</code></td><td>Minimum daily dose across records</td></tr>
+  <tr><td><code>max_daily_dose</code></td><td>Maximum daily dose across records</td></tr>
+  <tr><td><code>mean_daily_dose</code> <span class="badge badge-new">v0.1.3</span></td><td>Duration-weighted mean: <code>sum(dose_i × days_i) / sum(days_i)</code></td></tr>
 </table>
 </div>
 
@@ -241,10 +267,21 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
                          "High (20-40mg)", "Very High (>40mg)")
 )</div>
 
+<h3>What is a matched episode?</h3>
 <p>
-  Matches computed episodes to gold-standard episodes using a date-overlap join
-  (any overlap ≥ <code>min_overlap_days</code>). For each gold episode the
-  computed episode with the most overlap is selected.
+  The comparison table has <strong>one row per gold-standard episode</strong>.
+  A gold episode is <strong>matched</strong> when at least one computed episode
+  for the same patient overlaps it by ≥ <code>min_overlap_days</code> calendar
+  days (default: 1). When multiple computed episodes overlap the same gold
+  episode, the one with the <strong>most overlap days</strong> is selected and
+  its dose is used for the comparison. Unmatched gold episodes have
+  <code>computed_dose = NA</code> and are counted as uncovered in
+  <code>coverage_pct</code>.
+</p>
+<p>
+  The total gold episode count (<code>n_gold_periods</code>) and matched count
+  (<code>n_matched_periods</code>) are always reported in <code>$summary</code>,
+  regardless of which patients overlap between the computed and gold sets.
 </p>
 
 <h3>Key parameters</h3>

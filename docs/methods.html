@@ -251,33 +251,43 @@ OMOP drug_exposure (all drugs, all routes)
   by route and drug name.
 </p>
 
-<h3>Parsing hierarchy</h3>
+<h3>Parsing pipeline</h3>
+<p>Each record's SIG string passes through the following steps in order:</p>
 <ol>
-  <li><strong>Flag detection</strong> — free-text ("as directed"), taper language, PRN ("as needed")</li>
-  <li><strong>Tablet count</strong> — "2 tablets", "2 tabs", "2 caps", etc.</li>
-  <li><strong>Frequency</strong> — QD/daily/once daily/nightly/every evening/Once Oral (1×), BID/twice daily (2×), TID (3×), QID (4×), QOD (0.5×), q6h, q8h, q12h. When no tablet count appears in the SIG, <code>tablets</code> defaults to 1. <span class="badge badge-new">v0.1.9</span></li>
-  <li><strong>mg extraction</strong> (priority order):
+  <li><strong>Normalise</strong> — lowercase, collapse whitespace; translate English/Spanish number words to digits ("two" → 2, "dos" → 2); strip pure-word parentheticals like <code>(oral)</code> while preserving <code>(10 mg)</code>.</li>
+  <li><strong>Flag detection</strong> — free-text ("as directed", "per physician"), taper ("taper", "decrease", "then X mg"), PRN ("as needed").</li>
+  <li><strong>Tablet count</strong> — regex for "N tablets / tabs / pills / caps".</li>
+  <li><strong>Frequency extraction</strong> — 11 priority phases evaluated in order:
     <ol type="a">
-      <li><code>(X mg total)</code> — explicit daily total in parentheses</li>
-      <li><code>(X mg per dose)</code> — per-administration total</li>
-      <li><code>(X mg)</code> — plain parenthetical; multiplied by tablet count if known</li>
-      <li><code>X mg</code> — bare mg anywhere in string</li>
-      <li><span class="badge badge-new">v0.1.1</span> <strong>Strength fallback</strong> — when no mg in SIG: use <code>amount_value</code> (from <code>drug_strength</code> JOIN), then mg from <code>drug_concept_name</code> or <code>drug_source_value</code></li>
+      <li>every N hours / qNh → 24/N per day</li>
+      <li>N times a day / "twice daily" → N per day</li>
+      <li>Latin abbreviations: QID = 4, TID = 3, BID = 2</li>
+      <li>Once-daily keywords: QD, daily, every day, every morning, every 24 hours</li>
+      <li>Every other day / QOD / alternate day → 0.5 per day</li>
+      <li>every N days / qNd → 1/N per day</li>
+      <li>N times per week / twice weekly → N/7 per day</li>
+      <li>every N weeks → 1/(N×7) per day</li>
+      <li>Once weekly / q7d / weekly → 1/7 per day</li>
+      <li>Monthly / q30d → 1/30 per day</li>
+      <li>Remaining once-daily synonyms: nightly, every evening, "once oral", "by mouth" with no other frequency cue</li>
+    </ol>
+    When no tablet count appears in the SIG, <code>tablets</code> defaults to 1. <span class="badge badge-new">v0.1.9</span>
+  </li>
+  <li><strong>mg extraction</strong> — 5 sources evaluated in priority order:
+    <ol type="a">
+      <li><code>(X mg total)</code> — explicit daily total in parentheses → used directly</li>
+      <li><code>(X mg per dose)</code> — per-administration total → not multiplied by tablet count</li>
+      <li><code>(X mg)</code> — plain parenthetical → per-tablet strength × tablet count</li>
+      <li><code>X mg/day</code> / <code>X mg per day</code> — explicit daily total → used directly</li>
+      <li>Bare <code>X mg</code> — per-tablet strength × tablet count</li>
     </ol>
   </li>
-  <li><strong>Daily dose</strong> = <code>mg_per_admin × freq_per_day</code></li>
-  <li><strong>Status</strong>: <code>"free_text"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"ok"</code>, <code>"no_parse"</code>, <code>"empty"</code></li>
+  <li><strong>Daily dose</strong> = <code>mg_total</code> or <code>mg_per_day</code> (direct), otherwise <code>mg_per_admin × freq_per_day</code>.</li>
+  <li><span class="badge badge-new">v0.1.1</span> <strong>Strength fallback</strong> — records with freq but no mg use <code>amount_value</code> (unit-checked: mg only) then mg parsed from <code>drug_concept_name</code>. Promotes <code>"no_parse"</code> → <code>"ok"</code> for the common OMOP pattern where the SIG says "take 1 tablet daily" but the dose lives in <code>drug_strength</code>.</li>
+  <li><strong>Structural fallback</strong> — records still NA after SIG parsing fall back to Baseline M1 (original daily dose field), M3 (actual duration), and M4 (quantity/days_supply). This guarantees NLP coverage ≥ Baseline. These records carry <code>parsed_status = "fallback_&lt;method&gt;"</code>.</li>
+  <li><strong>Plausibility cap</strong> — doses &gt; <code>max_daily_dose_mg</code> (default 2000) are set to NA with <code>parsed_status = "implausible"</code> and a warning.</li>
+  <li><strong>Status assigned</strong>: <code>"free_text"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"ok"</code>, <code>"fallback_original"</code>, <code>"fallback_actual_duration"</code>, <code>"fallback_supply_based"</code>, <code>"no_parse"</code>, <code>"empty"</code>, <code>"implausible"</code>.</li>
 </ol>
-
-<div class="callout callout-note">
-  <strong>Strength fallback (v0.1.1)</strong>
-  In live OMOP data the <code>sig</code> field typically contains administration
-  instructions without a dose amount (e.g. "take 1 tablet daily"). The drug
-  strength lives in <code>drug_strength.amount_value</code>, already fetched by
-  the SQL query. The NLP pipeline uses this as a per-tablet strength fallback,
-  promoting records from <code>"no_parse"</code> to <code>"ok"</code> when freq
-  was parseable from the SIG.
-</div>
 
 <h3>Example</h3>
 <pre><code>nlp_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp</span>(drug_df)
