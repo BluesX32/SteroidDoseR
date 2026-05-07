@@ -85,12 +85,11 @@ STEROID_CONCEPT_IDS <- as.integer(readr::read_csv(
 # ---------------------------------------------------------------------------
 if (!USE_SYNTHETIC) {
 
-  cdm_schema   <- "your_cdm_schema"    # e.g. "my_db.dbo" or "catalog.schema"
-  vocab_schema <- "your_vocab_schema"
-
   # ── Option B: DatabaseConnector (SQL Server, PostgreSQL, Redshift, Snowflake,
   #              BigQuery, Databricks/Spark, and more — OHDSI standard)
   # Required packages: DatabaseConnector, SqlRender
+  # cdm_schema   <- "database.dbo"   # SQL Server format; "schema" for PostgreSQL
+  # vocab_schema <- "database.dbo"
   # connectionDetails <- DatabaseConnector::createConnectionDetails(
   #   dbms             = "sql server",   # "postgresql", "redshift", "spark", ...
   #   connectionString = "",
@@ -101,11 +100,17 @@ if (!USE_SYNTHETIC) {
   # ── Option C: DBI / odbc  (Databricks Simba Spark driver or any ODBC source)
   # Required packages: DBI, odbc, SqlRender
   # Driver download: https://www.databricks.com/spark/odbc-drivers-download
+  # Databricks Unity Catalog requires three-part names (catalog.schema.table).
+  # Set cdm_schema as "catalog.schema" so the rendered SQL becomes
+  # catalog.schema.table — using only "schema" produces a two-part name that
+  # Unity Catalog cannot resolve.
   # library(DBI); library(odbc)
-  # DB_DIALECT <- "spark"   # SqlRender targetDialect: "spark", "postgresql", ...
-  # host       <- ""        # e.g. "adb-1234567890.azuredatabricks.net"
-  # http_path  <- ""        # Settings > SQL Warehouse > Connection details
-  # token      <- ""        # Personal Access Token
+  # DB_DIALECT   <- "spark"              # SqlRender targetDialect
+  # cdm_schema   <- "catalog.schema"     # e.g. "hive_metastore.my_omop_cdm"
+  # vocab_schema <- "catalog.schema"     # often the same as cdm_schema
+  # host         <- ""                   # workspace URL hostname
+  # http_path    <- ""                   # Settings > SQL Warehouse > Connection details
+  # token        <- ""                   # Personal Access Token
   # conn <- DBI::dbConnect(
   #   odbc::odbc(),
   #   Driver          = "Simba Spark ODBC Driver",
