@@ -141,20 +141,63 @@
 
 <div class="fn-sig">build_episodes(
   drug_df,
-  id_col    = "person_id",
-  drug_col  = "drug_name_std",
-  start_col = "drug_exposure_start_date",
-  end_col   = "drug_exposure_end_date",
-  dose_col  = "daily_dose_mg_imputed",
-  gap_days  = 30L
+  id_col         = "person_id",
+  drug_col       = "drug_name_std",
+  start_col      = "drug_exposure_start_date",
+  end_col        = "drug_exposure_end_date",
+  dose_col       = "daily_dose_mg_imputed",
+  gap_days       = 30L,
+  concurrent_agg = c("per_drug", "sum_all")
 )</div>
 
 <p>
   Merges overlapping or adjacent prescription records within a patient–drug
   group into continuous treatment episodes using OHDSI-standard gap-era logic
-  (equivalent to DrugUtilisation 30-day era). Each drug is tracked
+  (equivalent to DrugUtilisation 30-day era). The <code>concurrent_agg</code>
+  parameter controls how prescriptions of <em>different</em> steroids that
+  overlap in time are handled (see below).
+</p>
+
+<h3>Key parameters</h3>
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>gap_days</td><td>30L</td><td>Maximum gap in days between consecutive records still merged into the same episode (OHDSI standard).</td></tr>
+  <tr><td>concurrent_agg <span class="badge badge-new">v0.2.0</span></td><td>"per_drug"</td><td>
+    How to handle concurrent prescriptions of <em>different</em> steroids:<br>
+    <code>"per_drug"</code> — each drug tracked independently (one episode track per patient–drug pair).<br>
+    <code>"sum_all"</code> — day-expand all records, sum doses across all drugs per patient-day, then gap-bridge the daily totals. Returns one <code>drug_name_std = "total_steroids"</code> track per patient. Use with <code>dose_col = "pred_equiv_mg"</code> for cross-drug summation to be meaningful.
+  </td></tr>
+</table>
+</div>
+
+<h3>Concurrent dose handling</h3>
+<p>
+  By default (<code>concurrent_agg = "per_drug"</code>), each drug is tracked
   <strong>independently</strong> — concurrent prescriptions of different steroids
-  are not summed; each forms its own episode track.
+  appear as separate episode rows. This is the standard OHDSI approach.
+</p>
+<p>
+  When <code>concurrent_agg = "sum_all"</code>, the algorithm:
+</p>
+<ol>
+  <li>Day-expands every prescription record to one row per calendar day covered.</li>
+  <li>Sums all drug doses for the same patient on the same day (cross-drug total).</li>
+  <li>Gap-bridges the resulting daily-total series using the same 30-day era rule.</li>
+  <li>Returns one episode per patient with <code>drug_name_std = "total_steroids"</code> and dose statistics reflecting the combined daily burden.</li>
+</ol>
+<p>
+  <strong>Important:</strong> set <code>dose_col = "pred_equiv_mg"</code> before
+  calling <code>build_episodes()</code> when using <code>concurrent_agg = "sum_all"</code>.
+  Summing native drug doses across different steroids (e.g., prednisone 5 mg +
+  methylprednisolone 4 mg) is not comparable; prednisone-equivalent units put
+  all drugs on a common scale. If a different <code>dose_col</code> is supplied and
+  multiple drugs are present, a warning is emitted.
+</p>
+<p>
+  In <code>CodeToRun.R</code>, set the top-level config variable
+  <code>CONCURRENT_AGG &lt;- "per_drug"</code> (or <code>"sum_all"</code>) and all
+  three methods pick it up automatically.
 </p>
 
 <h3>Gap-bridging algorithm</h3>
@@ -215,6 +258,7 @@
   end_date         = NULL,
   sig_source       = "sig",
   gap_days         = 30L,
+  concurrent_agg   = c("per_drug", "sum_all"),
   equiv_table      = NULL,
   return_level     = c("episode", "exposure")
 )</div>
@@ -229,6 +273,7 @@
     <code>"nlp_first"</code> — run full NLP pass before baseline (NLP columns retained)<br>
     <code>"none"</code> — silently skip M2</td></tr>
   <tr><td>gap_days</td><td>30L</td><td>Gap threshold for episode building.</td></tr>
+  <tr><td>concurrent_agg <span class="badge badge-new">v0.2.0</span></td><td>"per_drug"</td><td>Passed to <code>build_episodes()</code>. <code>"per_drug"</code> = one track per drug; <code>"sum_all"</code> = sum all drugs per patient-day into a single <code>"total_steroids"</code> track.</td></tr>
   <tr><td>return_level</td><td>"episode"</td><td><code>"episode"</code> = one row per episode; <code>"exposure"</code> = one row per drug-exposure record</td></tr>
 </table>
 </div>

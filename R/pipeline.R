@@ -72,6 +72,12 @@ NULL
 #'   frame.
 #' @param gap_days `integer(1)`. Gap threshold for [build_episodes()]. Only
 #'   used when `return_level = "episode"`. Default: `30L`.
+#' @param concurrent_agg `character(1)`. Passed to [build_episodes()]. Controls
+#'   how concurrent prescriptions of different steroids on the same dates are
+#'   handled. `"per_drug"` (default) tracks each drug independently.
+#'   `"sum_all"` sums all drugs per patient-day and returns a single
+#'   `"total_steroids"` episode track. Requires `dose_col = "pred_equiv_mg"`
+#'   for cross-drug summation to be meaningful.
 #' @param equiv_table Optional custom equivalency table. Passed to
 #'   [convert_pred_equiv()]. Default `NULL` uses the built-in table.
 #' @param return_level `character(1)`. `"exposure"` returns one row per
@@ -105,12 +111,14 @@ run_pipeline <- function(connector_or_df,
                          end_date         = NULL,
                          sig_source       = "sig",
                          gap_days         = 30L,
+                         concurrent_agg   = c("per_drug", "sum_all"),
                          equiv_table      = NULL,
                          return_level     = c("episode", "exposure")) {
 
-  method       <- match.arg(method)
-  m2_sig_parse <- match.arg(m2_sig_parse)
-  return_level <- match.arg(return_level)
+  method         <- match.arg(method)
+  m2_sig_parse   <- match.arg(m2_sig_parse)
+  concurrent_agg <- match.arg(concurrent_agg)
+  return_level   <- match.arg(return_level)
 
   # ------------------------------------------------------------------
   # Step 1: Fetch / validate drug_df
@@ -186,8 +194,9 @@ run_pipeline <- function(connector_or_df,
 
   build_episodes(
     drug_df,
-    end_col  = end_col_arg,
-    dose_col = final_dose,
-    gap_days = gap_days
+    end_col        = end_col_arg,
+    dose_col       = final_dose,
+    gap_days       = gap_days,
+    concurrent_agg = concurrent_agg
   )
 }

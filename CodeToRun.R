@@ -69,6 +69,12 @@ DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
+# Concurrent dose aggregation mode for build_episodes() / run_pipeline().
+#   "per_drug"  — each drug forms its own episode track (default, current behaviour)
+#   "sum_all"   — sum all steroid doses per patient-day (pred-equiv) into one
+#                 "total_steroids" track before gap-bridging
+CONCURRENT_AGG <- "per_drug"
+
 # Optional patient filter — set to an integer vector of person_ids to restrict
 # extraction to a specific cohort, or leave NULL to include all patients in DB.
 COHORT_PERSON_IDS <- NULL
@@ -466,10 +472,11 @@ print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg
 # Person-level: run pipeline to get episodes, then show trajectories
 baseline_episodes <- run_pipeline(
   drug_df,
-  method       = "baseline",
-  m2_sig_parse = "warn",
-  return_level = "episode",
-  gap_days     = GAP_DAYS
+  method         = "baseline",
+  m2_sig_parse   = "warn",
+  return_level   = "episode",
+  gap_days       = GAP_DAYS,
+  concurrent_agg = CONCURRENT_AGG
 )
 
 show_person_trajectories(baseline_episodes, "Baseline")
@@ -497,9 +504,10 @@ nlp_df |>
 # Person-level
 nlp_episodes <- run_pipeline(
   drug_df,
-  method       = "nlp",
-  return_level = "episode",
-  gap_days     = GAP_DAYS
+  method         = "nlp",
+  return_level   = "episode",
+  gap_days       = GAP_DAYS,
+  concurrent_agg = CONCURRENT_AGG
 )
 
 show_person_trajectories(nlp_episodes, "NLP")
@@ -539,9 +547,10 @@ adv_nlp_df <- convert_pred_equiv(
 )
 adv_nlp_episodes <- build_episodes(
   adv_nlp_df,
-  end_col  = "drug_exposure_end_date",
-  dose_col = "pred_equiv_mg",
-  gap_days = GAP_DAYS
+  end_col        = "drug_exposure_end_date",
+  dose_col       = "pred_equiv_mg",
+  gap_days       = GAP_DAYS,
+  concurrent_agg = CONCURRENT_AGG
 )
 
 show_person_trajectories(adv_nlp_episodes, "Advanced NLP")
