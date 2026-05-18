@@ -83,6 +83,32 @@ test_that("M2 auto-parse fires when tablets/freq_per_day columns exist but are a
   expect_equal(out$imputation_method, "tablets_freq")
 })
 
+# Regression: parse_sig() adds daily_dose_mg; dd_col must be snapshotted BEFORE
+# parse_sig() runs so the NLP column is not mistaken for an "original" dose.
+# Root cause: dd_col detection previously ran after the parse_sig() call, so
+# when the original data had no daily_dose/daily_dose_mg and auto-parsing fired,
+# the NLP-derived daily_dose_mg was picked up as M1 ("original"), stealing credit
+# from M2 ("tablets_freq") and misattributing the method.
+test_that("M2 auto-parse: imputation_method is 'tablets_freq', not 'original'", {
+  df <- tibble::tibble(
+    person_id                = 1L,
+    drug_source_value        = "PREDNISONE 5 MG TABLET",
+    route_concept_name       = "Oral",
+    amount_value             = 5,
+    quantity                 = NA_real_,
+    days_supply              = NA_real_,
+    # no daily_dose or daily_dose_mg column -- simulates plain CDM extract
+    sig                      = "Take 2 tablets daily",
+    drug_exposure_start_date = "2023-01-01",
+    drug_exposure_end_date   = "2023-03-31"
+  )
+  out <- calc_daily_dose_baseline(df, m2_sig_parse = "auto")
+  # NLP dose (10 mg) must be credited to tablets_freq (M2), not original (M1).
+  expect_equal(out$daily_dose_mg_imputed, 10)
+  expect_equal(out$imputation_method, "tablets_freq")
+  expect_true(is.na(out$dose_from_original))  # M1 must NOT fire
+})
+
 # Regression: sig_source = "drug_source_value" must work on the data-frame path.
 # Root cause: .resolve_drug_df() returned plain data frames immediately without
 # calling .apply_sig_source(), so sig_source was silently ignored and

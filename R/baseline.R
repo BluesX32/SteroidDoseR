@@ -258,6 +258,17 @@ calc_daily_dose_baseline <- function(connector_or_df,
   has_tab_vals  <- has_tab_col  && any(!is.na(drug_df[["tablets"]]))
   has_freq_vals <- has_freq_col && any(!is.na(drug_df[["freq_per_day"]]))
 
+  # Accept both daily_dose (package convention) and daily_dose_mg (Version2).
+  # MUST be evaluated BEFORE the parse_sig() call below: parse_sig() appends a
+  # daily_dose_mg column (NLP dose) via bind_cols(). If dd_col were detected
+  # after that call and the original data had no daily_dose/daily_dose_mg, the
+  # NLP-derived column would be mistaken for a pre-existing "original" dose,
+  # causing M1 to fire with NLP values and mislabel them as imputation_method =
+  # "original".
+  dd_col <- intersect(c("daily_dose", "daily_dose_mg"), names(drug_df))
+  dd_col <- if (length(dd_col) > 0L) dd_col[[1L]] else NA_character_
+  has_dd <- !is.na(dd_col)
+
   # --- M2 SIG-parse guard -------------------------------------------------------
   # Trigger when tablets/freq_per_day have no usable values AND sig is present.
   if ("tablets_freq" %in% methods && !has_tab_vals && !has_freq_vals) {
@@ -285,10 +296,6 @@ calc_daily_dose_baseline <- function(connector_or_df,
       # "none" -> silent skip; no action needed
     }
   }
-  # Accept both daily_dose (package convention) and daily_dose_mg (Version2).
-  dd_col <- intersect(c("daily_dose", "daily_dose_mg"), names(drug_df))
-  dd_col <- if (length(dd_col) > 0L) dd_col[[1L]] else NA_character_
-  has_dd <- !is.na(dd_col)
 
   drug_df <- drug_df |>
     dplyr::mutate(
