@@ -283,10 +283,10 @@ OMOP drug_exposure (all drugs, all routes)
     </ol>
   </li>
   <li><strong>Daily dose</strong> = <code>mg_total</code> or <code>mg_per_day</code> (direct), otherwise <code>mg_per_admin × freq_per_day</code>.</li>
-  <li><span class="badge badge-new">v0.1.1</span> <strong>Strength fallback</strong> — records with freq but no mg use <code>amount_value</code> (unit-checked: mg only) then mg parsed from <code>drug_concept_name</code>. Promotes <code>"no_parse"</code> → <code>"ok"</code> for the common OMOP pattern where the SIG says "take 1 tablet daily" but the dose lives in <code>drug_strength</code>.</li>
-  <li><strong>Structural fallback</strong> — records still NA after SIG parsing fall back to Baseline M1 (original daily dose field), M3 (actual duration), and M4 (quantity/days_supply). This guarantees NLP coverage ≥ Baseline. These records carry <code>parsed_status = "fallback_&lt;method&gt;"</code>.</li>
+  <li><span class="badge badge-new">v0.1.1</span> <span class="badge badge-fix">v0.4.0</span> <strong>Strength fallback</strong> — records with freq but no mg use <code>amount_value</code> (unit-checked: <code>amount_unit_concept_id</code> must be 8576 mg, 0, or absent; mcg/g values are discarded) then mg parsed from <code>drug_concept_name</code>. Promotes <code>"no_parse"</code> → <code>"ok"</code> for the common OMOP pattern where the SIG says "take 1 tablet daily" but the dose lives in <code>drug_strength</code>.</li>
+  <li><span class="badge badge-fix">v0.4.0</span> <strong>Structural fallback</strong> — <em>all</em> records where <code>daily_dose_mg</code> is still NA — including <code>"prn"</code>, <code>"taper"</code>, and <code>"free_text"</code> — fall back to Baseline M1 (original daily dose field), M3 (actual duration), and M4 (quantity/days_supply). This guarantees NLP coverage ≥ Baseline. When baseline succeeds, the record carries <code>parsed_status = "fallback_&lt;method&gt;"</code>. When baseline also fails, the original NLP status (<code>"prn"</code>, <code>"taper"</code>, etc.) is preserved so callers know which category was unresolved.</li>
   <li><strong>Plausibility cap</strong> — doses &gt; <code>max_daily_dose_mg</code> (default 2000) are set to NA with <code>parsed_status = "implausible"</code> and a warning.</li>
-  <li><strong>Status assigned</strong>: <code>"free_text"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"ok"</code>, <code>"fallback_original"</code>, <code>"fallback_actual_duration"</code>, <code>"fallback_supply_based"</code>, <code>"no_parse"</code>, <code>"empty"</code>, <code>"implausible"</code>.</li>
+  <li><strong>Status assigned</strong>: <code>"ok"</code>, <code>"prn"</code>, <code>"taper"</code>, <code>"free_text"</code>, <code>"no_parse"</code>, <code>"empty"</code>, <code>"fallback_original"</code>, <code>"fallback_actual_duration"</code>, <code>"fallback_supply_based"</code>, <code>"implausible"</code>.</li>
 </ol>
 
 <h3>Example</h3>
@@ -354,7 +354,7 @@ nlp_df |>
   <tr><td><code>prn_flag</code></td><td>TRUE when "as needed" detected</td></tr>
   <tr><td><code>free_text_flag</code></td><td>TRUE when "as directed" or unstructured SIG</td></tr>
   <tr><td><code>daily_dose_mg</code></td><td>Computed daily dose in mg</td></tr>
-  <tr><td><code>parsed_status</code></td><td>One of: <code>"ok"</code>, <code>"taper"</code>, <code>"prn"</code>, <code>"free_text"</code>, <code>"no_parse"</code>, <code>"empty"</code></td></tr>
+  <tr><td><code>parsed_status</code></td><td><code>"ok"</code> — dose successfully computed from SIG; <code>"prn"</code> / <code>"taper"</code> / <code>"free_text"</code> — SIG flag prevented direct dose computation; <code>"no_parse"</code> — SIG non-empty but no rule matched; <code>"empty"</code> — SIG absent or blank; <code>"fallback_original"</code> / <code>"fallback_actual_duration"</code> / <code>"fallback_supply_based"</code> — structural baseline fallback succeeded; <code>"implausible"</code> — dose exceeded plausibility cap</td></tr>
 </table>
 </div>
 
@@ -369,14 +369,17 @@ nlp_df |>
   <code>build_episodes()</code>.
 </p>
 
-<h3>What is new</h3>
+<h3>What is new over standard NLP</h3>
+<div class="callout callout-note">
+  <strong>Shared components</strong>
+  The frequency extractor (<code>.extract_freq()</code>), mg hierarchy, flag detection, and structural fallback are
+  <em>identical</em> in both NLP and Advanced NLP. All frequency patterns — including weekly, monthly,
+  every-N-days, and every-N-hours — are available in both methods.
+</div>
+<p>Advanced NLP adds two things the standard parser cannot handle:</p>
 <ul>
-  <li><strong>Word-form tablet counts</strong> — <code>"one tablet"</code>, <code>"two tabs"</code>, <code>"half a tablet"</code>, <code>"1/2 tab"</code>, <code>"½ cap"</code>, compound forms like <code>"one and a half tablets"</code></li>
-  <li><strong>Weekly frequencies</strong> — <code>"once weekly"</code>, <code>"twice a week"</code>, <code>"3 times a week"</code>, <code>"q7d"</code>, <code>"every 7 days"</code> (→ 1/7 per day)</li>
-  <li><strong>Monthly frequencies</strong> — <code>"monthly"</code>, <code>"once a month"</code>, <code>"q30d"</code> (→ 1/30 per day)</li>
-  <li><strong>Every-N-days</strong> — <code>"every 3 days"</code>, <code>"q48h"</code> (→ 0.5/day), <code>"q72h"</code> (→ 1/3 per day)</li>
-  <li><strong>Sub-daily every-N-hours</strong> — <code>"every 4 hours"</code> / <code>"q4h"</code> (→ 6/day)</li>
-  <li><strong>Taper schedule decomposition</strong> — when <code>expand_tapers = TRUE</code>, taper records are expanded into per-step rows</li>
+  <li><strong>Half-tablet and fractional counts</strong> — <code>"half a tablet"</code>, <code>"1/2 tab"</code>, <code>"½ cap"</code>, compound forms like <code>"2 and a half tablets"</code> (→ 2.5), and <code>"a tablet"</code> as a synonym for 1. The standard parser requires an explicit digit (e.g., <code>"2 tablets"</code>); English number words (<code>"one"</code>, <code>"two"</code>, …) are pre-processed to digits by both parsers.</li>
+  <li><strong>Taper schedule decomposition</strong> — when <code>expand_tapers = TRUE</code>, taper records are expanded into one row per dose step, each with its own <code>daily_dose_mg</code>, <code>taper_step</code>, <code>step_start_day</code>, and <code>step_end_day</code>. Two strategies are attempted: explicit multi-step (<em>"X mg for N weeks, then Y mg…"</em>) and decrement pattern (<em>"start 60 mg then decrease by 10 mg every week"</em>).</li>
 </ul>
 
 <h3>Taper schedule decomposition</h3>
@@ -496,19 +499,24 @@ adv_df |>
 <p>Drop-in replacements for the standard parsers with the extended vocabulary (word-forms, weekly/monthly, every-N patterns). Return identical output columns.</p>
 
 <h3>Frequency patterns recognised</h3>
+<p>All patterns below are recognised by <em>both</em> standard and advanced NLP — they share the same
+<code>.extract_freq()</code> function. The only parsing differences between the two methods are in
+tablet extraction (half-tablet forms) and taper decomposition.</p>
 <div class="table-wrap">
 <table>
-  <tr><th>SIG text</th><th>freq_per_day</th><th>Source</th></tr>
-  <tr><td>daily, QD, once daily, every day, every morning, QAM, every 24 hours</td><td>1</td><td>Standard</td></tr>
-  <tr><td>Once Oral, nightly, every evening <span class="badge badge-new">v0.1.9</span></td><td>1</td><td>Standard</td></tr>
-  <tr><td>BID, twice daily, two times daily, Q12H, every 12 hours</td><td>2</td><td>Standard</td></tr>
-  <tr><td>TID, three times daily, Q8H, every 8 hours</td><td>3</td><td>Standard</td></tr>
-  <tr><td>QID, four times daily, Q6H, every 6 hours</td><td>4</td><td>Standard</td></tr>
-  <tr><td>every other day, QOD</td><td>0.5</td><td>Standard</td></tr>
-  <tr><td>once weekly, twice a week, 3 times a week, q7d, every 7 days</td><td>1/7 – 3/7</td><td>Advanced only</td></tr>
-  <tr><td>monthly, once a month, q30d</td><td>1/30</td><td>Advanced only</td></tr>
-  <tr><td>q48h, every 3 days, q72h, every 4 days</td><td>0.5, 1/3, 0.25</td><td>Advanced only</td></tr>
-  <tr><td>every 4 hours, q4h</td><td>6</td><td>Advanced only</td></tr>
+  <tr><th>SIG text</th><th>freq_per_day</th></tr>
+  <tr><td>daily, QD, once daily, every day, every morning, QAM, every 24 hours</td><td>1</td></tr>
+  <tr><td>Once Oral, nightly, every evening <span class="badge badge-new">v0.1.9</span></td><td>1</td></tr>
+  <tr><td>by mouth / PO / orally (when no other frequency cue present)</td><td>1</td></tr>
+  <tr><td>BID, twice daily, two times daily, Q12H, every 12 hours</td><td>2</td></tr>
+  <tr><td>TID, three times daily, Q8H, every 8 hours</td><td>3</td></tr>
+  <tr><td>QID, four times daily, Q6H, every 6 hours</td><td>4</td></tr>
+  <tr><td>every N hours / qNh (any N)</td><td>24 / N</td></tr>
+  <tr><td>every other day, QOD, alternate day</td><td>0.5</td></tr>
+  <tr><td>every N days / qNd (any N)</td><td>1 / N</td></tr>
+  <tr><td>once weekly, twice a week, N times a week, q7d, every 7 days</td><td>1/7 – N/7</td></tr>
+  <tr><td>every N weeks</td><td>1 / (N × 7)</td></tr>
+  <tr><td>monthly, once a month, q30d, every 30 days</td><td>1/30</td></tr>
 </table>
 </div>
 

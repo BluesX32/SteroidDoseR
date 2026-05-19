@@ -164,7 +164,7 @@ adv_nlp_df  <- calc_daily_dose_nlp_advanced(drug_df, expand_tapers = FALSE)
 | `daily_dose_mg_imputed` | Best estimated daily dose (Baseline) |
 | `daily_dose_mg` | Estimated daily dose (NLP / Advanced NLP) |
 | `imputation_method` | Which cascade step succeeded: `original`, `tablets_freq`, `actual_duration`, `supply_based`, `missing` (Baseline) |
-| `parsed_status` | `"ok"`, `"no_parse"`, `"taper"` (NLP methods) |
+| `parsed_status` | NLP result: `"ok"`, `"prn"`, `"taper"`, `"free_text"`, `"no_parse"`, `"empty"`, `"fallback_actual_duration"`, `"fallback_supply_based"`, `"implausible"` |
 | `sig` | Original free-text SIG string (useful for diagnosing parse failures) |
 
 ### 4. Convert to prednisone-equivalent
@@ -285,8 +285,8 @@ ggplot2::ggsave("dose_review.pdf", p, width = 12, height = 8)
 | Method | Function | Approach | Best when |
 |--------|----------|----------|-----------|
 | **Baseline** | `calc_daily_dose_baseline()` | 4-step cascade (M1 original dose → M2 tablets×freq×strength → M3 quantity/duration → M4 quantity/days_supply) | Structured OMOP fields well-populated; SIG absent or unreliable |
-| **NLP** | `calc_daily_dose_nlp()` | Regex SIG parsing; frequency and tablet-count extraction; strength fallback chain | `sig` column consistently populated |
-| **Advanced NLP** | `calc_daily_dose_nlp_advanced()` | NLP + word-form counts, weekly/monthly frequencies, taper decomposition | Taper SIGs that need per-step expansion |
+| **NLP** | `calc_daily_dose_nlp()` | Regex SIG parsing; 11-phase frequency extraction; strength fallback from `amount_value`/drug name (unit-checked); structural M1/M3/M4 fallback for any unresolved record including prn/taper/free_text | `sig` column consistently populated |
+| **Advanced NLP** | `calc_daily_dose_nlp_advanced()` | Same as NLP + half-tablet forms (`1/2`, `½`, "half a tablet") and taper schedule decomposition into per-step rows. Frequency and mg extraction are identical to standard NLP. | Taper SIGs where per-step dose curves matter |
 
 All methods apply `filter_oral = TRUE` by default and cap doses at `max_daily_dose_mg = 2000`.
 
