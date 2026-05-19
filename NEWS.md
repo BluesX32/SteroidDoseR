@@ -7,6 +7,26 @@
   redirected network folder; conda's libmamba solver fails to lock repodata
   cache files on SMB shares (errno 22 / `EINVAL`).  Using a guaranteed-local
   path avoids the lock entirely.
+
+* **NLP structural fallback now covers prn/taper/free_text records** (`nlp.R`,
+  `nlp_advanced.R`, BUG-10): the baseline M1/M3/M4 fallback previously only
+  fired for `no_parse` and `empty` records, leaving PRN, taper, and free-text
+  SIGs as NA even though structural OMOP fields (quantity, days_supply,
+  actual_duration) could yield a dose. Fixed by extending the fallback to all
+  records with `is.na(daily_dose_mg)`, matching how baseline handles these cases.
+  Original NLP status is preserved when baseline also fails.
+
+* **NLP strength fallback now checks `amount_unit_concept_id`** (`nlp.R`,
+  `nlp_advanced.R`, BUG-11): `amount_value` was used without a unit guard.
+  If the unit was mcg (9655) or g (8504), the value was treated as mg, causing
+  a 1000× or 0.001× dose error. Added the same unit check as baseline
+  (only accept concept 8576 or absent/unknown).
+
+* **Baseline `m2_sig_parse` changed from `"warn"` to `"auto"` in `CodeToRun.R`**:
+  the production call and `run_pipeline()` call both had `m2_sig_parse = "warn"`,
+  which skips SIG-based M2 imputation even when the `sig` column has values.
+  Changed to `"auto"` to enable the 93 % M2 coverage observed in the funnel analysis.
+
 =======
 # SteroidDoseR 0.4.1
 

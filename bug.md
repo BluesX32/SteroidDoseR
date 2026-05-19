@@ -99,6 +99,35 @@ Fixed in v0.1.6: concept ID `0` is now treated identically to `NA` (unknown unit
 and `amount_value` is accepted as milligrams in that case, matching the behaviour
 sites that have not mapped the unit concept.
 
+### BUG-10 NLP structural fallback skipped prn/taper/free_text records ✅ FIXED
+
+`calc_daily_dose_nlp()` and `calc_daily_dose_nlp_advanced()` ran the structural
+baseline fallback (M1/M3/M4) only for records with `parsed_status %in%
+c("no_parse", "empty")`. Records flagged as `"prn"`, `"taper"`, or
+`"free_text"` where SIG parsing could not yield a `daily_dose_mg` were excluded
+from the fallback and left as `NA`.
+
+Baseline always continues through the M3/M4 cascade regardless of PRN/taper
+status (it uses quantity × strength / days_supply or actual_duration), so NLP
+was producing systematically lower coverage than baseline for those categories.
+
+Fixed: `still_na <- is.na(result$daily_dose_mg)` — the structural fallback now
+fires for any record whose dose is still unresolved after SIG parsing, regardless
+of parsed_status. When baseline also fails, the original NLP status (e.g., `"prn"`,
+`"taper"`) is preserved so callers know which category was unresolved.
+
+### BUG-11 NLP strength fallback used `amount_value` without unit check ✅ FIXED
+
+The strength fallback in `calc_daily_dose_nlp()` and `calc_daily_dose_nlp_advanced()`
+called `safe_as_numeric(result$amount_value)` without verifying
+`amount_unit_concept_id == 8576`. Baseline has a unit guard that discards
+microgram (9655) and gram (8504) values. Without the guard, NLP could treat
+a mcg-strength value as mg, producing a 1000× dose error.
+
+Fixed: same unit guard as baseline — if `amount_unit_concept_id` is present and
+is not 8576 (mg), `amount_value` is set to `NA` and the string-extraction fallback
+is used instead.
+
 ## connector / SQL
 
 ### BUG-7 SQL template not found when package is loaded via devtools::load_all() or stale install ✅ FIXED

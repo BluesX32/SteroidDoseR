@@ -647,9 +647,13 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
   # look up the per-tablet strength in amount_value or the drug concept name.
   has_no_mg <- result$parsed_status == "no_parse" & is.na(result$mg_per_admin)
   if (any(has_no_mg, na.rm = TRUE)) {
-    av <- if ("amount_value" %in% names(result))
-      safe_as_numeric(result$amount_value)
-    else
+    av <- if ("amount_value" %in% names(result)) {
+      raw_av <- safe_as_numeric(result$amount_value)
+      if ("amount_unit_concept_id" %in% names(result)) {
+        uid <- safe_as_numeric(result$amount_unit_concept_id)
+        dplyr::if_else(!is.na(uid) & uid != 8576L, NA_real_, raw_av)
+      } else raw_av
+    } else
       rep(NA_real_, nrow(result))
 
     name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(result))
@@ -721,9 +725,12 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
   }
 
   # --- structural fallback: baseline M1/M3/M4 for records still NA ----------
-  still_na <- is.na(result$daily_dose_mg) &
-              result$parsed_status %in% c("no_parse", "empty")
+  # Covers no_parse, empty, prn, taper, free_text -- any record where SIG
+  # parsing did not yield a computable dose. Preserves the original NLP status
+  # when baseline also fails, so callers know which NLP category was unresolved.
+  still_na <- is.na(result$daily_dose_mg)
   if (any(still_na, na.rm = TRUE)) {
+    orig_status <- result$parsed_status[still_na]
     bl <- calc_daily_dose_baseline(
       result[still_na, ],
       filter_oral       = FALSE,
@@ -735,7 +742,7 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
     )
     result$daily_dose_mg[still_na] <- bl$daily_dose_mg_imputed
     fb_label <- paste0("fallback_", bl$imputation_method)
-    fb_label[bl$imputation_method == "missing"] <- "no_parse"
+    fb_label[bl$imputation_method == "missing"] <- orig_status[bl$imputation_method == "missing"]
     result$parsed_status[still_na] <- fb_label
   }
 

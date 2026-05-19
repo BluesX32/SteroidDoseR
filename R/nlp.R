@@ -478,9 +478,13 @@ calc_daily_dose_nlp <- function(connector_or_df,
   #     stored in drug_strength.amount_value and drug_concept_name, not in sig.
   has_no_mg <- result$parsed_status == "no_parse" & is.na(result$mg_per_admin)
   if (any(has_no_mg, na.rm = TRUE)) {
-    av <- if ("amount_value" %in% names(result))
-      safe_as_numeric(result$amount_value)
-    else
+    av <- if ("amount_value" %in% names(result)) {
+      raw_av <- safe_as_numeric(result$amount_value)
+      if ("amount_unit_concept_id" %in% names(result)) {
+        uid <- safe_as_numeric(result$amount_unit_concept_id)
+        dplyr::if_else(!is.na(uid) & uid != 8576L, NA_real_, raw_av)
+      } else raw_av
+    } else
       rep(NA_real_, nrow(result))
 
     name_col <- intersect(c("drug_concept_name", "drug_source_value"), names(result))
@@ -527,12 +531,13 @@ calc_daily_dose_nlp <- function(connector_or_df,
   }
 
   # --- structural fallback: baseline M1/M3/M4 for records still NA -----------
-  # Guarantees NLP coverage >= baseline: anything computable from structured
+  # Guarantees NLP coverage >= baseline: any dose computable from structured
   # OMOP fields (original daily_dose, Burkard formula, quantity/days_supply)
-  # is carried through even when SIG parsing fails entirely.
-  still_na <- is.na(result$daily_dose_mg) &
-              result$parsed_status %in% c("no_parse", "empty")
+  # is carried through when SIG parsing fails OR yields prn/taper/free_text
+  # with no computable dose. Baseline applies the same cascade unconditionally.
+  still_na <- is.na(result$daily_dose_mg)
   if (any(still_na, na.rm = TRUE)) {
+    orig_status <- result$parsed_status[still_na]
     bl <- calc_daily_dose_baseline(
       result[still_na, ],
       filter_oral       = FALSE,   # already filtered above
@@ -543,9 +548,11 @@ calc_daily_dose_nlp <- function(connector_or_df,
       methods           = c("original", "actual_duration", "supply_based")
     )
     result$daily_dose_mg[still_na] <- bl$daily_dose_mg_imputed
-    # Label with which baseline method was used; keep "no_parse" for missing
+    # When baseline succeeds, label with the fallback method used.
+    # When baseline also fails, preserve the original NLP status so callers
+    # know whether parsing reached prn/taper/free_text or never parsed at all.
     fb_label <- paste0("fallback_", bl$imputation_method)
-    fb_label[bl$imputation_method == "missing"] <- "no_parse"
+    fb_label[bl$imputation_method == "missing"] <- orig_status[bl$imputation_method == "missing"]
     result$parsed_status[still_na] <- fb_label
   }
 
