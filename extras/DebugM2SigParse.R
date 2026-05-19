@@ -134,13 +134,118 @@ if (has_sig_col && exists("sig_present") && sig_present) {
     no_freq <- parsed_sample[is.na(parsed_sample$freq_per_day), ]
     for (s in head(no_freq$sig_raw, 10)) cat(sprintf("     '%s'\n", s))
   } else {
-    cat("\n  => freq_per_day is parseable for some rows.\n")
-    cat("     auto SHOULD give non-NA M2 for those rows.\n")
-    cat("     If results are still identical, re-install the package:\n")
-    cat("       devtools::install_local(getwd()); library(SteroidDoseR)\n")
+    cat(sprintf("\n  freq_per_day is parseable for %d rows.\n", n_have_freq))
+    cat("  Showing sample SIGs that DID yield a frequency:\n")
+    with_freq <- parsed_sample[!is.na(parsed_sample$freq_per_day), ]
+    sigs_with_freq <- sig_rows$sig[!is.na(parsed_sample$freq_per_day)]
+    for (i in seq_len(min(8L, length(sigs_with_freq)))) {
+      cat(sprintf("     sig='%s'  =>  freq=%.2f  tablets=%.0f\n",
+                  sigs_with_freq[i], with_freq$freq_per_day[i], with_freq$tablets[i]))
+    }
   }
   cat("\n")
 }
+
+# ---------------------------------------------------------------------------
+# [4b] strength_mg cross-check — the third leg of M2
+# ---------------------------------------------------------------------------
+# M2 = tablets * freq_per_day * strength_mg.  Even when freq_per_day is
+# parsed, a missing strength_mg silently kills M2.  strength_mg comes from
+# amount_value (unit-checked) or an mg pattern in drug_source_value — NOT
+# from the SIG text.  This section checks how many of the freq-parseable rows
+# actually have a usable strength_mg.
+cat("--- [4b] strength_mg availability for freq-parseable rows ---\n")
+
+if (has_sig_col && exists("sig_present") && sig_present) {
+  # Rebuild the same 200-row sample from [4]
+  sig_rows_4b <- drug_df[!is.na(drug_df$sig) & nchar(trimws(drug_df$sig)) > 0, ]
+  sig_rows_4b <- sig_rows_4b[seq_len(min(200L, nrow(sig_rows_4b))), ]
+
+  parsed_4b <- purrr::map_dfr(sig_rows_4b$sig, SteroidDoseR:::parse_sig_one)
+  freq_mask  <- !is.na(parsed_4b$freq_per_day)
+
+  # Replicate the strength_mg logic from baseline.R
+  av      <- if ("amount_value" %in% names(sig_rows_4b))
+               SteroidDoseR:::safe_as_numeric(sig_rows_4b$amount_value)
+             else rep(NA_real_, nrow(sig_rows_4b))
+  av_unit <- if ("amount_unit_concept_id" %in% names(sig_rows_4b))
+               sig_rows_4b$amount_unit_concept_id
+             else rep(NA_integer_, nrow(sig_rows_4b))
+  av_mg   <- dplyr::if_else(
+    is.na(av_unit) | as.integer(av_unit) == 0L | as.integer(av_unit) == 8576L,
+    av, NA_real_
+  )
+  sv      <- if ("drug_source_value" %in% names(sig_rows_4b))
+               sig_rows_4b$drug_source_value
+             else rep(NA_character_, nrow(sig_rows_4b))
+  str_from_source <- stringr::str_extract(
+    stringr::str_to_lower(as.character(sv)),
+    "(\\d+(?:\\.\\d+)?)\\s*(?:mg|MG)"
+  ) |> stringr::str_extract("\\d+(?:\\.\\d+)?") |> as.numeric()
+  strength_mg <- dplyr::coalesce(av_mg, str_from_source)
+
+  n_freq_rows        <- sum(freq_mask)
+  n_strength_ok      <- sum(!is.na(strength_mg[freq_mask]))
+  n_m2_computable    <- sum(!is.na(parsed_4b$freq_per_day[freq_mask]) &
+                             !is.na(strength_mg[freq_mask]))
+
+  cat(sprintf("  Rows with parseable freq_per_day:          %d\n", n_freq_rows))
+  cat(sprintf("  Of those, strength_mg non-NA:              %d\n", n_strength_ok))
+  cat(sprintf("  => M2 computable (freq AND strength both ok): %d\n\n", n_m2_computable))
+
+  # amount_value column details
+  cat("  amount_value column:\n")
+  if ("amount_value" %in% names(sig_rows_4b)) {
+    cat(sprintf("    non-NA:              %d / %d\n", sum(!is.na(av)), nrow(sig_rows_4b)))
+    cat(sprintf("    accepted as mg:      %d / %d\n", sum(!is.na(av_mg)), nrow(sig_rows_4b)))
+    if ("amount_unit_concept_id" %in% names(sig_rows_4b)) {
+      unit_tbl <- table(sig_rows_4b$amount_unit_concept_id, useNA = "ifany")
+      cat("    unit concept_id breakdown:  ")
+      print(unit_tbl)
+    } else {
+      cat("    amount_unit_concept_id column absent — unit assumed unknown (accepted).\n")
+    }
+  } else {
+    cat("    column ABSENT from drug_df.\n")
+    cat("    => No tablet strength from OMOP drug_strength. Falling back to drug_source_value.\n")
+  }
+
+  cat("\n  drug_source_value mg-extraction:\n")
+  cat(sprintf("    non-NA mg extracted: %d / %d\n",
+              sum(!is.na(str_from_source)), nrow(sig_rows_4b)))
+  if (sum(!is.na(str_from_source)) > 0) {
+    cat("    sample drug_source_values with mg:\n")
+    ex <- head(sv[!is.na(str_from_source)], 5)
+    for (e in ex) cat(sprintf("      '%s'\n", e))
+  } else {
+    cat("    => drug_source_value has no '\\d+ mg' patterns either.\n")
+  }
+
+  if (n_m2_computable == 0L) {
+    cat("\n  CONCLUSION: M2 cannot fire on any row because strength_mg is NA\n")
+    cat("  for every row where freq_per_day was parsed.\n")
+    cat("  auto and warn will produce identical output.\n")
+    cat("\n  WHY strength_mg is NA — most common causes:\n")
+    cat("    1. amount_unit_concept_id is a non-mg concept (mcg=9655, g=8504).\n")
+    cat("       baseline.R rejects these to avoid unit mismatches.\n")
+    cat("       Check: table(drug_df$amount_unit_concept_id)\n")
+    cat("    2. drug_strength JOIN returned no rows (drug_concept_id not in vocab).\n")
+    cat("       Check: sum(is.na(drug_df$amount_value))\n")
+    cat("    3. drug_source_value has no '\\d+ mg' pattern (e.g. 'PREDNISONE TAB').\n")
+    cat("       Check: head(drug_df$drug_source_value[is.na(str_from_source)], 10)\n")
+  } else {
+    cat(sprintf("\n  CONCLUSION: %d rows should produce a non-NA M2.\n", n_m2_computable))
+    cat("  If results are still identical, the installed package is stale.\n")
+    cat("  Re-install:\n")
+    cat("    devtools::install_local(getwd())\n")
+    cat("    detach('package:SteroidDoseR', unload = TRUE)\n")
+    cat("    library(SteroidDoseR)\n")
+    cat("  Then re-run the comparison.\n")
+  }
+} else {
+  cat("  [4b] skipped — no non-empty SIG rows (sig_present = FALSE).\n")
+}
+cat("\n")
 
 # ---------------------------------------------------------------------------
 # [5] daily_dose / daily_dose_mg column check
