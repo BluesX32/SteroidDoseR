@@ -442,7 +442,7 @@ message("\n=== [1/3] Baseline method ===")
 
 baseline_df <- calc_daily_dose_baseline(
   drug_df,
-  m2_sig_parse      = "warn",
+  m2_sig_parse      = "auto",
   max_daily_dose_mg = 2000,
   filter_oral       = TRUE
 )
@@ -473,7 +473,7 @@ print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg
 baseline_episodes <- run_pipeline(
   drug_df,
   method         = "baseline",
-  m2_sig_parse   = "warn",
+  m2_sig_parse   = "auto",
   return_level   = "episode",
   gap_days       = GAP_DAYS,
   concurrent_agg = CONCURRENT_AGG
