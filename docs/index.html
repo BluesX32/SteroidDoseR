@@ -52,7 +52,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.2.5</p>
+    <p>Package Manual v0.5.0</p>
   </div>
   <div class="nav-section-label active-section">Getting started</div>
   <ul>
@@ -77,6 +77,10 @@
     <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
     <li><a href="methods.html#taper-parser">Taper parser</a></li>
     <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+    <li><a href="methods.html#nlp-notes">NLP Notes (medspaCy)</a></li>
+    <li><a href="methods.html#nlp-notes-params">NLP Notes parameters</a></li>
+    <li><a href="methods.html#hierarchical">Hierarchical method</a></li>
+    <li><a href="methods.html#hierarchical-params">Hierarchical parameters</a></li>
   </ul>
   <div class="nav-section-label">Pipeline</div>
   <ul>
@@ -101,7 +105,7 @@
   <h1>SteroidDoseR</h1>
   <p>Automated corticosteroid dose extraction from OMOP CDM electronic health records</p>
   <div class="meta">
-    <span>Version 0.2.5</span>
+    <span>Version 0.5.0</span>
     <span>R package</span>
     <span>JHU Myositis Research Group · OHDSI AgentDose 2025</span>
   </div>
@@ -117,7 +121,7 @@
   quantification is a primary outcome variable.
 </p>
 
-<h3>Two complementary imputation methods</h3>
+<h3>Four imputation methods</h3>
 
 <div class="table-wrap">
 <table>
@@ -136,6 +140,16 @@
     <td><strong>Advanced NLP</strong></td>
     <td>NLP extended with word-form tablet counts, weekly/monthly frequencies, every-N-days patterns, and taper schedule decomposition</td>
     <td>Taper SIGs that need per-step expansion</td>
+  </tr>
+  <tr>
+    <td><strong>NLP Notes</strong> <span class="badge badge-new">v0.5.0</span></td>
+    <td>Advanced NLP first, then medspaCy Python pipeline for unresolved rows; handles narrative clinical note text with negation, uncertainty, and section detection</td>
+    <td>Free-text provider notes are available alongside or instead of structured SIGs; requires Python + medspaCy</td>
+  </tr>
+  <tr>
+    <td><strong>Hierarchical</strong> <span class="badge badge-new">v0.5.0</span></td>
+    <td>Cross-checks independent Baseline M1/M3/M4 (quantity side) against Advanced NLP SIG (text side); 7-branch decision tree selects the most credible estimate with full audit trail</td>
+    <td>Both structured OMOP fields and SIG text are available; requires validation that the two estimates agree; ideal for research comparing methods</td>
   </tr>
 </table>
 </div>
@@ -157,6 +171,7 @@
   <li>R ≥ 4.1</li>
   <li>Core dependencies (auto-installed): <code>dplyr</code>, <code>purrr</code>, <code>stringr</code>, <code>tibble</code>, <code>rlang</code>, <code>readr</code></li>
   <li><em>For live OMOP CDM connectivity only</em>: <code>DatabaseConnector</code> (≥ 3.0.0) and <code>SqlRender</code> (≥ 1.11.0) — not auto-installed</li>
+  <li><em>For NLP Notes method only</em>: Python ≥ 3.8 with medspaCy and scispaCy — not auto-installed (see below)</li>
   <li><em>Windows source build</em>: Rtools matching your R version</li>
 </ul>
 
@@ -171,6 +186,15 @@
 <h3>Database connectivity packages (optional)</h3>
 <pre><code><span class="fn">install.packages</span>(<span class="st">"DatabaseConnector"</span>)
 <span class="fn">install.packages</span>(<span class="st">"SqlRender"</span>)
+</code></pre>
+
+<h3>Python + medspaCy (NLP Notes method only)</h3>
+<pre><code><span class="cm"># Install Python packages (run in your terminal)</span>
+pip install medspacy scispacy
+python -m spacy download en_core_sci_sm
+
+<span class="cm"># Install the R reticulate bridge</span>
+<span class="fn">install.packages</span>(<span class="st">"reticulate"</span>)
 </code></pre>
 
 <h3>Verify installation</h3>
@@ -199,8 +223,10 @@ episodes[, c(<span class="st">"person_id"</span>, <span class="st">"drug_name_st
              <span class="st">"episode_end"</span>, <span class="st">"n_days"</span>, <span class="st">"median_daily_dose"</span>)]
 </code></pre>
 
-<p>Switch to the NLP method with one argument change:</p>
-<pre><code>episodes_nlp <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"nlp"</span>)
+<p>Switch methods with one argument change:</p>
+<pre><code>episodes_nlp  <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"nlp"</span>)
+episodes_adv  <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"nlp"</span>)          <span class="cm"># advanced NLP, taper-aware</span>
+episodes_hier <span class="op">&lt;-</span> <span class="fn">run_pipeline</span>(con, method <span class="op">=</span> <span class="st">"hierarchical"</span>) <span class="cm"># cross-check baseline × NLP</span>
 </code></pre>
 
 <p>

@@ -54,7 +54,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.2.5</p>
+    <p>Package Manual v0.5.0</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -79,6 +79,10 @@
     <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
     <li><a href="methods.html#taper-parser">Taper parser</a></li>
     <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+    <li><a href="methods.html#nlp-notes">NLP Notes (medspaCy)</a></li>
+    <li><a href="methods.html#nlp-notes-params">NLP Notes parameters</a></li>
+    <li><a href="methods.html#hierarchical">Hierarchical method</a></li>
+    <li><a href="methods.html#hierarchical-params">Hierarchical parameters</a></li>
   </ul>
   <div class="nav-section-label">Pipeline</div>
   <ul>
@@ -118,6 +122,10 @@
   <tr><td><code>parse_sig_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Vectorised enhanced SIG parser with word-forms, weekly/monthly, every-N patterns.</td></tr>
   <tr><td><code>parse_sig_one_advanced()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Single-record enhanced parser; same output columns as <code>parse_sig_one()</code>.</td></tr>
   <tr><td><code>parse_taper_schedule()</code></td><td>No</td><td><span class="badge badge-new">v0.1.2</span> Decompose a taper SIG into a per-step dose schedule tibble. Returns <code>NULL</code> when ≥ 2 steps cannot be extracted.</td></tr>
+  <tr><td><code>calc_daily_dose_nlp_notes()</code></td><td>Yes</td><td><span class="badge badge-new">v0.5.0</span> Hybrid pipeline: Advanced NLP SIG parser first, then medspaCy Python clinical-note parser for unresolved rows. Adds negation/uncertainty/section detection columns. Requires Python + medspaCy.</td></tr>
+  <tr><td><code>parse_note_one()</code></td><td>No</td><td><span class="badge badge-new">v0.5.0</span> Parse a single clinical note string via medspaCy; returns a 1-row tibble. Never throws.</td></tr>
+  <tr><td><code>parse_notes()</code></td><td>No</td><td><span class="badge badge-new">v0.5.0</span> Vectorised wrapper over <code>parse_note_one()</code>. Applies medspaCy to each row and binds columns back onto the input data frame.</td></tr>
+  <tr><td><code>calc_daily_dose_hierarchical()</code></td><td>Yes</td><td><span class="badge badge-new">v0.5.0</span> Cross-checks Baseline M1/M3/M4 (quantity side) against Advanced NLP SIG (text side) and applies a 7-branch decision tree to select the most credible estimate. Returns full audit columns (<code>bl_dose</code>, <code>sig_dose</code>, <code>hierarchical_method</code>, etc.).</td></tr>
   <tr><td><code>standardize_drug_name()</code></td><td>No</td><td>Normalise drug names to canonical lowercase generic form. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code> for user-supplied overrides.</td></tr>
   <tr><td><code>convert_pred_equiv()</code></td><td>No</td><td>Multiply daily doses by prednisone-equivalency factors. <span class="badge badge-new">v0.1.6</span> Accepts <code>drug_name_map</code>.</td></tr>
   <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous treatment episodes.</td></tr>
@@ -221,6 +229,17 @@
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.5.0 <span class="badge badge-new">Clinical Note NLP &amp; Hierarchical method</span></h3>
+<ul>
+  <li><strong>feat(nlp_notes): <code>calc_daily_dose_nlp_notes()</code></strong> <span class="badge badge-new">v0.5.0</span> — New hybrid pipeline that runs the Advanced NLP SIG parser first, then routes unresolved records through a medspaCy Python pipeline for narrative clinical note text. Produces negation (<code>note_negation_flag</code>), uncertainty (<code>note_uncertainty_flag</code>), and section (<code>note_section</code>) detection columns. New <code>parsed_status</code> values: <code>"notes_ok"</code>, <code>"notes_negated"</code>, <code>"notes_uncertain"</code>, <code>"notes_historical"</code>, <code>"notes_no_dose"</code>, <code>"notes_no_drug"</code>. Python + medspaCy optional dependency; guarded by <code>.check_medspacy()</code> with clear install instructions.</li>
+  <li><strong>feat(nlp_notes): <code>parse_note_one()</code> / <code>parse_notes()</code></strong> <span class="badge badge-new">v0.5.0</span> — Standalone exported functions for calling the medspaCy pipeline on individual note strings or a full data frame. Output schema matches <code>parse_sig_one()</code>.</li>
+  <li><strong>feat(hierarchical): <code>calc_daily_dose_hierarchical()</code></strong> <span class="badge badge-new">v0.5.0</span> — New cross-check method. Runs Baseline M1/M3/M4 (quantity/supply side) and Advanced NLP SIG (text side) as independent estimates, then applies a 7-branch decision tree controlled by <code>diff_threshold</code> (default 5) and <code>match_tol</code> (default 0.01). Branches: <code>"cross_checked"</code>, <code>"nlp_override"</code>, <code>"blended"</code>, <code>"baseline_only"</code>, <code>"nlp_fills_baseline"</code>, <code>"nlp_taper"</code>, <code>"missing"</code>. Full audit trail in output columns (<code>bl_dose</code>, <code>bl_method</code>, <code>sig_dose</code>, <code>sig_status</code>, <code>hierarchical_method</code>, etc.). M2 is excluded from the Baseline side to preserve independence between estimates.</li>
+  <li><strong>feat(pipeline): <code>run_pipeline(method = "nlp_notes" | "hierarchical")</code></strong> <span class="badge badge-new">v0.5.0</span> — Both new methods are available via the one-call pipeline wrapper.</li>
+  <li><strong>feat(python): <code>inst/python/medspacy_pipeline.py</code></strong> <span class="badge badge-new">v0.5.0</span> — New Python module providing <code>load_pipeline()</code> and <code>extract_steroid_doses(text)</code>. Module-level pipeline cache ensures one-time initialisation per Python session. Falls back from <code>en_core_sci_sm</code> (scispaCy) to the medspaCy default model if scispaCy is unavailable.</li>
+  <li><strong>docs: vignette <code>nlp-notes-workflow.Rmd</code></strong> — Covers Python environment setup, hybrid SIG+note data frames, inspecting negation/section flags, and downstream equivalency + episode building.</li>
+  <li><strong>docs: script <code>CodeToRun_hierarchical.R</code></strong> — Full interactive execution script mirroring <code>CodeToRun.R</code> but centred on the hierarchical method. Includes branch-breakdown analysis, sensitivity sweep across <code>diff_threshold</code> values, and comparator runs of Baseline and Advanced NLP.</li>
+</ul>
 
 <h3>v0.4.0 (continued) <span class="badge badge-fix">NLP coverage &amp; accuracy fixes</span></h3>
 <ul>

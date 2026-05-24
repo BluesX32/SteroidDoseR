@@ -58,7 +58,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.2.5</p>
+    <p>Package Manual v0.5.0</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -83,6 +83,10 @@
     <li><a href="methods.html#nlp-advanced-params">Advanced NLP parameters</a></li>
     <li><a href="methods.html#taper-parser">Taper parser</a></li>
     <li><a href="methods.html#sig-parsing">SIG parsing details</a></li>
+    <li><a href="methods.html#nlp-notes">NLP Notes (medspaCy)</a></li>
+    <li><a href="methods.html#nlp-notes-params">NLP Notes parameters</a></li>
+    <li><a href="methods.html#hierarchical">Hierarchical method</a></li>
+    <li><a href="methods.html#hierarchical-params">Hierarchical parameters</a></li>
   </ul>
   <div class="nav-section-label">Pipeline</div>
   <ul>
@@ -518,6 +522,260 @@ tablet extraction (half-tablet forms) and taper decomposition.</p>
   <tr><td>every N weeks</td><td>1 / (N × 7)</td></tr>
   <tr><td>monthly, once a month, q30d, every 30 days</td><td>1/30</td></tr>
 </table>
+</div>
+
+<!-- ── NLP NOTES ──────────────────────────────────────────────────── -->
+<h2 id="nlp-notes">NLP Notes method (medspaCy) <span class="badge badge-new">v0.5.0</span></h2>
+
+<p>
+  <code>calc_daily_dose_nlp_notes()</code> extends the NLP pipeline to handle
+  <strong>narrative clinical note text</strong> — free-text provider documentation
+  such as <em>"Patient has been on prednisone 40 mg daily, tapered to 20 mg over
+  the past month."</em> It runs the Advanced NLP SIG parser first (fast path),
+  then routes only unresolved records through a medspaCy Python pipeline for
+  entity-level extraction, negation/uncertainty detection, and section awareness.
+</p>
+
+<div class="callout callout-warn">
+  <strong>Python dependency required</strong>
+  medspaCy is an optional dependency. Install it before first use:
+  <pre style="margin-top:0.5rem">pip install medspacy scispacy
+python -m spacy download en_core_sci_sm</pre>
+  The package checks for medspaCy availability with a clear error message and
+  installation instructions if it is not found.
+</div>
+
+<h3>Five-step pipeline</h3>
+<pre>
+OMOP drug_exposure + clinical note text
+          │
+          ▼  Step 1
+  Advanced NLP SIG parser (parse_sig_advanced)
+  → fast path; handles structured SIGs
+          │
+          ▼  Step 2 (only for rows that failed SIG parsing)
+  medspaCy Python pipeline
+  → handles narrative / free-text note content
+  → negation, uncertainty, historical context detection
+  → section awareness (history / assessment / plan)
+          │
+          ▼  Step 3
+  Strength fallback
+  → amount_value (unit-checked: concept 8576 / 0 / NA only)
+  → mg regex on drug_concept_name / drug_source_value
+          │
+          ▼  Step 4
+  Baseline structural fallback (M1 / M3 / M4)
+  → fills remaining NA rows from structured OMOP fields
+          │
+          ▼  Step 5
+  Plausibility cap (max_daily_dose_mg = 2000)
+</pre>
+
+<h3>New output columns</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>note_entity_count</code></td><td>int</td><td>Number of steroid entities found in the note by medspaCy</td></tr>
+  <tr><td><code>note_negation_flag</code></td><td>lgl</td><td>TRUE when the drug mention is negated ("not on prednisone")</td></tr>
+  <tr><td><code>note_uncertainty_flag</code></td><td>lgl</td><td>TRUE when the mention is hedged or uncertain ("may be taking")</td></tr>
+  <tr><td><code>note_section</code></td><td>chr</td><td>Detected note section: <code>"history"</code>, <code>"assessment"</code>, <code>"plan"</code>, or NA</td></tr>
+</table>
+</div>
+
+<h3>New <code>parsed_status</code> values</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Status</th><th>Meaning</th></tr>
+  <tr><td><code>"notes_ok"</code></td><td>Steroid entity found in note; dose successfully extracted</td></tr>
+  <tr><td><code>"notes_negated"</code></td><td>Drug entity present but negated ("not on prednisone")</td></tr>
+  <tr><td><code>"notes_uncertain"</code></td><td>Mention is hedged or uncertain ("may be on prednisone")</td></tr>
+  <tr><td><code>"notes_historical"</code></td><td>Past-tense / historical context only ("was previously on")</td></tr>
+  <tr><td><code>"notes_no_dose"</code></td><td>Steroid entity found but no dose amount present in text</td></tr>
+  <tr><td><code>"notes_no_drug"</code></td><td>No steroid entity found in the note text</td></tr>
+</table>
+</div>
+<p>All existing status values from the Advanced NLP parser (<code>"ok"</code>, <code>"taper_ok"</code>, <code>"no_parse"</code>, <code>"empty"</code>, <code>"fallback_*"</code>, <code>"implausible"</code>) are preserved for records resolved before medspaCy is called.</p>
+
+<h3>Example</h3>
+<pre><code><span class="cm"># Data frame with a clinical_note column alongside the drug_exposure fields</span>
+df <span class="op">&lt;-</span> <span class="fn">tibble</span>::<span class="fn">tibble</span>(
+  person_id                <span class="op">=</span> <span class="nm">1L</span>,
+  drug_concept_name        <span class="op">=</span> <span class="st">"prednisone 5 MG oral tablet"</span>,
+  route_concept_name       <span class="op">=</span> <span class="st">"oral"</span>,
+  clinical_note            <span class="op">=</span> <span class="st">"Patient continued on prednisone 40 mg daily."</span>,
+  sig                      <span class="op">=</span> <span class="kw">NA_character_</span>,
+  drug_exposure_start_date <span class="op">=</span> <span class="fn">as.Date</span>(<span class="st">"2023-01-01"</span>),
+  drug_exposure_end_date   <span class="op">=</span> <span class="fn">as.Date</span>(<span class="st">"2023-06-01"</span>)
+)
+result <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp_notes</span>(df, note_col <span class="op">=</span> <span class="st">"clinical_note"</span>)
+result<span class="op">$</span>daily_dose_mg   <span class="cm"># 40</span>
+result<span class="op">$</span>parsed_status   <span class="cm"># "notes_ok"</span>
+result<span class="op">$</span>note_section    <span class="cm"># "assessment" or NA</span>
+</code></pre>
+
+<!-- ── NLP NOTES PARAMS ─────────────────────────────────────────────── -->
+<h2 id="nlp-notes-params">NLP Notes parameters <span class="badge badge-new">v0.5.0</span></h2>
+
+<div class="fn-sig">calc_daily_dose_nlp_notes(
+  connector_or_df,
+  note_col          = "clinical_note",
+  sig_col           = "sig",
+  drug_name_col     = "drug_concept_name",
+  filter_oral       = TRUE,
+  max_daily_dose_mg = 2000,
+  equiv_table       = NULL,
+  drug_name_map     = NULL,
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig"
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>Required. Connector or data frame.</td></tr>
+  <tr><td>note_col</td><td>"clinical_note"</td><td>Column containing narrative clinical note text. Records with <code>NA</code> in this column use only SIG parsing and baseline fallback.</td></tr>
+  <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions. Parsed first (Advanced NLP); medspaCy fires only for rows that fail SIG parsing.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records. Checks <code>route_concept_name</code>, then <code>route_source_value</code>, then <code>drug_source_value</code> as fallback.</td></tr>
+  <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap. Doses above this are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>equiv_table</td><td>NULL</td><td>Custom equivalency table for the drug allow-list when <code>filter_oral = TRUE</code>. Pass <code>NULL</code> for the built-in 7-steroid table.</td></tr>
+  <tr><td>drug_name_map</td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in mapping.</td></tr>
+  <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
+</table>
+</div>
+
+<h3>Standalone note-parsing functions</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Function</th><th>Description</th></tr>
+  <tr><td><code>parse_note_one(note_text)</code></td><td>Parse a single clinical note string via medspaCy. Returns a 1-row tibble matching the <code>parse_sig_one()</code> output schema. Never throws — returns <code>parsed_status = "empty"</code> on error or missing Python.</td></tr>
+  <tr><td><code>parse_notes(drug_df, note_col = "clinical_note")</code></td><td>Vectorised wrapper over <code>parse_note_one()</code>. Applies medspaCy to each row's note text and binds results back to the data frame.</td></tr>
+</table>
+</div>
+
+<!-- ── HIERARCHICAL ───────────────────────────────────────────────── -->
+<h2 id="hierarchical">Hierarchical method <span class="badge badge-new">v0.5.0</span></h2>
+
+<p>
+  <code>calc_daily_dose_hierarchical()</code> cross-checks the Baseline estimate
+  (M1/M3/M4 only — quantity/supply side) against the Advanced NLP SIG estimate
+  (text side) and applies a decision tree to choose the most credible result.
+  Because M2 (tablets×freq from SIG) is deliberately excluded from the Baseline
+  side, the two estimates are truly independent: Baseline uses structured OMOP
+  quantity fields; NLP uses free-text SIG instructions.
+</p>
+
+<h3>Decision tree</h3>
+<pre>
+Per-row logic
+┌────────────────────────────────────────────────────────────────────┐
+│ bl_complete = Baseline M1/M3/M4 produced a non-NA dose             │
+│ sig_complete = SIG parsed cleanly (parsed_status == "ok")          │
+│ is_taper     = SIG flagged as taper/taper_ok                       │
+└────────────────────────────────────────────────────────────────────┘
+
+Case 1: bl_complete AND sig_complete
+  dose_diff = |bl_dose − sig_dose| / max(bl_dose, sig_dose)
+  ├─ dose_diff ≤ match_tol (0.01)          → "cross_checked"   use NLP dose
+  ├─ dose_diff > diff_threshold (5)        → "nlp_override"    use NLP dose
+  └─ match_tol &lt; dose_diff ≤ diff_threshold → "blended"        use avg(bl, nlp)
+
+Case 2: bl_complete, sig absent or unparseable
+  → "baseline_only"   use Baseline dose
+
+Case 3: bl_incomplete, sig available
+  ├─ sig_complete AND NOT is_taper         → "nlp_fills_baseline"
+  │     strength from Baseline amount_value; compute dose from SIG tablets/freq
+  └─ is_taper                              → "nlp_taper"
+         NLP handles the record directly
+
+Case 4: bl_incomplete AND no sig
+  → "missing"   daily_dose_mg = NA
+</pre>
+
+<h3>Audit columns</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><code>daily_dose_mg</code></td><td>Final hierarchical daily dose in mg</td></tr>
+  <tr><td><code>hierarchical_method</code></td><td><code>"cross_checked"</code>, <code>"nlp_override"</code>, <code>"blended"</code>, <code>"baseline_only"</code>, <code>"nlp_fills_baseline"</code>, <code>"nlp_taper"</code>, or <code>"missing"</code></td></tr>
+  <tr><td><code>bl_dose</code></td><td>Baseline M1/M3/M4 dose (NA when baseline could not complete)</td></tr>
+  <tr><td><code>bl_method</code></td><td>Which Baseline method produced <code>bl_dose</code></td></tr>
+  <tr><td><code>sig_dose</code></td><td>NLP Advanced SIG dose (NA when SIG absent or unparseable)</td></tr>
+  <tr><td><code>sig_status</code></td><td><code>parsed_status</code> from the Advanced NLP parser</td></tr>
+  <tr><td><code>sig_tablets</code></td><td>Tablet count from SIG</td></tr>
+  <tr><td><code>sig_freq_per_day</code></td><td>Frequency from SIG</td></tr>
+  <tr><td><code>sig_mg_per_admin</code></td><td>Per-administration mg from SIG</td></tr>
+  <tr><td><code>sig_taper_flag</code></td><td>TRUE when SIG taper detected</td></tr>
+  <tr><td><code>sig_duration_days</code></td><td>Prescribed duration from SIG (when stated)</td></tr>
+</table>
+</div>
+
+<h3>Example</h3>
+<pre><code>hier_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_hierarchical</span>(
+  drug_df,
+  diff_threshold <span class="op">=</span> <span class="nm">5</span>,   <span class="cm"># relative diff &gt; 5× → nlp_override</span>
+  match_tol      <span class="op">=</span> <span class="nm">0.01</span>  <span class="cm"># relative diff ≤ 1 % → cross_checked</span>
+)
+
+<span class="fn">table</span>(hier_df<span class="op">$</span>hierarchical_method, useNA <span class="op">=</span> <span class="st">"ifany"</span>)
+
+<span class="cm"># Inspect large discrepancies routed to nlp_override:</span>
+hier_df |>
+  dplyr::<span class="fn">filter</span>(hierarchical_method <span class="op">==</span> <span class="st">"nlp_override"</span>) |>
+  dplyr::<span class="fn">mutate</span>(rel_diff <span class="op">=</span> <span class="fn">abs</span>(bl_dose <span class="op">-</span> sig_dose) <span class="op">/</span> <span class="fn">pmax</span>(bl_dose, sig_dose)) |>
+  dplyr::<span class="fn">arrange</span>(<span class="fn">desc</span>(rel_diff)) |>
+  dplyr::<span class="fn">select</span>(person_id, drug_name_std, bl_dose, sig_dose, rel_diff, bl_method)
+</code></pre>
+
+<!-- ── HIERARCHICAL PARAMS ─────────────────────────────────────────── -->
+<h2 id="hierarchical-params">Hierarchical parameters <span class="badge badge-new">v0.5.0</span></h2>
+
+<div class="fn-sig">calc_daily_dose_hierarchical(
+  connector_or_df,
+  sig_col           = "sig",
+  drug_name_col     = "drug_concept_name",
+  filter_oral       = TRUE,
+  diff_threshold    = 5,
+  match_tol         = 0.01,
+  expand_tapers     = FALSE,
+  max_daily_dose_mg = 2000,
+  equiv_table       = NULL,
+  drug_name_map     = NULL,
+  drug_concept_ids  = NULL,
+  person_ids        = NULL,
+  start_date        = NULL,
+  end_date          = NULL,
+  sig_source        = "sig"
+)</div>
+
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>connector_or_df</td><td>—</td><td>Required. Connector or data frame.</td></tr>
+  <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions. Used for the NLP Advanced estimate.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records. Checks <code>route_concept_name</code>, then <code>route_source_value</code>, then <code>drug_source_value</code> as fallback.</td></tr>
+  <tr><td>diff_threshold</td><td>5</td><td>Relative-difference threshold (ratio). When |bl − nlp| / max(bl, nlp) &gt; this value, the NLP estimate is used instead of the average. Set lower (e.g. 2) to prefer NLP more aggressively; set higher (e.g. 20) to keep the blended estimate for larger discrepancies.</td></tr>
+  <tr><td>match_tol</td><td>0.01</td><td>Relative-difference threshold below which the two estimates are considered to "match" (1 % tolerance). Records below this are labelled <code>"cross_checked"</code> and the NLP dose is used (NLP has slightly better precision for direct text extraction).</td></tr>
+  <tr><td>expand_tapers</td><td>FALSE</td><td>When <code>TRUE</code>, taper records routed to <code>"nlp_taper"</code> branch are expanded into per-step rows via <code>parse_taper_schedule()</code>. Adds <code>taper_step</code>, <code>step_start_day</code>, <code>step_end_day</code> columns.</td></tr>
+  <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap applied at the end to the final <code>daily_dose_mg</code>. Records above this are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>equiv_table</td><td>NULL</td><td>Custom equivalency table for the drug allow-list when <code>filter_oral = TRUE</code>.</td></tr>
+  <tr><td>drug_name_map</td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in mapping.</td></tr>
+  <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>
+</table>
+</div>
+
+<div class="callout callout-note">
+  <strong>Why M2 is excluded from the Baseline side</strong>
+  M2 derives dose from SIG text (tablets × freq × strength). Including it would
+  make the Baseline and NLP estimates use the same SIG information, eliminating
+  the independence that makes the cross-check meaningful. The Baseline side uses
+  only M1 (pre-existing dose field), M3 (quantity / actual duration), and M4
+  (quantity / days_supply) — all derived purely from structured OMOP quantity
+  fields.
 </div>
 
 <a class="back-top" href="#baseline">↑ Back to top</a>
