@@ -72,6 +72,8 @@ R/
                     parse_sig_one_advanced(), parse_taper_schedule()
   nlp_notes.R     — calc_daily_dose_nlp_notes(), parse_note_one(), parse_notes()
                     medspaCy-based clinical note parser (requires Python)
+  hierarchical.R  — calc_daily_dose_hierarchical()
+                    Baseline (M1/M3/M4) × NLP Advanced cross-check + decision tree
   connector.R     — create_omop_connector(), create_df_connector(), etc.
   connection.R    — .load_env_file() internal helper
   conversion.R    — convert_pred_equiv()
@@ -96,7 +98,7 @@ extras/
 
 tests/
   testthat.R            — testthat runner (required by R CMD CHECK)
-  testthat/             — unit tests (6 files)
+  testthat/             — unit tests (8 files)
 
 docs/
   index.html, connectors.html, methods.html, pipeline.html, reference.html

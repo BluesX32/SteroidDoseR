@@ -11,8 +11,18 @@
   (`note_negation_flag`, `note_uncertainty_flag`, `note_section`).
   Python setup: `pip install medspacy scispacy && python -m spacy download en_core_sci_sm`.
 
-* **`run_pipeline()` gains `method = "nlp_notes"`** (`pipeline.R`): routes the
-  full pipeline through `calc_daily_dose_nlp_notes()` when selected.
+* **`run_pipeline()` gains `method = "nlp_notes"` and `method = "hierarchical"`**
+  (`pipeline.R`): routes the full pipeline through `calc_daily_dose_nlp_notes()`
+  or `calc_daily_dose_hierarchical()` respectively.
+
+* **Hierarchical imputation method** (`hierarchical.R`): new
+  `calc_daily_dose_hierarchical()` runs Baseline (M1/M3/M4) and NLP Advanced
+  independently on each record, then applies a per-row decision tree:
+  cross-checks matching estimates, blends close-but-different estimates, and
+  overrides baseline with NLP when the discrepancy is large. Parameters
+  `diff_threshold` (default 5 mg/day) and `match_tol` (default 0.01 mg/day)
+  control the resolution logic. Intermediate baseline and NLP doses are exposed
+  as `bl_dose`/`sig_dose` columns for auditability.
 
 * **`inst/python/medspacy_pipeline.py`**: Python extraction layer called via
   reticulate. Includes a module-level pipeline cache (loaded once per session),
