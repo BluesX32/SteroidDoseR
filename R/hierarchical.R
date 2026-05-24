@@ -168,7 +168,6 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
   # M2 (tablets_freq) is excluded so baseline and NLP are independent sources.
   bl_result <- calc_daily_dose_baseline(
     drug_df,
-    drug_name_col     = drug_name_col,
     filter_oral       = FALSE,
     m2_sig_parse      = "none",
     max_daily_dose_mg = NULL,        # cap applied at the end

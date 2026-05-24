@@ -195,63 +195,47 @@ test_that(".entities_to_row assumes daily when freq is NULL but dose is present"
 # ---------------------------------------------------------------------------
 
 test_that("parse_note_one returns empty row for NA input", {
-  row <- local_mocked_bindings(
-    .call_medspacy = function(text) list(),
-    .env = "SteroidDoseR",
-    {
-      parse_note_one(NA_character_)
-    }
-  )
+  local_mocked_bindings(.call_medspacy = function(text) list(), .package = "SteroidDoseR")
+  row <- parse_note_one(NA_character_)
   expect_equal(row$parsed_status, "empty")
   expect_equal(nrow(row), 1L)
   expect_true(is.na(row$daily_dose_mg))
 })
 
 test_that("parse_note_one returns empty row for blank string", {
-  row <- local_mocked_bindings(
-    .call_medspacy = function(text) list(),
-    .env = "SteroidDoseR",
-    {
-      parse_note_one("   ")
-    }
-  )
+  local_mocked_bindings(.call_medspacy = function(text) list(), .package = "SteroidDoseR")
+  row <- parse_note_one("   ")
   expect_equal(row$parsed_status, "empty")
 })
 
 test_that("parse_note_one returns notes_ok with correct dose (mocked)", {
-  row <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) entity_prednisone_40mg,
-    .env = "SteroidDoseR",
-    {
-      parse_note_one("Patient on prednisone 40 mg daily.")
-    }
+    .package = "SteroidDoseR"
   )
+  row <- parse_note_one("Patient on prednisone 40 mg daily.")
   expect_equal(row$parsed_status, "notes_ok")
   expect_equal(row$daily_dose_mg, 40)
   expect_false(row$note_negation_flag)
 })
 
 test_that("parse_note_one never throws on Python error", {
-  row <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) stop("simulated Python crash"),
-    .env = "SteroidDoseR",
-    {
-      parse_note_one("patient on prednisone")
-    }
+    .package = "SteroidDoseR"
   )
+  row <- parse_note_one("patient on prednisone")
   # tryCatch in parse_note_one catches the error → returns empty row
   expect_equal(row$parsed_status, "error")
   expect_true(is.na(row$daily_dose_mg))
 })
 
 test_that("parse_note_one output has all expected columns", {
-  row <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) entity_prednisone_40mg,
-    .env = "SteroidDoseR",
-    {
-      parse_note_one("prednisone 40 mg daily")
-    }
+    .package = "SteroidDoseR"
   )
+  row <- parse_note_one("prednisone 40 mg daily")
   expected_cols <- c(
     "sig_raw", "tablets", "freq_per_day", "mg_per_admin", "mg_total_flag",
     "duration_days", "taper_flag", "prn_flag", "free_text_flag",
@@ -271,15 +255,13 @@ test_that("parse_notes appends columns without duplicating note column", {
     clinical_note = c("prednisone 40 mg daily", "no steroids"),
     route_concept_name = "Oral"
   )
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) {
       if (grepl("prednisone", text)) entity_prednisone_40mg else list()
     },
-    .env = "SteroidDoseR",
-    {
-      parse_notes(df, note_col = "clinical_note")
-    }
+    .package = "SteroidDoseR"
   )
+  result <- parse_notes(df, note_col = "clinical_note")
   expect_equal(nrow(result), 2L)
   expect_true("daily_dose_mg" %in% names(result))
   expect_true("clinical_note" %in% names(result))  # original column preserved
@@ -297,13 +279,14 @@ test_that("calc_daily_dose_nlp_notes resolves SIG via regex (no medspaCy needed)
   )
   # medspaCy should NOT be called when regex succeeds
   mock_called <- FALSE
-  result <- local_mocked_bindings(
-    .call_medspacy = function(text) { mock_called <<- TRUE; list() },
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df)
-    }
+  local_mocked_bindings(
+    .call_medspacy = function(text) {
+      mock_called <<- TRUE
+      list()
+    },
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df)
   expect_false(mock_called)
   expect_equal(result$daily_dose_mg, 10)
   expect_equal(result$parsed_status, "ok")
@@ -314,13 +297,11 @@ test_that("calc_daily_dose_nlp_notes falls back to medspaCy for no_parse rows", 
     sig           = NA_character_,
     clinical_note = "Patient continued on prednisone 40 mg daily."
   )
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) entity_prednisone_40mg,
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df)
-    }
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df)
   expect_equal(result$daily_dose_mg, 40)
   expect_equal(result$parsed_status, "notes_ok")
 })
@@ -333,14 +314,12 @@ test_that("calc_daily_dose_nlp_notes applies plausibility cap (mocked)", {
     negated = FALSE, uncertain = FALSE, historical = FALSE,
     section = NA, raw_span = "prednisone"
   ))
+  local_mocked_bindings(
+    .call_medspacy = function(text) entities_huge,
+    .package = "SteroidDoseR"
+  )
   expect_warning(
-    result <- local_mocked_bindings(
-      .call_medspacy = function(text) entities_huge,
-      .env = "SteroidDoseR",
-      {
-        calc_daily_dose_nlp_notes(df, max_daily_dose_mg = 2000)
-      }
-    ),
+    result <- calc_daily_dose_nlp_notes(df, max_daily_dose_mg = 2000),
     regexp = "implausible|max_daily_dose"
   )
   expect_true(is.na(result$daily_dose_mg))
@@ -355,13 +334,11 @@ test_that("calc_daily_dose_nlp_notes fires baseline fallback when both SIG and n
     days_supply   = 90,
     amount_value  = 5
   )
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) list(),
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df)
-    }
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df)
   # baseline supply_based: 90 qty * 5 mg / 90 days_supply = 5 mg/day
   expect_equal(result$daily_dose_mg, 5)
   expect_true(grepl("^fallback_", result$parsed_status))
@@ -372,37 +349,31 @@ test_that("calc_daily_dose_nlp_notes excludes non-oral routes (filter_oral = TRU
     clinical_note      = "methylprednisolone IV",
     route_concept_name = "Intravenous"
   )
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) entity_prednisone_40mg,
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df, filter_oral = TRUE)
-    }
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df, filter_oral = TRUE)
   expect_equal(nrow(result), 0L)
 })
 
 test_that("calc_daily_dose_nlp_notes note note_section propagates correctly", {
   df <- make_note_row(clinical_note = "Assessment: prednisone 40 mg daily.")
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) entity_prednisone_40mg,
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df)
-    }
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df)
   expect_equal(result$note_section, "assessment")
 })
 
 test_that("calc_daily_dose_nlp_notes returns negation flag correctly", {
   df <- make_note_row(clinical_note = "Patient is NOT on any steroids.")
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) entity_negated,
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df)
-    }
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df)
   # negated → no dose from notes; will fall to baseline
   expect_true(result$note_negation_flag %in% c(TRUE, NA))
 })
@@ -410,14 +381,11 @@ test_that("calc_daily_dose_nlp_notes returns negation flag correctly", {
 test_that("calc_daily_dose_nlp_notes missing note column is handled gracefully", {
   df <- make_note_row(sig = "Take 1 tablet daily")
   df$clinical_note <- NULL  # remove note column entirely
-
-  result <- local_mocked_bindings(
+  local_mocked_bindings(
     .call_medspacy = function(text) stop("should not be called"),
-    .env = "SteroidDoseR",
-    {
-      calc_daily_dose_nlp_notes(df, note_col = "clinical_note")
-    }
+    .package = "SteroidDoseR"
   )
+  result <- calc_daily_dose_nlp_notes(df, note_col = "clinical_note")
   # SIG regex should handle this without needing notes
   expect_equal(nrow(result), 1L)
   expect_true("daily_dose_mg" %in% names(result))

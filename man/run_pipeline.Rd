@@ -6,7 +6,7 @@
 \usage{
 run_pipeline(
   connector_or_df,
-  method = c("baseline", "nlp"),
+  method = c("baseline", "nlp", "nlp_notes", "hierarchical"),
   m2_sig_parse = c("auto", "warn", "nlp_first", "none"),
   drug_concept_ids = NULL,
   person_ids = NULL,
@@ -23,8 +23,11 @@ run_pipeline(
 \item{connector_or_df}{A \code{steroid_connector} or data frame. Passed to the
 selected dose method.}
 
-\item{method}{\code{character(1)}. Imputation method: \code{"baseline"} (default) or
-\code{"nlp"}.}
+\item{method}{\code{character(1)}. Imputation method: \code{"baseline"} (default),
+\code{"nlp"}, \code{"nlp_notes"}, or \code{"hierarchical"}. The \code{"nlp_notes"} method runs the
+regex SIG parser first, then falls back to medspaCy for unresolved records
+(requires Python + medspaCy — see \code{\link[=calc_daily_dose_nlp_notes]{calc_daily_dose_nlp_notes()}}).
+The \code{"hierarchical"} method cross-checks Baseline (M1/M3/M4) against Advanced NLP.}
 
 \item{m2_sig_parse}{\code{character(1)}. Only used when \code{method = "baseline"}.
 Controls how M2 (\code{tablets_freq}) is handled when \code{tablets} and

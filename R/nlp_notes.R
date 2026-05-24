@@ -126,6 +126,11 @@
     TRUE ~ "notes_ok"
   )
 
+  # Historical / negated / uncertain mentions should not contribute a current dose
+  if (status %in% c("notes_historical", "notes_negated", "notes_uncertain")) {
+    daily_mg <- NA_real_
+  }
+
   tibble::tibble(
     sig_raw              = note_text,
     tablets              = NA_real_,
@@ -394,6 +399,13 @@ calc_daily_dose_nlp_notes <- function(connector_or_df,
     return(drug_df)
   }
 
+  # Preserve any pre-existing daily_dose_mg (M1 source) before parse_sig_advanced
+  # appends its own daily_dose_mg — bind_cols would create a name collision otherwise.
+  if ("daily_dose_mg" %in% names(drug_df)) {
+    drug_df[[".daily_dose_mg_m1"]] <- drug_df[["daily_dose_mg"]]
+    drug_df[["daily_dose_mg"]]     <- NULL
+  }
+
   # ---------------------------------------------------------------------------
   # Step 1: Regex SIG parser (fast path)
   # ---------------------------------------------------------------------------
@@ -490,9 +502,15 @@ calc_daily_dose_nlp_notes <- function(connector_or_df,
   # ---------------------------------------------------------------------------
   still_na <- is.na(result$daily_dose_mg)
   if (any(still_na, na.rm = TRUE)) {
-    orig_status <- result$parsed_status[still_na]
+    orig_status  <- result$parsed_status[still_na]
+    bl_input     <- result[still_na, ]
+    # Restore the saved M1 column so calc_daily_dose_baseline can use it
+    if (".daily_dose_mg_m1" %in% names(bl_input)) {
+      bl_input[["daily_dose_mg"]]     <- bl_input[[".daily_dose_mg_m1"]]
+      bl_input[[".daily_dose_mg_m1"]] <- NULL
+    }
     bl <- calc_daily_dose_baseline(
-      result[still_na, ],
+      bl_input,
       filter_oral       = FALSE,
       m2_sig_parse      = "none",
       max_daily_dose_mg = max_daily_dose_mg,
@@ -523,6 +541,11 @@ calc_daily_dose_nlp_notes <- function(connector_or_df,
       result$daily_dose_mg[implausible] <- NA_real_
       result$parsed_status[implausible] <- "implausible"
     }
+  }
+
+  # Drop the internal M1 stash column if it wasn't consumed by baseline fallback
+  if (".daily_dose_mg_m1" %in% names(result)) {
+    result[[".daily_dose_mg_m1"]] <- NULL
   }
 
   result
