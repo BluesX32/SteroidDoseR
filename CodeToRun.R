@@ -1140,47 +1140,84 @@ cat(paste0(
 cat(strrep("=", 70), "\n")
 
 # ===========================================================================
-# 12. Save results to output folder
+# 12. Save results to a timestamped run folder
 # ===========================================================================
-message("\n=== Saving results to output folder ===")
+message("\n=== Saving results ===")
 
-if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
+# Each run gets its own subfolder so previous results are never overwritten.
+RUN_DIR <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
+dir.create(RUN_DIR, recursive = TRUE)
 
-# Record-level dose data (one row per drug-exposure record)
-readr::write_csv(baseline_df,            file.path(OUTPUT_DIR, "records_baseline.csv"))
-readr::write_csv(nlp_df,                 file.path(OUTPUT_DIR, "records_nlp.csv"))
-readr::write_csv(adv_nlp_df,             file.path(OUTPUT_DIR, "records_adv_nlp.csv"))
+# ── params.txt — human-readable record of every configuration value ──────────
+writeLines(c(
+  "SteroidDoseR — Run Parameters",
+  strrep("=", 40),
+  sprintf("Script:              CodeToRun.R"),
+  sprintf("Run time:            %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+  "",
+  "Data",
+  strrep("-", 40),
+  sprintf("USE_SYNTHETIC:       %s", USE_SYNTHETIC),
+  sprintf("START_DATE:          %s", START_DATE),
+  sprintf("END_DATE:            %s", END_DATE),
+  sprintf("STEROID_CONCEPT_IDS: %d concept IDs", length(STEROID_CONCEPT_IDS)),
+  sprintf("COHORT_PERSON_IDS:   %s",
+          if (is.null(COHORT_PERSON_IDS)) "NULL (all patients)"
+          else sprintf("%d person IDs", length(COHORT_PERSON_IDS))),
+  sprintf("Drug-exposure rows:  %d", nrow(drug_df)),
+  sprintf("Unique patients:     %d", dplyr::n_distinct(drug_df$person_id)),
+  "",
+  "Episode building",
+  strrep("-", 40),
+  sprintf("GAP_DAYS:            %d", GAP_DAYS),
+  sprintf("CONCURRENT_AGG:      %s", CONCURRENT_AGG),
+  "",
+  "Evaluation",
+  strrep("-", 40),
+  sprintf("DOSE_THRESHOLD_MG:   %s",
+          if (is.null(DOSE_THRESHOLD_MG))  "NULL (disabled)"
+          else as.character(DOSE_THRESHOLD_MG)),
+  sprintf("DOSE_THRESHOLD_PCT:  %s",
+          if (is.null(DOSE_THRESHOLD_PCT)) "NULL (disabled)"
+          else as.character(DOSE_THRESHOLD_PCT)),
+  sprintf("GOLD_STD_PATH:       %s", GOLD_STD_PATH)
+), con = file.path(RUN_DIR, "params.txt"))
 
-# Episode-level summaries (one row per patient-drug episode)
-readr::write_csv(baseline_episodes,      file.path(OUTPUT_DIR, "episodes_baseline.csv"))
-readr::write_csv(nlp_episodes,           file.path(OUTPUT_DIR, "episodes_nlp.csv"))
-readr::write_csv(adv_nlp_episodes,       file.path(OUTPUT_DIR, "episodes_adv_nlp.csv"))
+# ── Record-level dose data (one row per drug-exposure record) ────────────────
+readr::write_csv(baseline_df,            file.path(RUN_DIR, "records_baseline.csv"))
+readr::write_csv(nlp_df,                 file.path(RUN_DIR, "records_nlp.csv"))
+readr::write_csv(adv_nlp_df,             file.path(RUN_DIR, "records_adv_nlp.csv"))
 
-# Gold standard (with pred-equiv conversion applied)
-readr::write_csv(gold_std,               file.path(OUTPUT_DIR, "gold_standard.csv"))
+# ── Episode-level summaries (one row per patient-drug episode) ────────────────
+readr::write_csv(baseline_episodes,      file.path(RUN_DIR, "episodes_baseline.csv"))
+readr::write_csv(nlp_episodes,           file.path(RUN_DIR, "episodes_nlp.csv"))
+readr::write_csv(adv_nlp_episodes,       file.path(RUN_DIR, "episodes_adv_nlp.csv"))
 
-# Evaluation: episode-level comparison tables (one row per matched gold episode)
-readr::write_csv(ev_baseline$comparison, file.path(OUTPUT_DIR, "comparison_baseline.csv"))
-readr::write_csv(ev_nlp$comparison,      file.path(OUTPUT_DIR, "comparison_nlp.csv"))
-readr::write_csv(ev_adv$comparison,      file.path(OUTPUT_DIR, "comparison_adv_nlp.csv"))
+# ── Gold standard (with pred-equiv conversion applied) ───────────────────────
+readr::write_csv(gold_std,               file.path(RUN_DIR, "gold_standard.csv"))
 
-# Summary tables
-readr::write_csv(episode_counts,         file.path(OUTPUT_DIR, "episode_counts.csv"))
-readr::write_csv(metrics_tbl,            file.path(OUTPUT_DIR, "metrics_table.csv"))
-readr::write_csv(agreement_tbl,          file.path(OUTPUT_DIR, "agreement_table.csv"))
+# ── Evaluation comparison tables (one row per matched gold episode) ──────────
+readr::write_csv(ev_baseline$comparison, file.path(RUN_DIR, "comparison_baseline.csv"))
+readr::write_csv(ev_nlp$comparison,      file.path(RUN_DIR, "comparison_nlp.csv"))
+readr::write_csv(ev_adv$comparison,      file.path(RUN_DIR, "comparison_adv_nlp.csv"))
 
-# Plot data tables (for reproducing figures without re-running the analysis)
-readr::write_csv(dist_df_all,            file.path(OUTPUT_DIR, "plot_data_dose_distribution.csv"))
-readr::write_csv(scatter_df,             file.path(OUTPUT_DIR, "plot_data_scatter.csv"))
-readr::write_csv(ba_df,                  file.path(OUTPUT_DIR, "plot_data_bland_altman.csv"))
-readr::write_csv(ba_limits,              file.path(OUTPUT_DIR, "bland_altman_limits.csv"))
+# ── Summary tables ────────────────────────────────────────────────────────────
+readr::write_csv(episode_counts,         file.path(RUN_DIR, "episode_counts.csv"))
+readr::write_csv(metrics_tbl,            file.path(RUN_DIR, "metrics_table.csv"))
+readr::write_csv(agreement_tbl,          file.path(RUN_DIR, "agreement_table.csv"))
 
-# Figures
-ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 10, dpi = 150)
-ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_scatter.png"),           p_scatter, width = 10, height = 5,  dpi = 150)
-ggplot2::ggsave(file.path(OUTPUT_DIR, "plot_bland_altman.png"),      p_ba,      width = 10, height = 5,  dpi = 150)
+# ── Plot data (for reproducing figures without re-running) ────────────────────
+readr::write_csv(dist_df_all,            file.path(RUN_DIR, "plot_data_dose_distribution.csv"))
+readr::write_csv(scatter_df,             file.path(RUN_DIR, "plot_data_scatter.csv"))
+readr::write_csv(ba_df,                  file.path(RUN_DIR, "plot_data_bland_altman.csv"))
+readr::write_csv(ba_limits,              file.path(RUN_DIR, "bland_altman_limits.csv"))
 
-message(sprintf("Results saved to: %s", OUTPUT_DIR))
+# ── Figures ───────────────────────────────────────────────────────────────────
+ggplot2::ggsave(file.path(RUN_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 10, dpi = 150)
+ggplot2::ggsave(file.path(RUN_DIR, "plot_scatter.png"),           p_scatter, width = 10, height = 5,  dpi = 150)
+ggplot2::ggsave(file.path(RUN_DIR, "plot_bland_altman.png"),      p_ba,      width = 10, height = 5,  dpi = 150)
+
+message(sprintf("Results saved to: %s", RUN_DIR))
 
 # ===========================================================================
 # 13. Interactive dose review dashboard
