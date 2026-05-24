@@ -1,5 +1,24 @@
 # SteroidDoseR 0.4.0 (development)
 
+## New features
+
+* **medspaCy clinical note parser** (`nlp_notes.R`): new `calc_daily_dose_nlp_notes()`,
+  `parse_note_one()`, and `parse_notes()` functions extract steroid doses from
+  unstructured clinical note text using a medspaCy + scispaCy Python pipeline
+  (via `reticulate`). The regex SIG parser runs first; medspaCy fires only for
+  records the regex cannot resolve. Negation, uncertainty, historical context,
+  and note-section detection are surfaced as new output columns
+  (`note_negation_flag`, `note_uncertainty_flag`, `note_section`).
+  Python setup: `pip install medspacy scispacy && python -m spacy download en_core_sci_sm`.
+
+* **`run_pipeline()` gains `method = "nlp_notes"`** (`pipeline.R`): routes the
+  full pipeline through `calc_daily_dose_nlp_notes()` when selected.
+
+* **`inst/python/medspacy_pipeline.py`**: Python extraction layer called via
+  reticulate. Includes a module-level pipeline cache (loaded once per session),
+  steroid keyword NER fallback, context window analysis for negation/uncertainty/
+  historical detection, and section header scanning.
+
 ## Bug fixes
 
 * `LLMToRun.R`: set `CONDA_PKGS_DIRS` to `C:/Temp/conda_pkgs` before any

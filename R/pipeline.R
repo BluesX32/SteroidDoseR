@@ -52,8 +52,10 @@ NULL
 #'
 #' @param connector_or_df A `steroid_connector` or data frame. Passed to the
 #'   selected dose method.
-#' @param method `character(1)`. Imputation method: `"baseline"` (default) or
-#'   `"nlp"`.
+#' @param method `character(1)`. Imputation method: `"baseline"` (default),
+#'   `"nlp"`, or `"nlp_notes"`. The `"nlp_notes"` method runs the regex SIG
+#'   parser first, then falls back to medspaCy for unresolved records (requires
+#'   Python + medspaCy — see [calc_daily_dose_nlp_notes()]).
 #' @param m2_sig_parse `character(1)`. Only used when `method = "baseline"`.
 #'   Controls how M2 (`tablets_freq`) is handled when `tablets` and
 #'   `freq_per_day` are absent:
@@ -103,7 +105,7 @@ NULL
 #' episodes[, c("person_id", "drug_name_std", "episode_start",
 #'              "episode_end", "median_daily_dose")]
 run_pipeline <- function(connector_or_df,
-                         method           = c("baseline", "nlp"),
+                         method           = c("baseline", "nlp", "nlp_notes"),
                          m2_sig_parse     = c("auto", "warn", "nlp_first", "none"),
                          drug_concept_ids = NULL,
                          person_ids       = NULL,
@@ -143,8 +145,11 @@ run_pipeline <- function(connector_or_df,
       drug_df  <- calc_daily_dose_baseline(drug_df, m2_sig_parse = m2_sig_parse)
     }
     dose_col <- "daily_dose_mg_imputed"
-  } else {
+  } else if (method == "nlp") {
     drug_df  <- calc_daily_dose_nlp(drug_df, sig_source = sig_source)
+    dose_col <- "daily_dose_mg"
+  } else {
+    drug_df  <- calc_daily_dose_nlp_notes(drug_df, sig_source = sig_source)
     dose_col <- "daily_dose_mg"
   }
 

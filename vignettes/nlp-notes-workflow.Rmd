@@ -1,0 +1,168 @@
+---
+title: "Clinical Note NLP Workflow (medspaCy)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Clinical Note NLP Workflow (medspaCy)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = FALSE   # Python required; skip during R CMD CHECK
+)
+```
+
+## Overview
+
+The medspaCy NLP method extracts steroid doses from **unstructured clinical note
+text** — physician assessments, discharge summaries, progress notes — where
+structured SIG strings are absent or incomplete.
+
+The pipeline runs in five steps:
+
+1. **Regex SIG parser** (`parse_sig_one_advanced`) on the `sig` column — fast path.
+2. **medspaCy** — fires only for records the regex could not resolve.
+3. **Strength fallback** — `amount_value` → drug concept name.
+4. **Baseline structural fallback** (M1/M3/M4).
+5. **Plausibility cap** (2 000 mg/day default).
+
+## Python setup
+
+Install once in your Python environment:
+
+```bash
+pip install medspacy scispacy
+python -m spacy download en_core_sci_sm
+```
+
+Then point `reticulate` at that environment before loading `SteroidDoseR`:
+
+```r
+library(reticulate)
+# use_virtualenv("~/.venv/steroids")   # if using a virtualenv
+# use_condaenv("steroids")             # if using conda
+```
+
+## Basic usage
+
+```{r basic}
+library(SteroidDoseR)
+
+df <- tibble::tibble(
+  person_id                = 1L,
+  drug_concept_name        = "prednisone 5 MG oral tablet",
+  route_concept_name       = "oral",
+  sig                      = NA_character_,
+  clinical_note            = paste(
+    "Assessment: Patient continued on prednisone 40 mg daily.",
+    "Plan: Taper to 20 mg over the next 4 weeks."
+  ),
+  drug_exposure_start_date = as.Date("2023-01-01"),
+  drug_exposure_end_date   = as.Date("2023-06-01")
+)
+
+result <- calc_daily_dose_nlp_notes(df, note_col = "clinical_note")
+
+result[, c("person_id", "daily_dose_mg", "parsed_status",
+           "note_section", "note_negation_flag", "note_uncertainty_flag")]
+```
+
+## Parsing a single note
+
+```{r single}
+parse_note_one("Patient on methylprednisolone 1 g IV daily for 3 days.")
+parse_note_one("Patient is NOT currently on any corticosteroids.")
+parse_note_one("Consider starting prednisone 40 mg if flare worsens.")
+```
+
+| Input | `parsed_status` | `note_negation_flag` | `note_uncertainty_flag` |
+|---|---|---|---|
+| "...on prednisone 40 mg daily" | `notes_ok` | FALSE | FALSE |
+| "NOT on any corticosteroids" | `notes_negated` | TRUE | FALSE |
+| "Consider starting prednisone" | `notes_uncertain` | FALSE | TRUE |
+| "was previously on prednisone" | `notes_historical` | FALSE | FALSE |
+
+## Note-specific output columns
+
+| Column | Type | Meaning |
+|---|---|---|
+| `note_entity_count` | int | Number of steroid entities found |
+| `note_negation_flag` | lgl | Drug is negated in the note |
+| `note_uncertainty_flag` | lgl | Drug is hedged / uncertain |
+| `note_section` | chr | Detected section (`"assessment"`, `"plan"`, `"history"`, …) |
+
+## Hybrid: SIG + note in the same data frame
+
+When the `sig` column is populated for some records and the `clinical_note`
+column for others, `calc_daily_dose_nlp_notes()` handles both automatically:
+
+```{r hybrid}
+df_mixed <- tibble::tibble(
+  person_id                = 1:3,
+  drug_concept_name        = rep("prednisone 5 MG oral tablet", 3),
+  route_concept_name       = rep("oral", 3),
+  sig = c(
+    "Take 2 tablets (10 mg) daily",   # resolved by regex
+    NA_character_,                     # falls through to medspaCy
+    NA_character_                      # falls through to medspaCy
+  ),
+  clinical_note = c(
+    NA_character_,
+    "Patient on prednisone 20 mg daily.",
+    "No steroids prescribed at this visit."
+  ),
+  drug_exposure_start_date = rep(as.Date("2023-01-01"), 3),
+  drug_exposure_end_date   = rep(as.Date("2023-06-01"), 3)
+)
+
+result_mixed <- calc_daily_dose_nlp_notes(df_mixed, note_col = "clinical_note")
+result_mixed[, c("person_id", "daily_dose_mg", "parsed_status")]
+```
+
+## Full pipeline
+
+```{r pipeline}
+episodes <- run_pipeline(
+  df_mixed,
+  method    = "nlp_notes",
+  note_col  = "clinical_note",
+  gap_days  = 30L
+)
+episodes[, c("person_id", "drug_name_std", "episode_start",
+             "episode_end", "median_daily_dose")]
+```
+
+## Inspecting negated and uncertain records
+
+Negated or uncertain records will have `NA` for `daily_dose_mg` from the note
+step and will fall through to the baseline structural fallback. You can inspect
+them directly:
+
+```{r flags}
+library(dplyr)
+
+result |>
+  filter(note_negation_flag | note_uncertainty_flag) |>
+  select(person_id, clinical_note, parsed_status,
+         note_negation_flag, note_uncertainty_flag, daily_dose_mg)
+```
+
+## Converting to prednisone equivalents and building episodes
+
+The output of `calc_daily_dose_nlp_notes()` feeds directly into the rest of
+the standard pipeline:
+
+```{r convert}
+library(SteroidDoseR)
+
+notes_result <- calc_daily_dose_nlp_notes(df, note_col = "clinical_note")
+
+# Convert to prednisone equivalents
+pe_result <- convert_pred_equiv(notes_result, dose_col = "daily_dose_mg")
+
+# Build episodes
+episodes <- build_episodes(pe_result, dose_col = "pred_equiv_mg", gap_days = 30L)
+```

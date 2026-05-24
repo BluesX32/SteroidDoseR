@@ -70,6 +70,8 @@ R/
   nlp.R           — calc_daily_dose_nlp(), parse_sig(), parse_sig_one()
   nlp_advanced.R  — calc_daily_dose_nlp_advanced(), parse_sig_advanced(),
                     parse_sig_one_advanced(), parse_taper_schedule()
+  nlp_notes.R     — calc_daily_dose_nlp_notes(), parse_note_one(), parse_notes()
+                    medspaCy-based clinical note parser (requires Python)
   connector.R     — create_omop_connector(), create_df_connector(), etc.
   connection.R    — .load_env_file() internal helper
   conversion.R    — convert_pred_equiv()
@@ -82,6 +84,9 @@ R/
 
 inst/sql/
   extract_drug_exposure.sql — parameterised OMOP query (SqlRender template)
+
+inst/python/
+  medspacy_pipeline.py — Python medspaCy steroid dose extractor (called via reticulate)
 
 extras/
   ErrorAnalysis.R       — deep-dive into high-error episodes; needs CodeToRun.R objects
@@ -101,6 +106,7 @@ docs/
 vignettes/
   baseline-workflow.Rmd
   nlp-workflow.Rmd
+  nlp-notes-workflow.Rmd
   connector-workflow.Rmd
   evaluation-workflow.Rmd
 ```
@@ -113,8 +119,9 @@ vignettes/
   `parse_sig_one()` is the canonical example: wrap `.parse_sig_one_impl()` in
   `tryCatch` and return `.empty_parse_row()` on failure.
 - **Oral filter defaults to TRUE** — `filter_oral = TRUE` is the default for all
-  three imputation functions (baseline, NLP, advanced NLP). Pass `filter_oral = FALSE`
-  only when the input is already pre-filtered to oral corticosteroids.
+  four imputation functions (baseline, NLP, advanced NLP, NLP Notes). Pass
+  `filter_oral = FALSE` only when the input is already pre-filtered to oral
+  corticosteroids.
 - **Unit-safe `amount_value`** — always check `amount_unit_concept_id == 8576`
   (mg) before treating `amount_value` as milligrams. Other units (mcg = 9655,
   g = 8504) must be discarded and the `drug_source_value` string fallback used.
@@ -149,6 +156,18 @@ vignettes/
 3. **After changing the cascade order, search for all `imputation_method`
    assertions** (`grep -r "imputation_method"` in `tests/testthat/`) and verify
    each expected value is still correct.
+
+4. **Guard medspaCy integration tests with `skip_if_not()`.**
+   Tests in `test-nlp-notes.R` that require live Python must start with:
+   ```r
+   skip_if_not(
+     requireNamespace("reticulate", quietly = TRUE) &&
+       reticulate::py_module_available("medspacy"),
+     "medspaCy not available"
+   )
+   ```
+   Pure-logic tests must mock `.call_medspacy()` with `local_mocked_bindings()`
+   so the test suite passes in CI without Python installed.
 
 ---
 
