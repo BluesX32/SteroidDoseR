@@ -775,6 +775,313 @@ driver location. Leave the proxy env vars commented out in your HPC `R.env`.
 
 ---
 
+## 18. `local_mocked_bindings` syntax: `.package` not `.env`, no `{ }` code block
+
+**Symptom**
+
+```
+Error: All elements of `...` must be named.
+```
+
+or (after switching to `.env = "SteroidDoseR"`):
+
+```
+Error in `loadNamespace(name)`: there is no package called 'SteroidDoseR'
+```
+
+**Root cause**
+
+`testthat::local_mocked_bindings()` (testthat 3 edition) accepts two kinds of
+arguments: the binding overrides (`name = value`) and `.package`. A bare `{ }` block
+written as the last argument is silently captured as an unnamed `...` element,
+triggering "All elements must be named". Using `.env = "SteroidDoseR"` (a string)
+instead of `.package = "SteroidDoseR"` passes a string where an environment is
+expected, which then fails when testthat tries to resolve the namespace.
+
+**Wrong pattern (both variants)**
+
+```r
+# WRONG — { } block is unnamed "..." element
+row <- local_mocked_bindings(
+  .call_medspacy = function(text) list(),
+  .env = "SteroidDoseR",    # also wrong: string, not env
+  {
+    parse_note_one(NA_character_)
+  }
+)
+```
+
+**Correct pattern**
+
+```r
+# RIGHT — call local_mocked_bindings() at the TOP of the test_that block;
+# the mock stays active for the rest of the block automatically.
+test_that("...", {
+  local_mocked_bindings(.call_medspacy = function(text) list(),
+                        .package = "SteroidDoseR")
+  row <- parse_note_one(NA_character_)
+  expect_equal(row$parsed_status, "empty")
+})
+```
+
+When you need the mock active inside `expect_warning()`, use `with_mocked_bindings()`:
+
+```r
+with_mocked_bindings(
+  { result <- calc_daily_dose_nlp_notes(df, max_daily_dose_mg = 2000) },
+  .call_medspacy = function(text) entities_huge,
+  .package = "SteroidDoseR"
+)
+```
+
+**Prevention**: always use `.package = "PackageName"` (not `.env`), and never
+pass a code block as the last positional argument.
+
+---
+
+## 19. `bind_cols` silently renames columns when names collide
+
+**Symptom**
+
+```
+Error: Column `daily_dose_mg` not found in `.data`
+```
+
+or a vctrs size-0 error (see #20) when a column that should have length *n*
+is actually NULL.
+
+**Root cause**
+
+`dplyr::bind_cols(df_a, df_b)` does not error on duplicate column names — it
+auto-disambiguates by appending `...1` / `...2` suffixes. If `df_a` has
+`daily_dose_mg` and `df_b` also adds `daily_dose_mg`, the result has
+`daily_dose_mg...X` and `daily_dose_mg...Y` but no plain `daily_dose_mg`. Any
+code that subsequently references `result$daily_dose_mg` silently gets NULL.
+
+This is exactly what `parse_sig_advanced()` does internally:
+
+```r
+dplyr::bind_cols(drug_df, parsed)   # parsed also has daily_dose_mg
+```
+
+If `drug_df` already carries a `daily_dose_mg` column (e.g. from the original
+OMOP `drug_exposure` table), the result has two disambiguated columns and the
+SIG-parsed dose is unreachable by its expected name.
+
+**Fix**
+
+Stash / remove the conflicting column *before* the `bind_cols`-using call,
+then restore it afterward if the downstream step needs it (e.g. baseline M1):
+
+```r
+# Before calling parse_sig_advanced:
+if ("daily_dose_mg" %in% names(drug_df)) {
+  drug_df[[".daily_dose_mg_m1"]] <- drug_df[["daily_dose_mg"]]
+  drug_df[["daily_dose_mg"]]     <- NULL
+}
+result <- parse_sig_advanced(drug_df, sig_col = sig_col)
+
+# Restore before baseline fallback (needs M1):
+if (".daily_dose_mg_m1" %in% names(bl_input)) {
+  bl_input[["daily_dose_mg"]]     <- bl_input[[".daily_dose_mg_m1"]]
+  bl_input[[".daily_dose_mg_m1"]] <- NULL
+}
+```
+
+If the original column is not needed downstream (e.g., in `hierarchical.R`
+where `bl_dose` is already extracted), simply drop it:
+
+```r
+if ("daily_dose_mg" %in% names(drug_df)) drug_df[["daily_dose_mg"]] <- NULL
+result <- parse_sig_advanced(drug_df, sig_col = sig_col)
+```
+
+**Applies to**: any pipeline function that calls `parse_sig_advanced()` or
+`parse_notes()` on a `drug_df` that may already have a `daily_dose_mg` column
+(all four imputation functions accept raw OMOP data frames).
+
+---
+
+## 20. NULL column from `bind_cols` disambiguation causes vctrs size-0 error
+
+**Symptom**
+
+```
+Error in `dplyr::case_when(...)`:
+Can't recycle `..1 (left)` (size 0) to match `..4 (left)` (size 3).
+Backtrace:
+ 1. SteroidDoseR::calc_daily_dose_hierarchical(df)
+ 2. dplyr::case_when(...)
+ 5. vctrs::stop_incompatible_size(...)
+```
+
+**Root cause**
+
+A direct consequence of #19. When `nlp_parsed$daily_dose_mg` is NULL (because
+the column was renamed to `daily_dose_mg...N` by `bind_cols`):
+
+```r
+sig_dose <- nlp_parsed$daily_dose_mg   # → NULL
+dose_diff <- abs(bl_dose - sig_dose)   # abs(numeric(3) - NULL) → numeric(0)
+```
+
+`numeric(0) <= match_tol` produces `logical(0)`. When `logical(0)` appears in
+any `case_when` condition alongside other conditions of length *n*, vctrs
+`vec_size_common()` fires a size-incompatibility error.
+
+The error message cites `..1 (left)` (size 0) vs `..4 (left)` (size 3), where
+the position numbers refer to the positional clauses of `case_when`.
+
+**Diagnosis**
+
+When you see a `vctrs::stop_incompatible_size` with size 0 inside `case_when`:
+
+1. Identify which LHS condition is size 0 (the `..N (left)` in the message).
+2. Trace back each variable in that condition — any NULL column will make
+   arithmetic produce `numeric(0)`.
+3. Check whether a `bind_cols` call earlier in the function collapsed two
+   same-named columns (see #19).
+
+**Fix**: apply the column stash/drop pattern described in #19 *before* the
+`bind_cols`-using helper call.
+
+---
+
+## 21. `run_pipeline` must expose passthrough parameters for each wrapped method
+
+**Symptom**
+
+```
+Erreur : argument inutilisé (note_col = "clinical_note")
+```
+
+when calling:
+
+```r
+run_pipeline(df, method = "nlp_notes", note_col = "clinical_note", gap_days = 30)
+```
+
+**Root cause**
+
+`run_pipeline()` is a convenience wrapper that dispatches to one of four
+imputation functions. When a new method is added (e.g., `"nlp_notes"`) and the
+underlying function has a method-specific parameter (`note_col`), that parameter
+must also be declared on `run_pipeline()` and forwarded in the dispatch branch.
+If it is omitted, any user who passes it gets an "unused argument" error.
+
+**Fix**
+
+Add the parameter to `run_pipeline` and forward it:
+
+```r
+run_pipeline <- function(..., note_col = "clinical_note", ...) {
+  ...
+  } else if (method == "nlp_notes") {
+    drug_df <- calc_daily_dose_nlp_notes(drug_df,
+                                         note_col   = note_col,
+                                         sig_source = sig_source)
+  }
+```
+
+Also update the `\usage{}` and `\arguments{}` in `man/run_pipeline.Rd` at the
+same time (see #7).
+
+**Prevention**: whenever a new `method =` branch is added to `run_pipeline`,
+audit the underlying function's signature and add any method-specific
+parameters to `run_pipeline` as well.
+
+---
+
+## 22. Inverted `%in%` direction in test assertions
+
+**Symptom**
+
+```
+-- Failure: multi-row data frame produces one row per input row --
+all(...) is not TRUE
+```
+
+despite the code appearing correct and producing sensible output.
+
+**Root cause**
+
+`all(A %in% B)` checks that every element of **A** is present in **B**
+(i.e., A ⊆ B). Writing it as `all(B %in% A)` checks the reverse (B ⊆ A).
+
+In this test the intent was "every method in the result is a valid label":
+
+```r
+# WRONG — checks that all 7 valid labels appear in the 3-row result (impossible)
+expect_true(all(c("cross_checked", "blended", "nlp_override",
+                  "baseline_only", "nlp_fills_baseline", "nlp_taper", "missing") %in%
+                c(result$hierarchical_method, "missing")))
+```
+
+A 3-row result can produce at most 3 distinct methods, so 7 values can never
+all be present in it.
+
+```r
+# RIGHT — checks that every result method is one of the valid labels
+expect_true(all(result$hierarchical_method %in%
+                  c("cross_checked", "blended", "nlp_override",
+                    "baseline_only", "nlp_fills_baseline", "nlp_taper", "missing")))
+```
+
+**Prevention**: before writing `all(X %in% Y)`, ask which is the smaller set
+(the one being validated) — it goes on the LEFT of `%in%`.
+
+---
+
+## 23. Negated / uncertain / historical NLP entities must clear `daily_dose_mg`
+
+**Symptom**
+
+Test for `notes_historical` status fails:
+
+```
+── Failure: .entities_to_row returns notes_historical for past-tense entity ──
+Expected `is.na(row$daily_dose_mg)` to be TRUE.
+Actual: FALSE   # daily_dose_mg was 20 (from entity$dose_mg = 20)
+```
+
+**Root cause**
+
+In `.entities_to_row()`, the `parsed_status` is computed correctly as
+`"notes_historical"` when all entities are past-tense. However, `daily_dose_mg`
+was computed from `entity$dose_mg` *before* the status check and never cleared.
+A historical dose (e.g., "was previously on 20 mg") is not the current active
+dose and must not propagate to downstream calculations.
+
+The same issue applies to `"notes_negated"` ("patient is NOT on any steroids")
+and `"notes_uncertain"` ("may be on prednisone") — any dose value in those
+entities reflects a non-current state.
+
+**Fix**
+
+After computing `status`, explicitly zero out `daily_dose_mg` for non-current
+statuses:
+
+```r
+status <- dplyr::case_when(
+  any_negated && length(active) == 0L           ~ "notes_negated",
+  any_uncertain && length(active) == 0L         ~ "notes_uncertain",
+  length(active) == 0L && any(historical_flags) ~ "notes_historical",
+  is.na(daily_mg)                               ~ "notes_no_dose",
+  TRUE                                          ~ "notes_ok"
+)
+
+# Non-current mentions must not supply a dose
+if (status %in% c("notes_historical", "notes_negated", "notes_uncertain")) {
+  daily_mg <- NA_real_
+}
+```
+
+**Prevention**: whenever an NLP entity carries contextual flags (negation,
+uncertainty, temporality), treat them as hard overrides on the dose value —
+set dose to NA immediately after status is resolved, not as a later optional step.
+
+---
+
 ## Quick reference
 
 | Check level | Issue | File(s) to edit |
@@ -798,3 +1105,9 @@ driver location. Leave the proxy env vars commented out in your HPC `R.env`.
 | WARNING | Exported function missing Rd file | Create `man/<fn>.Rd` at same time as `@export` |
 | Runtime | SAFER Desktop JDBC jar not found | Place jar at `C:/jdbc/`; or set `DATABRICKS_JDBC_JAR` |
 | Runtime | SAFER Desktop connection reset | Add `DATABRICKS_PROXY_HOST` + `DATABRICKS_PROXY_PORT` to R.env |
+| ERROR | `local_mocked_bindings` "All elements must be named" | Use `.package =`, no `{ }` block; see #18 |
+| Logic bug | `bind_cols` renames colliding column to `col...N` → NULL | Stash/drop `daily_dose_mg` before `parse_sig_advanced`; see #19 |
+| ERROR | vctrs size-0 in `case_when` from NULL column arithmetic | NULL → `numeric(0)` → `logical(0)` in condition; trace back to #19 |
+| Runtime | `run_pipeline` "unused argument" for method-specific param | Add `note_col` (or similar) to `run_pipeline` signature and forward it; see #21 |
+| Logic bug | Inverted `%in%`: 7 values can't all be in a 3-row result | `all(result$col %in% valid)` not `all(valid %in% result$col)`; see #22 |
+| Logic bug | Historical/negated/uncertain NLP entity leaks a dose | After computing `parsed_status`, set `daily_dose_mg <- NA_real_` for non-current statuses; see #23 |
