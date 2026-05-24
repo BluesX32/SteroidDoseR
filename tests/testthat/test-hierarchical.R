@@ -329,7 +329,8 @@ test_that("multi-row data frame produces one row per input row", {
   )
   result <- calc_daily_dose_hierarchical(df)
   expect_equal(nrow(result), 3L)
-  expect_true(all(c("cross_checked", "blended", "nlp_override",
-                    "baseline_only", "nlp_fills_baseline", "nlp_taper", "missing") %in%
-                  c(result$hierarchical_method, "missing")))   # at least some methods appear
+  # Each result method must be one of the valid hierarchy labels
+  valid_methods <- c("cross_checked", "blended", "nlp_override",
+                     "baseline_only", "nlp_fills_baseline", "nlp_taper", "missing")
+  expect_true(all(result$hierarchical_method %in% valid_methods))
 })

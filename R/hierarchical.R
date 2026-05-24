@@ -182,6 +182,14 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
   strength_mg <- if ("strength_mg" %in% names(bl_result)) bl_result$strength_mg
                  else rep(NA_real_, nrow(drug_df))
 
+  # Drop daily_dose_mg from drug_df before parse_sig_advanced: baseline has
+  # already captured what it needs, and leaving it in causes a bind_cols column
+  # name collision (drug_df$daily_dose_mg vs. parse_sig_advanced's output column
+  # of the same name), making nlp_parsed$daily_dose_mg NULL afterward.
+  if ("daily_dose_mg" %in% names(drug_df)) {
+    drug_df[["daily_dose_mg"]] <- NULL
+  }
+
   # --- 3. NLP: SIG text side (parse_sig_advanced, no baseline fallback) -------
   nlp_parsed <- parse_sig_advanced(drug_df, sig_col = sig_col)
 

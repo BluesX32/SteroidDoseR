@@ -8,6 +8,7 @@ run_pipeline(
   connector_or_df,
   method = c("baseline", "nlp", "nlp_notes", "hierarchical"),
   m2_sig_parse = c("auto", "warn", "nlp_first", "none"),
+  note_col = "clinical_note",
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -42,6 +43,10 @@ calling \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}}, so 
 \code{freq_per_day} are available for M2.}
 \item{\code{"none"}}{Silently skip M2.}
 }}
+
+\item{note_col}{\code{character(1)}. Name of the clinical note text column. Passed to
+\code{\link[=calc_daily_dose_nlp_notes]{calc_daily_dose_nlp_notes()}} when \code{method = "nlp_notes"}. Default:
+\code{"clinical_note"}.}
 
 \item{drug_concept_ids, person_ids, start_date, end_date, sig_source}{Passed to the dose function. Ignored when \code{connector_or_df} is a data
 frame.}

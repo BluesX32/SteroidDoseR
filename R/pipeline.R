@@ -69,6 +69,9 @@ NULL
 #'       `freq_per_day` are available for M2.}
 #'     \item{`"none"`}{Silently skip M2.}
 #'   }
+#' @param note_col `character(1)`. Name of the clinical note text column.
+#'   Passed to [calc_daily_dose_nlp_notes()] when `method = "nlp_notes"`.
+#'   Default: `"clinical_note"`.
 #' @param drug_concept_ids,person_ids,start_date,end_date,sig_source
 #'   Passed to the dose function. Ignored when `connector_or_df` is a data
 #'   frame.
@@ -107,6 +110,7 @@ NULL
 run_pipeline <- function(connector_or_df,
                          method           = c("baseline", "nlp", "nlp_notes", "hierarchical"),
                          m2_sig_parse     = c("auto", "warn", "nlp_first", "none"),
+                         note_col         = "clinical_note",
                          drug_concept_ids = NULL,
                          person_ids       = NULL,
                          start_date       = NULL,
@@ -149,7 +153,8 @@ run_pipeline <- function(connector_or_df,
     drug_df  <- calc_daily_dose_nlp(drug_df, sig_source = sig_source)
     dose_col <- "daily_dose_mg"
   } else if (method == "nlp_notes") {
-    drug_df  <- calc_daily_dose_nlp_notes(drug_df, sig_source = sig_source)
+    drug_df  <- calc_daily_dose_nlp_notes(drug_df, note_col = note_col,
+                                          sig_source = sig_source)
     dose_col <- "daily_dose_mg"
   } else {
     drug_df  <- calc_daily_dose_hierarchical(drug_df, sig_source = sig_source)

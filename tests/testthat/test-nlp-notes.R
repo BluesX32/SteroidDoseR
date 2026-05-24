@@ -288,7 +288,7 @@ test_that("calc_daily_dose_nlp_notes resolves SIG via regex (no medspaCy needed)
   )
   result <- calc_daily_dose_nlp_notes(df)
   expect_false(mock_called)
-  expect_equal(result$daily_dose_mg, 10)
+  expect_equal(result$daily_dose_mg, 20)  # (10 mg/tablet × 2 tablets × 1/day)
   expect_equal(result$parsed_status, "ok")
 })
 
