@@ -268,12 +268,32 @@ compute_gold_anchored <- function(records_df, gold_df) {
              ))
   }
 
-  # Step 2: clip each record to the gold window
+  # Step 2: clip each record to the gold window; drop rows with NA dates or
+  # inverted bounds (data-quality: rec_end < rec_start, or NA rec_end)
   overlapping <- overlapping |>
     dplyr::mutate(
       clip_start = pmax(rec_start, g_start),
       clip_end   = pmin(rec_end,   g_end)
+    ) |>
+    dplyr::filter(
+      !is.na(clip_start), !is.na(clip_end),
+      clip_start <= clip_end
     )
+
+  if (nrow(overlapping) == 0L) {
+    warning("No valid clipped records remain after date-bound check.")
+    return(gold_df |>
+             dplyr::transmute(
+               patient_id           = as.integer(patient_id),
+               episode_start, episode_end,
+               gold_duration_days, gold_dose = median_daily_dose,
+               n_records            = 0L,
+               coverage_days        = 0L,
+               coverage_pct         = 0,
+               cumulative_dose_mg   = NA_real_,
+               avg_daily_dose_mg    = NA_real_
+             ))
+  }
 
   # Step 3: day-expand clipped records → one row per (pt_id, g_start, day)
   day_rows <- overlapping |>
