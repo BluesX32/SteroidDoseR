@@ -57,7 +57,7 @@ CONCURRENT_AGG <- "per_drug"   # "per_drug" or "sum_all"
 # DIFF_THRESHOLD: when |baseline_dose - nlp_dose| > this, NLP overrides baseline.
 # MATCH_TOL:      when |diff| <= this, the two estimates are considered to match.
 # Both in mg/day (prednisone-equivalent before conversion).
-DIFF_THRESHOLD <- 5     # mg/day
+DIFF_THRESHOLD <- 0     # mg/day
 MATCH_TOL      <- 0.01  # mg/day
 
 # -- Dose-agreement thresholds (gold-standard evaluation) --------------------
@@ -336,7 +336,7 @@ hier_df <- calc_daily_dose_hierarchical(
   drug_df,
   diff_threshold    = DIFF_THRESHOLD,
   match_tol         = MATCH_TOL,
-  max_daily_dose_mg = 2000,
+  max_daily_dose_mg = 100,
   filter_oral       = TRUE
 )
 
@@ -453,8 +453,8 @@ message("\n=== [2/3] Baseline method (comparator) ===")
 
 baseline_df <- calc_daily_dose_baseline(
   drug_df,
-  m2_sig_parse      = "auto",
-  max_daily_dose_mg = 2000,
+  m2_sig_parse      = "warn",
+  max_daily_dose_mg = 100,
   filter_oral       = TRUE
 )
 
@@ -467,7 +467,7 @@ print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg
 baseline_episodes <- run_pipeline(
   drug_df,
   method         = "baseline",
-  m2_sig_parse   = "auto",
+  m2_sig_parse   = "warn",
   return_level   = "episode",
   gap_days       = GAP_DAYS,
   concurrent_agg = CONCURRENT_AGG
@@ -482,7 +482,7 @@ message("\n=== [3/3] Advanced NLP method (comparator) ===")
 
 adv_nlp_df <- calc_daily_dose_nlp_advanced(
   drug_df,
-  max_daily_dose_mg = 2000,
+  max_daily_dose_mg = 100,
   expand_tapers     = FALSE,
   filter_oral       = TRUE
 )
