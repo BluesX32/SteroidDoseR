@@ -416,11 +416,11 @@ episode_join <- hier_episodes |>
   dplyr::mutate(pt_id_int = as.integer(person_id)) |>
   dplyr::inner_join(
     gold_std |>
-      dplyr::mutate(pt_id_int = as.integer(patient_id)) |>
-      dplyr::rename(
-        g_start    = episode_start,
-        g_end      = episode_end,
-        gold_dose  = median_daily_dose
+      dplyr::transmute(
+        pt_id_int = as.integer(patient_id),
+        g_start   = episode_start,
+        g_end     = episode_end,
+        gold_dose = median_daily_dose
       ),
     by = c("pt_id_int"),
     relationship = "many-to-many"
