@@ -1,8 +1,8 @@
 # parameter_selection.R
 # SteroidDoseR — Adaptive Hierarchical Parameter Selection
 #
-# Selects optimal MATCH_TOL, DIFF_THRESHOLD, and OVERRIDE_PREFER for the
-# hierarchical method by minimising MAE on a held-out training set, then
+# Selects optimal MATCH_TOL, DIFF_THRESHOLD, OVERRIDE_PREFER, and GAP_DAYS for
+# the hierarchical method by minimising MAE on a held-out training set, then
 # evaluates the selected parameters on the remaining test patients.
 #
 # Adaptive hierarchical decision tree (per record):
@@ -28,7 +28,7 @@
 # STEP 3 — Load gold standard; convert to pred-equiv.
 # STEP 4 — Identify matched patients; split train / test.
 # STEP 5 — Grid search over MATCH_TOL_GRID × DIFF_THRESHOLD_GRID ×
-#           OVERRIDE_PREFER_OPTS on training patients → best combo (min MAE).
+#           OVERRIDE_PREFER_OPTS × GAP_DAYS_GRID on training patients → best combo.
 # STEP 6 — Apply best params to full cohort; evaluate on test patients.
 # STEP 7 — Save results to timestamped folder.
 #
@@ -56,7 +56,6 @@ library(purrr)
 USE_SYNTHETIC  <- FALSE
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
-GAP_DAYS       <- 30L
 CONCURRENT_AGG <- "per_drug"     # "per_drug" or "sum_all"
 
 # -- Train / test split -------------------------------------------------------
@@ -67,12 +66,14 @@ TRAIN_FRACTION <- 0.30
 RANDOM_SEED    <- 42L            # for reproducibility
 
 # -- Grid search space --------------------------------------------------------
-# MATCH_TOL_GRID: |bl_dose - sig_dose| at or below this → cross_checked.
+# MATCH_TOL_GRID:      |bl_dose - sig_dose| at or below this → cross_checked.
 # DIFF_THRESHOLD_GRID: above this → adaptive_override; between → blended.
 # OVERRIDE_PREFER_OPTS: which source to trust when |diff| > DIFF_THRESHOLD.
+# GAP_DAYS_GRID:       max gap (days) between records before a new episode starts.
 MATCH_TOL_GRID       <- c(0.01, 0.5, 1, 2, 5)    # mg/day
 DIFF_THRESHOLD_GRID  <- c(2, 5, 10, 20, 50)       # mg/day
 OVERRIDE_PREFER_OPTS <- c("nlp", "baseline")
+GAP_DAYS_GRID        <- c(14L, 21L, 30L, 45L, 60L) # days
 
 # -- Evaluation thresholds ----------------------------------------------------
 DOSE_THRESHOLD_MG  <- 10    # absolute mg pred-equiv for binary agreement; NULL to disable
@@ -395,7 +396,8 @@ message("\n=== [4/4] Grid search ===")
 grid <- tidyr::expand_grid(
   match_tol       = MATCH_TOL_GRID,
   diff_threshold  = DIFF_THRESHOLD_GRID,
-  override_prefer = OVERRIDE_PREFER_OPTS
+  override_prefer = OVERRIDE_PREFER_OPTS,
+  gap_days        = GAP_DAYS_GRID
 ) |>
   # Constraint: diff_threshold must be > match_tol to make sense
   dplyr::filter(diff_threshold > match_tol)
@@ -403,24 +405,26 @@ grid <- tidyr::expand_grid(
 n_grid <- nrow(grid)
 cat(sprintf("  Grid size: %d combinations\n", n_grid))
 
-pb_step <- max(1L, floor(n_grid / 10L))
-
-grid_results <- purrr::pmap_dfr(grid, function(match_tol, diff_threshold, override_prefer) {
-  mae_train <- eval_params_on_patients(
-    hier_raw, gold_std, train_pts,
-    match_tol      = match_tol,
-    diff_thr       = diff_threshold,
-    override       = override_prefer,
-    gap_days       = GAP_DAYS,
-    concurrent_agg = CONCURRENT_AGG
-  )
-  tibble::tibble(
-    match_tol       = match_tol,
-    diff_threshold  = diff_threshold,
-    override_prefer = override_prefer,
-    mae_train       = mae_train
-  )
-})
+grid_results <- purrr::pmap_dfr(
+  grid,
+  function(match_tol, diff_threshold, override_prefer, gap_days) {
+    mae_train <- eval_params_on_patients(
+      hier_raw, gold_std, train_pts,
+      match_tol      = match_tol,
+      diff_thr       = diff_threshold,
+      override       = override_prefer,
+      gap_days       = gap_days,
+      concurrent_agg = CONCURRENT_AGG
+    )
+    tibble::tibble(
+      match_tol       = match_tol,
+      diff_threshold  = diff_threshold,
+      override_prefer = override_prefer,
+      gap_days        = gap_days,
+      mae_train       = mae_train
+    )
+  }
+)
 
 # Show top 10 combos
 cat("\nTop 10 parameter combos by training MAE:\n")
@@ -443,6 +447,7 @@ best <- grid_ranked |> dplyr::slice(1L)
 BEST_MATCH_TOL      <- best$match_tol
 BEST_DIFF_THRESHOLD <- best$diff_threshold
 BEST_OVERRIDE       <- best$override_prefer
+BEST_GAP_DAYS       <- best$gap_days
 BEST_MAE_TRAIN      <- best$mae_train
 
 cat(sprintf(
@@ -452,6 +457,7 @@ cat(sprintf(
 cat(sprintf("  MATCH_TOL:       %g mg/day\n", BEST_MATCH_TOL))
 cat(sprintf("  DIFF_THRESHOLD:  %g mg/day\n", BEST_DIFF_THRESHOLD))
 cat(sprintf("  OVERRIDE_PREFER: %s\n",         BEST_OVERRIDE))
+cat(sprintf("  GAP_DAYS:        %d days\n",    BEST_GAP_DAYS))
 
 # ===========================================================================
 # 6. Evaluate best parameters on test set
@@ -467,7 +473,7 @@ if (length(test_pts) == 0L) {
     match_tol      = BEST_MATCH_TOL,
     diff_thr       = BEST_DIFF_THRESHOLD,
     override       = BEST_OVERRIDE,
-    gap_days       = GAP_DAYS,
+    gap_days       = BEST_GAP_DAYS,
     concurrent_agg = CONCURRENT_AGG
   )
   cat(sprintf("  Test MAE (held-out %.0f%%): %.3f mg\n",
@@ -509,7 +515,7 @@ best_episodes <- build_episodes(
   best_eq,
   end_col        = "drug_exposure_end_date",
   dose_col       = "pred_equiv_mg",
-  gap_days       = GAP_DAYS,
+  gap_days       = BEST_GAP_DAYS,
   concurrent_agg = CONCURRENT_AGG
 )
 
@@ -574,8 +580,8 @@ p_dist <- ggplot2::ggplot(
   ggplot2::labs(
     title    = "Adaptive hierarchical vs gold: dose distribution",
     subtitle = sprintf(
-      "Best params: MATCH_TOL=%g | DIFF_THRESHOLD=%g | OVERRIDE=%s",
-      BEST_MATCH_TOL, BEST_DIFF_THRESHOLD, BEST_OVERRIDE
+      "Best params: MATCH_TOL=%g | DIFF_THR=%g | OVERRIDE=%s | GAP=%d days",
+      BEST_MATCH_TOL, BEST_DIFF_THRESHOLD, BEST_OVERRIDE, BEST_GAP_DAYS
     ),
     x = "Median daily dose (mg pred-equiv)",
     y = "Density"
@@ -617,7 +623,7 @@ message("\n=== Parameter sensitivity heatmap ===")
 heatmap_df <- grid_results |>
   dplyr::filter(!is.na(mae_train)) |>
   dplyr::mutate(
-    override_label = paste("override:", override_prefer),
+    facet_label    = sprintf("override: %s | gap: %d d", override_prefer, gap_days),
     diff_threshold = factor(diff_threshold),
     match_tol      = factor(match_tol)
   )
@@ -629,20 +635,21 @@ if (nrow(heatmap_df) > 0L) {
   ) +
     ggplot2::geom_tile(colour = "white", linewidth = 0.5) +
     ggplot2::geom_text(ggplot2::aes(label = round(mae_train, 1)),
-                       size = 3, colour = "white") +
+                       size = 2.5, colour = "white") +
     ggplot2::scale_fill_viridis_c(direction = -1, option = "magma",
                                   name = "Training\nMAE (mg)") +
-    ggplot2::facet_wrap(~ override_label) +
+    ggplot2::facet_wrap(~ facet_label, ncol = length(OVERRIDE_PREFER_OPTS)) +
     ggplot2::labs(
       title    = "Training MAE by parameter combination",
       subtitle = sprintf(
-        "Lower is better | Best: MATCH_TOL=%g, DIFF_THR=%g, OVERRIDE=%s (MAE=%.2f)",
-        BEST_MATCH_TOL, BEST_DIFF_THRESHOLD, BEST_OVERRIDE, BEST_MAE_TRAIN
+        "Lower is better | Best: MATCH_TOL=%g, DIFF_THR=%g, OVERRIDE=%s, GAP=%d days (MAE=%.2f)",
+        BEST_MATCH_TOL, BEST_DIFF_THRESHOLD, BEST_OVERRIDE, BEST_GAP_DAYS, BEST_MAE_TRAIN
       ),
       x = "MATCH_TOL (mg/day)",
       y = "DIFF_THRESHOLD (mg/day)"
     ) +
-    ggplot2::theme_bw()
+    ggplot2::theme_bw() +
+    ggplot2::theme(strip.text = ggplot2::element_text(size = 8))
 
   print(p_heatmap)
 }
@@ -664,7 +671,6 @@ cat(sprintf("  Test fraction:    %.0f%% (%d patients)\n",
 cat(sprintf("  Random seed:      %d\n", RANDOM_SEED))
 cat(sprintf("  Grid size:        %d combinations evaluated\n", n_grid))
 cat(sprintf("  Study window:     %s to %s\n", START_DATE, END_DATE))
-cat(sprintf("  Episode gap:      %d days\n",  GAP_DAYS))
 cat(sprintf("  Concurrent agg:   %s\n\n",     CONCURRENT_AGG))
 
 cat("BEST PARAMETERS\n")
@@ -672,6 +678,7 @@ cat(strrep("-", 40), "\n")
 cat(sprintf("  MATCH_TOL:        %g mg/day\n", BEST_MATCH_TOL))
 cat(sprintf("  DIFF_THRESHOLD:   %g mg/day\n", BEST_DIFF_THRESHOLD))
 cat(sprintf("  OVERRIDE_PREFER:  %s\n",         BEST_OVERRIDE))
+cat(sprintf("  GAP_DAYS:         %d days\n",    BEST_GAP_DAYS))
 cat(sprintf("  Training MAE:     %.3f mg (on %d train patients)\n",
             BEST_MAE_TRAIN, length(train_pts)))
 cat(sprintf("  Test MAE:         %s (on %d test patients)\n",
@@ -780,19 +787,20 @@ writeLines(c(
   sprintf("MATCH_TOL_GRID:      %s", paste(MATCH_TOL_GRID,      collapse = ", ")),
   sprintf("DIFF_THRESHOLD_GRID: %s", paste(DIFF_THRESHOLD_GRID, collapse = ", ")),
   sprintf("OVERRIDE_PREFER_OPTS:%s", paste(OVERRIDE_PREFER_OPTS, collapse = ", ")),
+  sprintf("GAP_DAYS_GRID:       %s", paste(GAP_DAYS_GRID,        collapse = ", ")),
   "",
   "Best parameters (from training set)",
   strrep("-", 40),
   sprintf("BEST_MATCH_TOL:      %g mg/day",  BEST_MATCH_TOL),
   sprintf("BEST_DIFF_THRESHOLD: %g mg/day",  BEST_DIFF_THRESHOLD),
   sprintf("BEST_OVERRIDE:       %s",          BEST_OVERRIDE),
+  sprintf("BEST_GAP_DAYS:       %d days",    BEST_GAP_DAYS),
   sprintf("Training MAE:        %.3f mg",    BEST_MAE_TRAIN),
   sprintf("Test MAE:            %s",
           if (is.na(BEST_MAE_TEST)) "N/A" else sprintf("%.3f mg", BEST_MAE_TEST)),
   "",
   "Episode building",
   strrep("-", 40),
-  sprintf("GAP_DAYS:            %d", GAP_DAYS),
   sprintf("CONCURRENT_AGG:      %s", CONCURRENT_AGG),
   "",
   "Evaluation",
@@ -841,7 +849,10 @@ ggplot2::ggsave(file.path(RUN_DIR, "plot_distribution.png"),
 
 if (nrow(heatmap_df) > 0L) {
   ggplot2::ggsave(file.path(RUN_DIR, "plot_parameter_heatmap.png"),
-                  p_heatmap, width = 10, height = 6, dpi = 150)
+                  p_heatmap,
+                  width  = 5 * length(OVERRIDE_PREFER_OPTS),
+                  height = 3 * length(GAP_DAYS_GRID),
+                  dpi    = 150)
 }
 
 if (!is.null(ev_best)) {
