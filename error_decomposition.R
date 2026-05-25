@@ -827,7 +827,126 @@ print(as.data.frame(error_type_summary), row.names = FALSE)
 cat(strrep("=", 70), "\n")
 
 # ===========================================================================
-# 9. Save results
+# 9. Manual review CSV  (gold episodes + matched computed records, long format)
+# ===========================================================================
+# One row per gold episode (source = "gold") or per drug-exposure record
+# (source = "computed_record").  Rows for the same patient-episode pair share
+# the same match_id so they sort together.  Gold rows carry agreement stats;
+# computed rows carry method, sig_type, SIG text, bl_dose, sig_dose.
+# ===========================================================================
+message("\n=== Building manual review CSV ===")
+
+# Ensure every computed record has a stable row key
+if (!"drug_exposure_id" %in% names(hier_df)) {
+  hier_df <- hier_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
+}
+
+# Assign a sequential match_id to every gold episode
+gold_indexed <- gold_std |>
+  dplyr::mutate(
+    pt_id_int = as.integer(patient_id),
+    match_id  = dplyr::row_number()
+  )
+
+# For each computed record, find the gold episode with the most overlap
+record_match <- hier_df |>
+  dplyr::mutate(pt_id_int = as.integer(person_id)) |>
+  dplyr::left_join(
+    gold_indexed |>
+      dplyr::transmute(pt_id_int, match_id,
+                       g_start = episode_start, g_end = episode_end),
+    by = "pt_id_int",
+    relationship = "many-to-many"
+  ) |>
+  dplyr::mutate(
+    overlap_d = as.integer(
+      pmin(drug_exposure_end_date, g_end,    na.rm = FALSE) -
+      pmax(drug_exposure_start_date, g_start, na.rm = FALSE)
+    ) + 1L,
+    overlap_d = dplyr::if_else(!is.na(overlap_d) & overlap_d > 0L,
+                               overlap_d, 0L)
+  ) |>
+  dplyr::group_by(drug_exposure_id) |>
+  dplyr::slice_max(overlap_d, n = 1L, with_ties = FALSE) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(
+    match_id = dplyr::if_else(overlap_d > 0L, match_id, NA_integer_)
+  )
+
+# Gold rows — enriched with agreement stats from ev$comparison
+gold_rows <- gold_indexed |>
+  dplyr::left_join(
+    ev$comparison |>
+      dplyr::select(patient_id, episode_start, episode_end,
+                    computed_dose, absolute_error, bias_error,
+                    agreement_category, error_direction),
+    by = c("patient_id", "episode_start", "episode_end")
+  ) |>
+  dplyr::transmute(
+    source               = "gold",
+    match_id             = match_id,
+    patient_id           = pt_id_int,
+    drug_name_std        = dplyr::coalesce(drug_name_std, NA_character_),
+    start_date           = episode_start,
+    end_date             = episode_end,
+    duration_days        = as.integer(episode_end - episode_start) + 1L,
+    daily_dose_mg        = median_daily_dose,
+    computed_dose_for_ep = computed_dose,
+    agreement_category   = agreement_category,
+    absolute_error_mg    = absolute_error,
+    bias_error_mg        = bias_error,
+    error_direction      = error_direction,
+    method               = NA_character_,
+    sig_type             = NA_character_,
+    sig_text             = NA_character_,
+    sig_status           = NA_character_,
+    bl_dose              = NA_real_,
+    sig_dose_nlp         = NA_real_
+  )
+
+# Computed record rows
+computed_rows <- record_match |>
+  dplyr::transmute(
+    source               = "computed_record",
+    match_id             = match_id,
+    patient_id           = pt_id_int,
+    drug_name_std        = drug_name_std,
+    start_date           = drug_exposure_start_date,
+    end_date             = drug_exposure_end_date,
+    duration_days        = as.integer(drug_exposure_end_date -
+                                        drug_exposure_start_date) + 1L,
+    daily_dose_mg        = daily_dose_mg,
+    computed_dose_for_ep = NA_real_,
+    agreement_category   = NA_character_,
+    absolute_error_mg    = NA_real_,
+    bias_error_mg        = NA_real_,
+    error_direction      = NA_character_,
+    method               = hierarchical_method,
+    sig_type             = sig_type,
+    sig_text             = sig,
+    sig_status           = sig_status,
+    bl_dose              = bl_dose,
+    sig_dose_nlp         = sig_dose
+  )
+
+# Bind: within each patient, gold row first, then its computed records
+manual_review <- dplyr::bind_rows(gold_rows, computed_rows) |>
+  dplyr::arrange(
+    patient_id,
+    match_id,                          # NAs (unmatched records) fall to bottom
+    dplyr::desc(source == "gold"),     # gold before computed within same match
+    start_date
+  )
+
+cat(sprintf(
+  "  Manual review: %d rows (%d gold episodes, %d computed records)\n",
+  nrow(manual_review),
+  sum(manual_review$source == "gold"),
+  sum(manual_review$source == "computed_record")
+))
+
+# ===========================================================================
+# 10. Save results
 # ===========================================================================
 message("\n=== Saving results ===")
 
@@ -873,6 +992,7 @@ readr::write_csv(cross_tab,          file.path(RUN_DIR, "cross_tab_sig_x_error.c
 readr::write_csv(cross_tab_branch,   file.path(RUN_DIR, "cross_tab_branch_x_error.csv"))
 readr::write_csv(sig_type_record_tbl, file.path(RUN_DIR, "sig_type_record_counts.csv"))
 readr::write_csv(comparison,         file.path(RUN_DIR, "comparison_annotated.csv"))
+readr::write_csv(manual_review,      file.path(RUN_DIR, "manual_review.csv"))
 
 ggplot2::ggsave(file.path(RUN_DIR, "plot_mae_by_sig_type.png"),
                 p_mae_sig,    width = 8, height = 5, dpi = 150)
@@ -889,3 +1009,233 @@ ggplot2::ggsave(file.path(RUN_DIR, "plot_error_vs_duration.png"),
 
 message(sprintf("Results saved to: %s", RUN_DIR))
 message("\n=== Error decomposition complete ===")
+
+# ===========================================================================
+# 11. Manual review dashboard  (patient-by-patient Shiny viewer)
+# ===========================================================================
+# Requires:  install.packages(c("shiny", "DT"))
+# Displays the manual_review table filtered by patient ID, plus a timeline
+# plot showing gold episodes (coloured by agreement) and computed records
+# (coloured by method/sig_type) on the same date axis.
+# ===========================================================================
+
+if (!requireNamespace("shiny", quietly = TRUE) ||
+    !requireNamespace("DT",    quietly = TRUE)) {
+  message(
+    "Install shiny + DT to enable the review dashboard:\n",
+    "  install.packages(c('shiny', 'DT'))"
+  )
+} else {
+
+  agree_pal <- c(
+    "Exact (<=5%)"     = "#2166AC",
+    "Good (<=20%)"     = "#92C5DE",
+    "Moderate (<=50%)" = "#F4A582",
+    "Poor (>50%)"      = "#D6604D",
+    "Unmatched"        = "#AAAAAA"
+  )
+
+  patient_ids <- sort(unique(manual_review$patient_id))
+
+  ui <- shiny::fluidPage(
+    shiny::titlePanel("Manual Review Dashboard — Error Decomposition"),
+    shiny::sidebarLayout(
+      shiny::sidebarPanel(
+        width = 3,
+        shiny::selectInput(
+          "patient_id", "Patient ID",
+          choices  = patient_ids,
+          selected = patient_ids[[1L]]
+        ),
+        shiny::hr(),
+        shiny::h5("Patient summary"),
+        shiny::verbatimTextOutput("patient_summary"),
+        shiny::hr(),
+        shiny::checkboxInput("show_unmatched",
+                             "Show unmatched computed records", value = TRUE)
+      ),
+      shiny::mainPanel(
+        width = 9,
+        shiny::tabsetPanel(
+          shiny::tabPanel(
+            "Timeline",
+            shiny::br(),
+            shiny::plotOutput("timeline_plot", height = "420px")
+          ),
+          shiny::tabPanel(
+            "Table",
+            shiny::br(),
+            DT::DTOutput("review_table")
+          )
+        )
+      )
+    )
+  )
+
+  server <- function(input, output, session) {
+
+    # Reactive: rows for the selected patient
+    patient_data <- shiny::reactive({
+      df <- manual_review |>
+        dplyr::filter(patient_id == as.integer(input$patient_id))
+      if (!input$show_unmatched) {
+        df <- df |> dplyr::filter(!is.na(match_id) | source == "gold")
+      }
+      df
+    })
+
+    # Patient-level summary text
+    output$patient_summary <- shiny::renderText({
+      df   <- patient_data()
+      gold <- df |> dplyr::filter(source == "gold")
+      comp <- df |> dplyr::filter(source == "computed_record")
+      paste0(
+        "Gold episodes:    ", nrow(gold), "\n",
+        "Computed records: ", nrow(comp), "\n",
+        "Matched:          ", sum(!is.na(gold$computed_dose_for_ep)), "\n",
+        "Poor agreement:   ",
+        sum(gold$agreement_category == "Poor (>50%)", na.rm = TRUE), "\n",
+        "MAE:              ",
+        if (any(!is.na(gold$absolute_error_mg)))
+          sprintf("%.1f mg", mean(gold$absolute_error_mg, na.rm = TRUE))
+        else "N/A"
+      )
+    })
+
+    # Timeline plot
+    output$timeline_plot <- shiny::renderPlot({
+      df   <- patient_data()
+      gold <- df |>
+        dplyr::filter(source == "gold") |>
+        dplyr::mutate(
+          agr_label = factor(
+            dplyr::coalesce(agreement_category, "Unmatched"),
+            levels = names(agree_pal)
+          ),
+          y_mid = 0.70
+        )
+      comp <- df |>
+        dplyr::filter(source == "computed_record") |>
+        dplyr::mutate(
+          method_label = dplyr::coalesce(method, "unknown"),
+          y_mid = 0.28
+        )
+
+      if (nrow(gold) + nrow(comp) == 0L) {
+        return(
+          ggplot2::ggplot() +
+            ggplot2::annotate("text", x = 0.5, y = 0.5,
+                              label = "No data for this patient") +
+            ggplot2::theme_void()
+        )
+      }
+
+      p <- ggplot2::ggplot() +
+        ggplot2::theme_bw(base_size = 12) +
+        ggplot2::scale_y_continuous(
+          breaks = c(0.28, 0.70),
+          labels = c("Computed records", "Gold episodes"),
+          limits = c(0, 1)
+        ) +
+        ggplot2::labs(
+          title = sprintf("Patient %s — episode timeline", input$patient_id),
+          x = "Date", y = NULL
+        )
+
+      if (nrow(gold) > 0L) {
+        p <- p +
+          ggplot2::geom_rect(
+            data = gold,
+            ggplot2::aes(xmin = start_date, xmax = end_date,
+                         ymin = y_mid - 0.14, ymax = y_mid + 0.14,
+                         fill = agr_label),
+            colour = "white", linewidth = 0.4, alpha = 0.90
+          ) +
+          ggplot2::geom_text(
+            data = gold,
+            ggplot2::aes(
+              x     = start_date + (end_date - start_date) / 2,
+              y     = y_mid,
+              label = sprintf("Gold: %.0f mg\n%s",
+                              daily_dose_mg,
+                              dplyr::coalesce(agreement_category, "unmatched"))
+            ),
+            size = 3, colour = "white", fontface = "bold"
+          ) +
+          ggplot2::scale_fill_manual(
+            values = agree_pal, name = "Agreement", drop = FALSE
+          )
+      }
+
+      if (nrow(comp) > 0L) {
+        p <- p +
+          ggplot2::geom_rect(
+            data = comp,
+            ggplot2::aes(xmin = start_date, xmax = end_date,
+                         ymin = y_mid - 0.10, ymax = y_mid + 0.10),
+            fill = "#4D9DE0", colour = "white",
+            linewidth = 0.3, alpha = 0.80
+          ) +
+          ggplot2::geom_text(
+            data = comp,
+            ggplot2::aes(
+              x     = start_date + (end_date - start_date) / 2,
+              y     = y_mid,
+              label = sprintf("%.0f mg\n[%s] %s",
+                              dplyr::coalesce(daily_dose_mg, NA_real_),
+                              method_label,
+                              dplyr::coalesce(sig_type, ""))
+            ),
+            size = 2.5, colour = "white"
+          )
+      }
+      p
+    })
+
+    # DT table — gold rows in yellow, computed in light blue;
+    # agreement column colour-coded by category
+    output$review_table <- DT::renderDT({
+      df <- patient_data() |>
+        dplyr::select(
+          source, match_id, drug_name_std,
+          start_date, end_date, duration_days,
+          daily_dose_mg, computed_dose_for_ep,
+          agreement_category, absolute_error_mg, bias_error_mg,
+          method, sig_type, sig_text, sig_status,
+          bl_dose, sig_dose_nlp
+        ) |>
+        dplyr::mutate(
+          dplyr::across(where(is.numeric), ~ round(., 2)),
+          start_date = as.character(start_date),
+          end_date   = as.character(end_date)
+        )
+
+      DT::datatable(
+        df,
+        options  = list(pageLength = 50, scrollX = TRUE, dom = "tip"),
+        rownames = FALSE,
+        filter   = "top"
+      ) |>
+        DT::formatStyle(
+          "source",
+          target          = "row",
+          backgroundColor = DT::styleEqual(
+            c("gold",    "computed_record"),
+            c("#FFFDE7", "#E3F2FD")
+          ),
+          fontWeight = DT::styleEqual("gold", "bold")
+        ) |>
+        DT::formatStyle(
+          "agreement_category",
+          backgroundColor = DT::styleEqual(
+            c("Exact (<=5%)", "Good (<=20%)", "Moderate (<=50%)", "Poor (>50%)"),
+            c("#C8E6C9",      "#FFF9C4",      "#FFE0B2",          "#FFCDD2")
+          )
+        )
+    })
+  }
+
+  message("\n=== Launching manual review dashboard ===")
+  message("(Close the browser tab or press Escape in R to stop.)")
+  shiny::runApp(shiny::shinyApp(ui, server))
+}
