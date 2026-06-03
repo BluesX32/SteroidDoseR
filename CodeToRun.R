@@ -57,14 +57,6 @@ START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 30L
 
-# Dose-agreement thresholds for the episode-level binary agreement table.
-# A computed day is "acceptable" if the dose is within the threshold.
-#   DOSE_THRESHOLD_MG  — absolute difference in mg pred-equiv  (e.g. 10)
-#   DOSE_THRESHOLD_PCT — relative difference in %              (e.g. 20)
-# Set either to NULL to disable that criterion.
-# If both are non-NULL, a day passes if it meets EITHER criterion (OR logic).
-DOSE_THRESHOLD_MG  <- 10     # mg pred-equiv; NULL to disable
-DOSE_THRESHOLD_PCT <- NULL   # percent; NULL to disable
 
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
@@ -263,176 +255,6 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
 }
 
 
-# ===========================================================================
-# Helper: day-level dose agreement (dose-accuracy-aware binary classification)
-# ===========================================================================
-# Unit of analysis: patient-day (within each patient's gold observation window).
-#
-# A patient-day is classified as:
-#   TP — in a gold episode AND in a computed episode AND dose within threshold
-#   FP — NOT in a gold episode BUT in a computed episode  (spurious episode day)
-#   FN — in a gold episode but dose NOT acceptable         (missed or wrong dose)
-#   TN — NOT in a gold episode AND NOT in a computed episode
-#
-# Parameters
-#   threshold_mg  — acceptable absolute dose difference (mg pred-equiv); NULL = off
-#   threshold_pct — acceptable relative dose difference (%);             NULL = off
-#   If both non-NULL, a day is acceptable when it meets EITHER criterion (OR).
-#
-compute_episode_dose_agreement <- function(
-    computed_episodes,
-    gold_df,
-    threshold_mg   = 10,
-    threshold_pct  = NULL,
-    gold_id_col    = "patient_id",
-    gold_start_col = "episode_start",
-    gold_end_col   = "episode_end",
-    gold_dose_col  = "median_daily_dose",
-    comp_dose_col  = "median_daily_dose") {
-
-  if (is.null(threshold_mg) && is.null(threshold_pct))
-    stop("At least one of threshold_mg or threshold_pct must be non-NULL.")
-
-  comp_pts    <- unique(as.integer(computed_episodes$person_id))
-  gold_pts    <- unique(as.integer(gold_df[[gold_id_col]]))
-  overlap_pts <- intersect(comp_pts, gold_pts)
-
-  if (length(overlap_pts) == 0L) {
-    warning("No overlapping patients — returning NA metrics.")
-    return(tibble::tibble(
-      Threshold = NA_character_,
-      TP = NA_integer_, FP = NA_integer_, FN = NA_integer_, TN = NA_integer_,
-      Sensitivity = NA_real_, Specificity = NA_real_,
-      PPV = NA_real_, NPV = NA_real_, F1 = NA_real_, Kappa = NA_real_
-    ))
-  }
-
-  # Expand episodes to (pt_id, day, dose) — one row per patient-day per episode
-  expand_to_days_dose <- function(df, id_col, start_col, end_col, dose_col) {
-    df |>
-      dplyr::filter(as.integer(.data[[id_col]]) %in% overlap_pts) |>
-      dplyr::select(
-        pt_id   = dplyr::all_of(id_col),
-        e_start = dplyr::all_of(start_col),
-        e_end   = dplyr::all_of(end_col),
-        dose    = dplyr::all_of(dose_col)
-      ) |>
-      dplyr::mutate(
-        pt_id   = as.integer(.data$pt_id),
-        e_start = as.Date(.data$e_start),
-        e_end   = as.Date(.data$e_end),
-        dose    = as.numeric(.data$dose)
-      ) |>
-      dplyr::rowwise() |>
-      dplyr::mutate(day = list(seq.Date(.data$e_start, .data$e_end, by = "day"))) |>
-      dplyr::ungroup() |>
-      tidyr::unnest(cols = day) |>
-      dplyr::select(pt_id, day, dose) |>
-      dplyr::distinct(pt_id, day, .keep_all = TRUE)   # keep first if episodes overlap
-  }
-
-  gold_days <- expand_to_days_dose(
-    gold_df, gold_id_col, gold_start_col, gold_end_col, gold_dose_col)
-  comp_days <- expand_to_days_dose(
-    computed_episodes, "person_id", "episode_start", "episode_end", comp_dose_col)
-
-  # Per-patient observation window = date range of that patient's gold episodes
-  gold_windows <- gold_df |>
-    dplyr::filter(as.integer(.data[[gold_id_col]]) %in% overlap_pts) |>
-    dplyr::group_by(pt_id = as.integer(.data[[gold_id_col]])) |>
-    dplyr::summarise(
-      win_start = min(as.Date(.data[[gold_start_col]]), na.rm = TRUE),
-      win_end   = max(as.Date(.data[[gold_end_col]]),   na.rm = TRUE),
-      .groups   = "drop"
-    )
-
-  # Enumerate all patient-days within gold observation windows
-  all_days <- gold_windows |>
-    dplyr::rowwise() |>
-    dplyr::mutate(day = list(seq.Date(.data$win_start, .data$win_end, by = "day"))) |>
-    dplyr::ungroup() |>
-    tidyr::unnest(cols = day) |>
-    dplyr::select(pt_id, day)
-
-  # Join gold and computed doses onto the full patient-day grid
-  day_tbl <- all_days |>
-    dplyr::left_join(
-      gold_days |> dplyr::rename(gold_dose = dose),
-      by = c("pt_id", "day")
-    ) |>
-    dplyr::left_join(
-      comp_days |> dplyr::rename(comp_dose = dose),
-      by = c("pt_id", "day")
-    ) |>
-    dplyr::mutate(
-      gold_on = !is.na(.data$gold_dose),
-      comp_on = !is.na(.data$comp_dose)
-    )
-
-  # Dose-acceptability criterion (vectorised, outside mutate)
-  dose_diff     <- abs(day_tbl$comp_dose - day_tbl$gold_dose)
-  dose_diff_pct <- 100 * dose_diff / day_tbl$gold_dose
-
-  within_abs <- if (!is.null(threshold_mg)) {
-    !is.na(dose_diff) & dose_diff <= threshold_mg
-  } else {
-    rep(FALSE, nrow(day_tbl))
-  }
-
-  within_pct <- if (!is.null(threshold_pct)) {
-    !is.na(dose_diff_pct) & dose_diff_pct <= threshold_pct
-  } else {
-    rep(FALSE, nrow(day_tbl))
-  }
-
-  dose_ok_criterion <- if (!is.null(threshold_mg) && !is.null(threshold_pct)) {
-    within_abs | within_pct   # OR: either criterion is sufficient
-  } else if (!is.null(threshold_mg)) {
-    within_abs
-  } else {
-    within_pct
-  }
-
-  day_tbl$dose_ok <- day_tbl$gold_on & day_tbl$comp_on & dose_ok_criterion
-
-  TP <- sum( day_tbl$dose_ok)
-  FP <- sum(!day_tbl$gold_on &  day_tbl$comp_on)  # computed day with no gold episode
-  FN <- sum( day_tbl$gold_on & !day_tbl$dose_ok)  # gold day missed or dose wrong
-  TN <- sum(!day_tbl$gold_on & !day_tbl$comp_on)  # correctly no episode
-  N  <- TP + FP + FN + TN
-
-  sensitivity <- TP / (TP + FN)
-  specificity <- TN / (TN + FP)
-  ppv         <- TP / (TP + FP)
-  npv         <- TN / (TN + FN)
-  f1          <- 2L * TP / (2L * TP + FP + FN)
-
-  po    <- (TP + TN) / N
-  pe    <- ((TP + FN) * (TP + FP) + (TN + FP) * (TN + FN)) / N^2
-  kappa <- (po - pe) / (1 - pe)
-
-  thr_label <- if (!is.null(threshold_mg) && !is.null(threshold_pct)) {
-    sprintf("%g mg OR %g%%", threshold_mg, threshold_pct)
-  } else if (!is.null(threshold_mg)) {
-    sprintf("%g mg", threshold_mg)
-  } else {
-    sprintf("%g%%", threshold_pct)
-  }
-
-  tibble::tibble(
-    Threshold   = thr_label,
-    TP          = TP,
-    FP          = FP,
-    FN          = FN,
-    TN          = TN,
-    Sensitivity = round(sensitivity, 3),
-    Specificity = round(specificity, 3),
-    PPV         = round(ppv,         3),
-    NPV         = round(npv,         3),
-    F1          = round(f1,          3),
-    Kappa       = round(kappa,       3)
-  )
-}
 
 
 # ===========================================================================
@@ -976,52 +798,6 @@ episode_counts <- tibble::tibble(
 print(as.data.frame(episode_counts), row.names = FALSE)
 cat("\n")
 
-cat("EPISODE-LEVEL DOSE AGREEMENT (day-level, overlapping patients)\n")
-cat(strrep("-", 40), "\n")
-cat("  Observation window per patient = range of that patient's gold episodes.\n")
-cat("  TP = patient-day in gold episode AND computed dose within threshold.\n")
-cat("  FP = patient-day in computed episode but no gold episode (spurious).\n")
-cat("  FN = patient-day in gold episode but dose missing or outside threshold.\n")
-cat("  TN = patient-day in neither gold nor computed episode.\n")
-thr_desc <- if (!is.null(DOSE_THRESHOLD_MG) && !is.null(DOSE_THRESHOLD_PCT)) {
-  sprintf("Threshold: %g mg pred-equiv OR %g%%\n\n", DOSE_THRESHOLD_MG, DOSE_THRESHOLD_PCT)
-} else if (!is.null(DOSE_THRESHOLD_MG)) {
-  sprintf("Threshold: %g mg pred-equiv\n\n", DOSE_THRESHOLD_MG)
-} else {
-  sprintf("Threshold: %g%%\n\n", DOSE_THRESHOLD_PCT)
-}
-cat(thr_desc)
-
-message("  Computing dose agreement — Baseline ...")
-agr_baseline <- compute_episode_dose_agreement(
-  baseline_episodes,  gold_std,
-  threshold_mg  = DOSE_THRESHOLD_MG,
-  threshold_pct = DOSE_THRESHOLD_PCT,
-  gold_id_col   = "patient_id"
-)
-message("  Computing dose agreement — NLP ...")
-agr_nlp      <- compute_episode_dose_agreement(
-  nlp_episodes,       gold_std,
-  threshold_mg  = DOSE_THRESHOLD_MG,
-  threshold_pct = DOSE_THRESHOLD_PCT,
-  gold_id_col   = "patient_id"
-)
-message("  Computing dose agreement — Advanced NLP ...")
-agr_adv      <- compute_episode_dose_agreement(
-  adv_nlp_episodes,   gold_std,
-  threshold_mg  = DOSE_THRESHOLD_MG,
-  threshold_pct = DOSE_THRESHOLD_PCT,
-  gold_id_col   = "patient_id"
-)
-
-agreement_tbl <- dplyr::bind_rows(
-  dplyr::mutate(agr_baseline, Method = "Baseline",     .before = 1),
-  dplyr::mutate(agr_nlp,      Method = "NLP",          .before = 1),
-  dplyr::mutate(agr_adv,      Method = "Advanced NLP", .before = 1)
-)
-print(as.data.frame(agreement_tbl), row.names = FALSE)
-cat("\n")
-
 cat("GOLD STANDARD COMPARISON (episode-level, median dose)\n")
 cat(strrep("-", 40), "\n")
 metrics_tbl <- tibble::tibble(
@@ -1174,12 +950,6 @@ writeLines(c(
   "",
   "Evaluation",
   strrep("-", 40),
-  sprintf("DOSE_THRESHOLD_MG:   %s",
-          if (is.null(DOSE_THRESHOLD_MG))  "NULL (disabled)"
-          else as.character(DOSE_THRESHOLD_MG)),
-  sprintf("DOSE_THRESHOLD_PCT:  %s",
-          if (is.null(DOSE_THRESHOLD_PCT)) "NULL (disabled)"
-          else as.character(DOSE_THRESHOLD_PCT)),
   sprintf("GOLD_STD_PATH:       %s", GOLD_STD_PATH)
 ), con = file.path(RUN_DIR, "params.txt"))
 
@@ -1204,7 +974,6 @@ readr::write_csv(ev_adv$comparison,      file.path(RUN_DIR, "comparison_adv_nlp.
 # ── Summary tables ────────────────────────────────────────────────────────────
 readr::write_csv(episode_counts,         file.path(RUN_DIR, "episode_counts.csv"))
 readr::write_csv(metrics_tbl,            file.path(RUN_DIR, "metrics_table.csv"))
-readr::write_csv(agreement_tbl,          file.path(RUN_DIR, "agreement_table.csv"))
 
 # ── Plot data (for reproducing figures without re-running) ────────────────────
 readr::write_csv(dist_df_all,            file.path(RUN_DIR, "plot_data_dose_distribution.csv"))
