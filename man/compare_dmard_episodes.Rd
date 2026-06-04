@@ -83,9 +83,11 @@ A named list with three elements:
 }
 \description{
 For each gold-standard record (patient + drug + date window), finds all
-computed episodes for the same patient and drug that overlap the gold
-window, clips each to the intersection, then computes a duration-weighted
-mean dose. Error metrics are calculated against the gold dose.
+computed episodes for the same patient that overlap the gold window (joined
+by patient ID only, mirroring \code{\link[=evaluate_against_gold]{evaluate_against_gold()}}). Clips each
+overlapping computed episode to the intersection, then computes a
+duration-weighted mean dose across all overlapping episodes. Error metrics
+are calculated against the gold dose.
 
 All column name arguments have defaults matching the output of
 \code{\link[=parse_dmard_gold]{parse_dmard_gold()}} and \code{\link[=build_episodes]{build_episodes()}}, but every name can be

@@ -514,14 +514,16 @@ compare_dmard_episodes <- function(computed_df,
       gold_end_col, gold_dose_col),
     "gold_df")
 
-  # --- rename to internal names -----------------------------------------------
+  # --- select only needed columns to avoid name conflicts --------------------
+  # Mirror eval.R: join by patient ID only, then filter by date overlap.
+  # Drug name is carried from the gold record for stratification, not used
+  # as a join key (computed episodes may use different name formats).
   comp <- computed_df |>
-    dplyr::rename(
-      person_id     = dplyr::all_of(computed_id_col),
-      drug_name_std = dplyr::all_of(computed_drug_col),
-      c_start       = dplyr::all_of(computed_start_col),
-      c_end         = dplyr::all_of(computed_end_col),
-      c_dose        = dplyr::all_of(computed_dose_col)
+    dplyr::select(
+      person_id = dplyr::all_of(computed_id_col),
+      c_start   = dplyr::all_of(computed_start_col),
+      c_end     = dplyr::all_of(computed_end_col),
+      c_dose    = dplyr::all_of(computed_dose_col)
     ) |>
     dplyr::mutate(
       c_start = safe_as_date(.data$c_start),
@@ -530,7 +532,7 @@ compare_dmard_episodes <- function(computed_df,
     )
 
   gold <- gold_df |>
-    dplyr::rename(
+    dplyr::select(
       person_id     = dplyr::all_of(gold_id_col),
       drug_name_std = dplyr::all_of(gold_drug_col),
       g_start       = dplyr::all_of(gold_start_col),
@@ -544,25 +546,29 @@ compare_dmard_episodes <- function(computed_df,
     ) |>
     dplyr::filter(!is.na(.data$g_start), !is.na(.data$g_end))
 
-  # --- many-to-many join: same patient + drug ---------------------------------
-  joined <- gold |>
+  # --- overlap join by patient ID only (same approach as eval.R) -------------
+  # For each gold record, find ALL computed episodes that overlap the gold
+  # window. No drug-name constraint: the gold drug label is an attribute of
+  # the gold record, not a filter on computed episodes.
+  merged <- gold |>
     dplyr::left_join(
       comp,
-      by           = c("person_id", "drug_name_std"),
+      by           = "person_id",
       relationship = "many-to-many"
     ) |>
     dplyr::mutate(
       ovlp_start = pmax(.data$g_start, .data$c_start, na.rm = FALSE),
       ovlp_end   = pmin(.data$g_end,   .data$c_end,   na.rm = FALSE),
       ovlp_days  = as.integer(.data$ovlp_end - .data$ovlp_start) + 1L,
-      ovlp_days  = dplyr::if_else(
-                     is.na(.data$ovlp_days) | .data$ovlp_days < 1L,
-                     0L, .data$ovlp_days)
+      ovlp_days  = dplyr::if_else(.data$ovlp_days < 1L, 0L, .data$ovlp_days)
     ) |>
     dplyr::filter(.data$ovlp_days >= min_overlap_days)
 
   # --- duration-weighted mean dose per gold record ----------------------------
-  weighted <- joined |>
+  # Refinement over eval.R's slice(1L): instead of taking the single best-
+  # overlapping episode, weight ALL overlapping computed episodes by their
+  # overlap duration within the gold window.
+  weighted <- merged |>
     dplyr::group_by(.data$person_id, .data$drug_name_std,
                     .data$g_start, .data$g_end, .data$gold_dose) |>
     dplyr::summarise(
