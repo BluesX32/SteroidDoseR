@@ -472,86 +472,45 @@ print(p_dist)
 # ===========================================================================
 message("\n=== Episode-level comparisons vs gold standard ===")
 
+# gold_std must have parse_status == "ok" to have a usable dose for comparison
+gold_std_ok <- gold_std |> dplyr::filter(parse_status == "ok")
+cat(sprintf(
+  "Gold records with parseable dose: %d / %d\n",
+  nrow(gold_std_ok), nrow(gold_std)
+))
+
+.run_comparison <- function(episodes_df, label) {
+  ev <- compare_dmard_episodes(episodes_df, gold_std_ok)
+  ev$n_common_patients <- length(intersect(
+    unique(episodes_df$person_id), unique(gold_std_ok$person_id)
+  ))
+  cat(sprintf(
+    "\n%s: %d common patients | %d/%d gold records matched (%.1f%% coverage)\n",
+    label,
+    ev$n_common_patients,
+    ev$summary$n_matched_records,
+    ev$summary$n_gold_records,
+    ev$summary$coverage_pct
+  ))
+  cat(sprintf("  MAE=%.2f  MBE=%.2f  RMSE=%.2f  MAPE=%.1f%%  r=%.3f\n",
+    ev$summary$MAE, ev$summary$MBE, ev$summary$RMSE,
+    ev$summary$MAPE, ev$summary$pearson_corr))
+  cat("By drug:\n")
+  print(as.data.frame(ev$stratified$by_drug))
+  ev
+}
+
 # --- 9a. Baseline ---
 message("\n  Baseline vs gold standard ...")
-ev_baseline <- evaluate_against_gold(
-  baseline_episodes,
-  gold_std,
-  gold_id_col  = "person_id",
-  gold_dose_col = "dose_daily_mg_equiv"
-)
-ev_baseline$n_common_patients <- length(intersect(
-  unique(baseline_episodes$person_id), unique(gold_std$person_id)
-))
-
-cat(sprintf(
-  "\nBaseline: %d common patients | %d/%d gold episodes matched (%.1f%% coverage)\n",
-  ev_baseline$n_common_patients,
-  ev_baseline$summary$n_matched_periods,
-  ev_baseline$summary$n_gold_periods,
-  ev_baseline$summary$coverage_pct
-))
-cat("\nBaseline summary metrics:\n")
-print(as.data.frame(ev_baseline$summary))
-
-print_agreement(ev_baseline$comparison, "Baseline")
-
-cat("\nBaseline — top-10 largest errors:\n")
-ev_baseline$comparison |>
-  dplyr::filter(!is.na(computed_dose)) |>
-  dplyr::arrange(dplyr::desc(absolute_error)) |>
-  dplyr::select(patient_id, episode_start, episode_end,
-                gold_dose, computed_dose, absolute_error, bias_error) |>
-  head(10) |>
-  print()
+ev_baseline <- .run_comparison(baseline_episodes, "Baseline")
 
 # --- 9b. NLP ---
 message("\n  NLP vs gold standard ...")
-ev_nlp <- evaluate_against_gold(
-  nlp_episodes,
-  gold_std,
-  gold_id_col  = "person_id",
-  gold_dose_col = "dose_daily_mg_equiv"
-)
-ev_nlp$n_common_patients <- length(intersect(
-  unique(nlp_episodes$person_id), unique(gold_std$person_id)
-))
-
-cat(sprintf(
-  "\nNLP: %d common patients | %d/%d gold episodes matched (%.1f%% coverage)\n",
-  ev_nlp$n_common_patients,
-  ev_nlp$summary$n_matched_periods,
-  ev_nlp$summary$n_gold_periods,
-  ev_nlp$summary$coverage_pct
-))
-cat("\nNLP summary metrics:\n")
-print(as.data.frame(ev_nlp$summary))
-
-print_agreement(ev_nlp$comparison, "NLP")
+ev_nlp <- .run_comparison(nlp_episodes, "NLP")
 
 # --- 9c. Advanced NLP ---
 message("\n  Advanced NLP vs gold standard ...")
-ev_adv <- evaluate_against_gold(
-  adv_nlp_episodes,
-  gold_std,
-  gold_id_col  = "person_id",
-  gold_dose_col = "dose_daily_mg_equiv"
-)
-ev_adv$n_common_patients <- length(intersect(
-  unique(adv_nlp_episodes$person_id), unique(gold_std$person_id)
-))
-
-cat(sprintf(
-  "\nAdvanced NLP: %d common patients | %d/%d gold episodes matched (%.1f%% coverage)\n",
-  ev_adv$n_common_patients,
-  ev_adv$summary$n_matched_periods,
-  ev_adv$summary$n_gold_periods,
-  ev_adv$summary$coverage_pct
-))
-cat("\nAdvanced NLP summary metrics:\n")
-print(as.data.frame(ev_adv$summary))
-
-print_agreement(ev_adv$comparison, "Advanced NLP")
+ev_adv <- .run_comparison(adv_nlp_episodes, "Advanced NLP")
 
 # ===========================================================================
 # 10. Comparison scatter plots (method dose vs gold dose)
@@ -562,7 +521,8 @@ make_scatter_df <- function(ev_result, method_label) {
   ev_result$comparison |>
     dplyr::filter(!is.na(computed_dose)) |>
     dplyr::transmute(
-      patient_id,
+      person_id,
+      drug_name_std,
       gold_dose,
       method_dose = computed_dose,
       method      = method_label
@@ -727,10 +687,10 @@ episode_counts <- tibble::tibble(
                         nrow(nlp_episodes),
                         nrow(adv_nlp_episodes),
                         nrow(gold_std)),
-  Gold_total        = c(rep(ev_baseline$summary$n_gold_periods, 3L), NA_integer_),
-  Matched_to_Gold   = c(ev_baseline$summary$n_matched_periods,
-                        ev_nlp$summary$n_matched_periods,
-                        ev_adv$summary$n_matched_periods,
+  Gold_total        = c(rep(ev_baseline$summary$n_gold_records, 3L), NA_integer_),
+  Matched_to_Gold   = c(ev_baseline$summary$n_matched_records,
+                        ev_nlp$summary$n_matched_records,
+                        ev_adv$summary$n_matched_records,
                         NA_integer_),
   Coverage_pct      = c(round(ev_baseline$summary$coverage_pct, 1),
                         round(ev_nlp$summary$coverage_pct,      1),

@@ -11,7 +11,9 @@ parse_dmard_gold(
   dose_col = "dmarddose",
   start_date_col = "dmard_start_date_est",
   status_col = "dmardstatus",
+  last_changed_col = "last_changed_datetime",
   stop_date_col = "pastdmard_stop_date_est",
+  end_date_col = NULL,
   past_status_val = "past",
   today = Sys.Date()
 )
@@ -32,22 +34,26 @@ Default: \code{"dmarddose"}.}
 \item{start_date_col}{\code{character(1)}. Estimated DMARD start date column.
 Default: \code{"dmard_start_date_est"}.}
 
-\item{status_col}{\code{character(1)} or \code{NULL}. Column recording DMARD status
-(e.g. \code{"past"} vs active). Set \code{NULL} to skip status logic entirely
-(all episode end-dates will be set to \code{today}). If the column is declared
-but absent from \code{df}, a warning is issued and the argument is ignored.
+\item{status_col}{\code{character(1)} or \code{NULL}. Column recording DMARD status.
+Set \code{NULL} to skip. If declared but absent, a warning is issued.
 Default: \code{"dmardstatus"}.}
 
+\item{last_changed_col}{\code{character(1)} or \code{NULL}. Timestamp column used as
+the primary source for \code{episode_end} before other fallbacks. Set \code{NULL}
+to skip. Default: \code{"last_changed_datetime"}.}
+
 \item{stop_date_col}{\code{character(1)} or \code{NULL}. Estimated stop-date column,
-used only when \code{status_col} value equals \code{past_status_val}. Set \code{NULL}
-to skip. If declared but absent, a warning is issued.
+used when status is past and \code{last_changed_col} is absent or NA.
 Default: \code{"pastdmard_stop_date_est"}.}
+
+\item{end_date_col}{\code{character(1)} or \code{NULL}. Generic end-date fallback
+used when \code{status_col} is absent. Default: \code{NULL}.}
 
 \item{past_status_val}{\code{character(1)}. The value in \code{status_col} that
 indicates a discontinued DMARD. Default: \code{"past"}.}
 
-\item{today}{\code{Date}. Reference date used as \code{episode_end} for active
-(non-past) records. Default: \code{Sys.Date()}.}
+\item{today}{\code{Date}. Reference date used as \code{episode_end} when no end date
+can be derived. Default: \code{Sys.Date()}.}
 }
 \value{
 A tibble with one row per input row:
