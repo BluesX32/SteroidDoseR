@@ -383,7 +383,6 @@ test_that("run_pipeline return_level='exposure' returns drug-exposure rows", {
                       m2_sig_parse = "none")
   expect_equal(nrow(out), 5L)
   expect_true("daily_dose_mg_imputed" %in% names(out))
-  expect_true("pred_equiv_mg"         %in% names(out))
 })
 
 test_that("run_pipeline nlp method returns episodes", {

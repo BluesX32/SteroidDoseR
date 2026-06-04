@@ -12,7 +12,6 @@ build_episodes(
   end_col = NA_character_,
   dose_col = NULL,
   gap_days = 30L,
-  concurrent_agg = c("per_drug", "sum_all"),
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -39,24 +38,11 @@ uses \code{start_col} as both start and end (one-day episode per record).
 Supply \code{"drug_exposure_end_date"} when available.}
 
 \item{dose_col}{\code{character(1)}. Daily-dose column. Default:
-\code{"daily_dose_mg_imputed"}. Accepts \code{"daily_dose_mg"} or \code{"pred_equiv_mg"}
-as alternatives -- whichever is present in the data.}
+\code{"daily_dose_mg_imputed"}. Accepts \code{"daily_dose_mg"} as alternative --
+whichever is present in the data.}
 
 \item{gap_days}{\code{integer(1)}. Maximum gap (in days) between consecutive
 records that are still bridged into the same episode. Default: \code{30L}.}
-
-\item{concurrent_agg}{\code{character(1)}. How to handle concurrent prescriptions
-of \strong{different} steroids for the same patient on overlapping dates:
-\describe{
-\item{\code{"per_drug"} (default)}{Each drug is tracked independently. One
-episode track per patient-drug pair. Concurrent prescriptions of
-different steroids appear as separate rows.}
-\item{\code{"sum_all"}}{Day-expand all records, sum doses across all drugs per
-patient-day, then gap-bridge the daily totals into unified episodes.
-Returns one episode track per patient with
-\code{drug_name_std = "total_steroids"}. Use \code{dose_col = "pred_equiv_mg"} so
-all drugs are on a common scale before summing.}
-}}
 
 \item{drug_concept_ids, person_ids, start_date, end_date}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}

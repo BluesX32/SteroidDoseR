@@ -15,8 +15,6 @@ run_pipeline(
   end_date = NULL,
   sig_source = "sig",
   gap_days = 30L,
-  concurrent_agg = c("per_drug", "sum_all"),
-  equiv_table = NULL,
   return_level = c("episode", "exposure")
 )
 }
@@ -54,16 +52,6 @@ frame.}
 \item{gap_days}{\code{integer(1)}. Gap threshold for \code{\link[=build_episodes]{build_episodes()}}. Only
 used when \code{return_level = "episode"}. Default: \code{30L}.}
 
-\item{concurrent_agg}{\code{character(1)}. Passed to \code{\link[=build_episodes]{build_episodes()}}. Controls
-how concurrent prescriptions of different steroids on the same dates are
-handled. \code{"per_drug"} (default) tracks each drug independently.
-\code{"sum_all"} sums all drugs per patient-day and returns a single
-\code{"total_steroids"} episode track. Requires \code{dose_col = "pred_equiv_mg"}
-for cross-drug summation to be meaningful.}
-
-\item{equiv_table}{Optional custom equivalency table. Passed to
-\code{\link[=convert_pred_equiv]{convert_pred_equiv()}}. Default \code{NULL} uses the built-in table.}
-
 \item{return_level}{\code{character(1)}. \code{"exposure"} returns one row per
 drug-exposure record with dose columns appended. \code{"episode"} (default)
 additionally runs \code{\link[=build_episodes]{build_episodes()}} and returns one row per
@@ -72,15 +60,14 @@ patient-drug episode.}
 \value{
 \itemize{
 \item When \code{return_level = "exposure"}: the dose data frame from the chosen
-method, with \code{pred_equiv_mg} and \code{equiv_factor} columns appended.
+method.
 \item When \code{return_level = "episode"}: episode summary from \code{\link[=build_episodes]{build_episodes()}}.
 }
 }
 \description{
 Convenience wrapper that chains data extraction, daily-dose imputation,
-prednisone-equivalency conversion, and optional episode building into a
-single function call. Each step can also be run independently using the
-individual exported functions.
+and optional episode building into a single function call. Each step can
+also be run independently using the individual exported functions.
 }
 \examples{
 extdata <- system.file("extdata", package = "SteroidDoseR")

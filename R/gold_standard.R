@@ -37,7 +37,7 @@
   if (stringr::str_detect(s, "\\bdaily\\b|once\\s+daily|\\bqd\\b|q\\s+day\\b|/\\s*day\\b|per\\s*day|/\\s*d\\b"))
     return(list(label = "daily",   per_day = 1))
 
-  # Every N months — check before standalone "monthly"
+  # Every N months -- check before standalone "monthly"
   qn_month <- stringr::str_match(s, "(?:q|every)\\s*(\\d+)\\s*months?")
   if (!is.na(qn_month[1L, 1L])) {
     n     <- as.numeric(qn_month[1L, 2L])
@@ -45,7 +45,7 @@
     return(list(label = label, per_day = 1 / (n * 30)))
   }
 
-  # Every N weeks — check before standalone "weekly"
+  # Every N weeks -- check before standalone "weekly"
   qn_week <- stringr::str_match(s, "(?:q|every)\\s*(\\d+)\\s*w(?:ee)?ks?")
   if (!is.na(qn_week[1L, 1L])) {
     n     <- as.numeric(qn_week[1L, 2L])
@@ -53,7 +53,7 @@
     return(list(label = label, per_day = 1 / (n * 7)))
   }
 
-  # "q week" / "q wk" without a number → weekly
+  # "q week" / "q wk" without a number -> weekly
   if (stringr::str_detect(s, "\\bq\\s*(?:wk|week)\\b|once\\s+(?:a\\s*)?week|once\\s+weekly"))
     return(list(label = "weekly",  per_day = 1 / 7))
 
@@ -78,15 +78,15 @@
 
   s <- stringr::str_squish(stringr::str_to_lower(as.character(x)))
 
-  # Step 1 — strip route abbreviations
+  # Step 1 -- strip route abbreviations
   s <- stringr::str_remove_all(s, "\\bpo\\b|\\boral(ly)?\\b|\\biv\\b|\\bsubq\\b|\\bsc\\b")
   s <- stringr::str_squish(s)
 
-  # Step 2 — strip leading alphabetic drug-name prefix (e.g. "prednisone 5 mg")
+  # Step 2 -- strip leading alphabetic drug-name prefix (e.g. "prednisone 5 mg")
   s <- stringr::str_remove(s, "^(?:[a-z]+\\s+)+(?=\\d)")
   s <- stringr::str_squish(s)
 
-  # Special case — "X grams over N days" (IVIG infusion course)
+  # Special case -- "X grams over N days" (IVIG infusion course)
   over_m <- stringr::str_match(
     s, "(\\d+(?:\\.\\d+)?)\\s*(?:grams?|g)\\s+over\\s+(\\d+(?:\\.\\d+)?)\\s*days?"
   )
@@ -105,12 +105,12 @@
     ))
   }
 
-  # Step 3 — detect per-kg flag, then strip "/kg"
+  # Step 3 -- detect per-kg flag, then strip "/kg"
   dose_per_kg <- stringr::str_detect(s, "/\\s*kg\\b")
   s           <- stringr::str_remove_all(s, "/\\s*kg\\b")
   s           <- stringr::str_squish(s)
 
-  # Step 4 — extract amount + unit
+  # Step 4 -- extract amount + unit
   mg_m <- stringr::str_match(s, "(\\d+(?:\\.\\d+)?)\\s*mg\\b")
   g_m  <- stringr::str_match(s, "(\\d+(?:\\.\\d+)?)\\s*(?:grams?|g)\\b")
 
@@ -132,12 +132,12 @@
     }
   }
 
-  # Step 5 — extract frequency
+  # Step 5 -- extract frequency
   freq           <- .extract_dmard_freq(s)
   dose_frequency <- freq$label
   freq_per_day   <- freq$per_day
 
-  # Step 6 — compute daily equivalent
+  # Step 6 -- compute daily equivalent
   if (dose_per_kg) {
     dose_mg_per_admin   <- NA_real_
     dose_daily_mg_equiv <- NA_real_
@@ -168,7 +168,7 @@
   )
 }
 
-#' Parse a single DMARD dose string (tryCatch wrapper — never throws)
+#' Parse a single DMARD dose string (tryCatch wrapper -- never throws)
 #' @noRd
 .parse_dmard_dose_one <- function(x) {
   tryCatch(
@@ -205,9 +205,9 @@
 #'     `"infusion_course"`, etc.; `NA` when not parseable.}
 #'   \item{`freq_per_day`}{Numeric doses per calendar day corresponding to
 #'     `dose_frequency` (e.g. `1/180` for `"q6months"`); `NA` when unknown.}
-#'   \item{`dose_mg_per_admin`}{`dose_amount` converted to mg (g × 1000);
+#'   \item{`dose_mg_per_admin`}{`dose_amount` converted to mg (g * 1000);
 #'     `NA` when `dose_per_kg` is `TRUE`.}
-#'   \item{`dose_daily_mg_equiv`}{`dose_mg_per_admin × freq_per_day`; `NA`
+#'   \item{`dose_daily_mg_equiv`}{`dose_mg_per_admin * freq_per_day`; `NA`
 #'     when `dose_per_kg` is `TRUE` or frequency is unknown.}
 #'   \item{`parse_status`}{`"ok"`, `"weight_required"`, `"no_freq"`,
 #'     `"no_unit"`, `"no_parse"`, `"empty"`, or `"error"`.}
@@ -242,7 +242,7 @@ parse_dmard_dose <- function(x) {
 #' actual field names used in the myositis clinical review export, but every
 #' name can be overridden to accommodate different site exports.
 #'
-#' @param df A data frame — the raw gold-standard CSV loaded with
+#' @param df A data frame -- the raw gold-standard CSV loaded with
 #'   `readr::read_csv()` or equivalent.
 #' @param person_id_col `character(1)`. Patient identifier column.
 #'   Default: `"myositis_omop_person_id"`.
@@ -308,7 +308,7 @@ parse_dmard_gold <- function(df,
     "df"
   )
 
-  # --- optional columns — warn if declared but absent ------------------------
+  # --- optional columns -- warn if declared but absent ------------------------
   if (!is.null(status_col) && !status_col %in% names(df)) {
     rlang::warn(paste0(
       "status_col '", status_col,
@@ -366,7 +366,7 @@ parse_dmard_gold <- function(df,
   if (n_missing_stop > 0L) {
     rlang::warn(paste0(
       n_missing_stop, " row(s) have status '", past_status_val,
-      "' but no stop date — episode_end set to NA for those rows."
+      "' but no stop date -- episode_end set to NA for those rows."
     ))
   }
 
