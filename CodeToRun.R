@@ -404,28 +404,33 @@ dist_df |>
 # ===========================================================================
 message("\n=== Loading gold standard ===")
 
-gold_std <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
+gold_std_raw <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
+gold_std     <- parse_dmard_gold(gold_std_raw)
 
 cat(sprintf(
-  "Gold standard: %d episodes from %d patients\n",
-  nrow(gold_std), dplyr::n_distinct(gold_std$patient_id)
+  "Gold standard: %d records from %d patients\n",
+  nrow(gold_std), dplyr::n_distinct(gold_std$person_id)
 ))
 
-cat("\nGold standard preview:\n")
-print(head(gold_std[, c("patient_id", "episode_start", "episode_end",
-                        "median_daily_dose")]))
+cat("\nParse status breakdown:\n")
+print(table(gold_std$parse_status, useNA = "ifany"))
 
-cat("\nGold standard dose distribution:\n")
-print(summary(gold_std$median_daily_dose))
+cat("\nGold standard preview:\n")
+print(head(gold_std[, c("person_id", "drug_name_std", "episode_start",
+                        "episode_end", "dose_raw", "dose_daily_mg_equiv",
+                        "parse_status")]))
+
+cat("\nDaily mg equivalent distribution (parseable records):\n")
+print(summary(gold_std$dose_daily_mg_equiv[gold_std$parse_status == "ok"]))
 
 # --- Distribution plot including gold standard (4 panels) -------------------
 gold_dist_df <- gold_std |>
-  dplyr::filter(!is.na(median_daily_dose), median_daily_dose > 0) |>
+  dplyr::filter(!is.na(dose_daily_mg_equiv), dose_daily_mg_equiv > 0) |>
   dplyr::transmute(
-    person_id        = as.integer(patient_id),
-    drug_name_std    = dplyr::coalesce(drug_name_std, "unknown"),
-    median_daily_dose,
-    method           = "Gold"
+    person_id         = as.integer(person_id),
+    drug_name_std     = dplyr::coalesce(drug_name_std, "unknown"),
+    median_daily_dose = dose_daily_mg_equiv,
+    method            = "Gold"
   )
 
 dist_method_colors <- c(
@@ -472,10 +477,11 @@ message("\n  Baseline vs gold standard ...")
 ev_baseline <- evaluate_against_gold(
   baseline_episodes,
   gold_std,
-  gold_id_col = "patient_id"
+  gold_id_col  = "person_id",
+  gold_dose_col = "dose_daily_mg_equiv"
 )
 ev_baseline$n_common_patients <- length(intersect(
-  unique(baseline_episodes$person_id), unique(gold_std$patient_id)
+  unique(baseline_episodes$person_id), unique(gold_std$person_id)
 ))
 
 cat(sprintf(
@@ -494,8 +500,8 @@ cat("\nBaseline — top-10 largest errors:\n")
 ev_baseline$comparison |>
   dplyr::filter(!is.na(computed_dose)) |>
   dplyr::arrange(dplyr::desc(absolute_error)) |>
-  dplyr::select(patient_id, episode_start, episode_end, gold_dose,
-                computed_dose, absolute_error, bias_error) |>
+  dplyr::select(patient_id, episode_start, episode_end,
+                gold_dose, computed_dose, absolute_error, bias_error) |>
   head(10) |>
   print()
 
@@ -504,10 +510,11 @@ message("\n  NLP vs gold standard ...")
 ev_nlp <- evaluate_against_gold(
   nlp_episodes,
   gold_std,
-  gold_id_col = "patient_id"
+  gold_id_col  = "person_id",
+  gold_dose_col = "dose_daily_mg_equiv"
 )
 ev_nlp$n_common_patients <- length(intersect(
-  unique(nlp_episodes$person_id), unique(gold_std$patient_id)
+  unique(nlp_episodes$person_id), unique(gold_std$person_id)
 ))
 
 cat(sprintf(
@@ -527,10 +534,11 @@ message("\n  Advanced NLP vs gold standard ...")
 ev_adv <- evaluate_against_gold(
   adv_nlp_episodes,
   gold_std,
-  gold_id_col = "patient_id"
+  gold_id_col  = "person_id",
+  gold_dose_col = "dose_daily_mg_equiv"
 )
 ev_adv$n_common_patients <- length(intersect(
-  unique(adv_nlp_episodes$person_id), unique(gold_std$patient_id)
+  unique(adv_nlp_episodes$person_id), unique(gold_std$person_id)
 ))
 
 cat(sprintf(
@@ -695,7 +703,7 @@ cat(sprintf("  Episode gap tolerance:  %d days\n\n", GAP_DAYS))
 cat("PATIENT OVERLAP\n")
 cat(strrep("-", 40), "\n")
 db_patients_rpt      <- unique(as.integer(drug_df$person_id))
-gold_patients_rpt    <- unique(as.integer(gold_std$patient_id))
+gold_patients_rpt    <- unique(as.integer(gold_std$person_id))
 overlap_patients_rpt <- intersect(db_patients_rpt, gold_patients_rpt)
 cat(sprintf("  Database (drug_exposure): %d unique patients\n",  length(db_patients_rpt)))
 cat(sprintf("  Gold standard:            %d unique patients\n",  length(gold_patients_rpt)))
@@ -708,7 +716,7 @@ episode_counts <- tibble::tibble(
   Patients          = c(dplyr::n_distinct(baseline_episodes$person_id),
                         dplyr::n_distinct(nlp_episodes$person_id),
                         dplyr::n_distinct(adv_nlp_episodes$person_id),
-                        dplyr::n_distinct(gold_std$patient_id)),
+                        dplyr::n_distinct(gold_std$person_id)),
   Records_pre_collapse = c(
     sum(baseline_episodes$n_records, na.rm = TRUE),
     sum(nlp_episodes$n_records,      na.rm = TRUE),
@@ -731,7 +739,7 @@ episode_counts <- tibble::tibble(
   Median_mg         = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
                         stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
                         stats::median(adv_nlp_episodes$median_daily_dose,   na.rm = TRUE),
-                        stats::median(gold_std$median_daily_dose,           na.rm = TRUE))
+                        stats::median(gold_std$dose_daily_mg_equiv,         na.rm = TRUE))
 )
 print(as.data.frame(episode_counts), row.names = FALSE)
 cat("\n")
