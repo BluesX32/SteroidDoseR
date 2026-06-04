@@ -77,14 +77,6 @@ NULL
 #'   frame.
 #' @param gap_days `integer(1)`. Gap threshold for [build_episodes()]. Only
 #'   used when `return_level = "episode"`. Default: `30L`.
-#' @param concurrent_agg `character(1)`. Passed to [build_episodes()]. Controls
-#'   how concurrent prescriptions of different steroids on the same dates are
-#'   handled. `"per_drug"` (default) tracks each drug independently.
-#'   `"sum_all"` sums all drugs per patient-day and returns a single
-#'   `"total_steroids"` episode track. Requires `dose_col = "pred_equiv_mg"`
-#'   for cross-drug summation to be meaningful.
-#' @param equiv_table Optional custom equivalency table. Passed to
-#'   [convert_pred_equiv()]. Default `NULL` uses the built-in table.
 #' @param return_level `character(1)`. `"exposure"` returns one row per
 #'   drug-exposure record with dose columns appended. `"episode"` (default)
 #'   additionally runs [build_episodes()] and returns one row per
@@ -92,7 +84,7 @@ NULL
 #'
 #' @return
 #' - When `return_level = "exposure"`: the dose data frame from the chosen
-#'   method, with `pred_equiv_mg` and `equiv_factor` columns appended.
+#'   method.
 #' - When `return_level = "episode"`: episode summary from [build_episodes()].
 #'
 #' @export
@@ -117,14 +109,11 @@ run_pipeline <- function(connector_or_df,
                          end_date         = NULL,
                          sig_source       = "sig",
                          gap_days         = 30L,
-                         concurrent_agg   = c("per_drug", "sum_all"),
-                         equiv_table      = NULL,
                          return_level     = c("episode", "exposure")) {
 
-  method         <- match.arg(method)
-  m2_sig_parse   <- match.arg(m2_sig_parse)
-  concurrent_agg <- match.arg(concurrent_agg)
-  return_level   <- match.arg(return_level)
+  method       <- match.arg(method)
+  m2_sig_parse <- match.arg(m2_sig_parse)
+  return_level <- match.arg(return_level)
 
   # ------------------------------------------------------------------
   # Step 1: Fetch / validate drug_df
@@ -180,36 +169,20 @@ run_pipeline <- function(connector_or_df,
     }
   }
 
-  # ------------------------------------------------------------------
-  # Step 4: Prednisone-equivalency conversion
-  # ------------------------------------------------------------------
-  if (dose_col %in% names(drug_df)) {
-    drug_df <- convert_pred_equiv(
-      drug_df,
-      drug_col    = "drug_name_std",
-      dose_col    = dose_col,
-      equiv_table = equiv_table
-    )
-  }
-
   if (return_level == "exposure") {
     return(drug_df)
   }
 
   # ------------------------------------------------------------------
-  # Step 5: Episode building
+  # Step 4: Episode building
   # ------------------------------------------------------------------
-  end_col_arg  <- if ("drug_exposure_end_date" %in% names(drug_df))
+  end_col_arg <- if ("drug_exposure_end_date" %in% names(drug_df))
     "drug_exposure_end_date" else NA_character_
-
-  final_dose   <- if ("pred_equiv_mg" %in% names(drug_df))
-    "pred_equiv_mg" else dose_col
 
   build_episodes(
     drug_df,
-    end_col        = end_col_arg,
-    dose_col       = final_dose,
-    gap_days       = gap_days,
-    concurrent_agg = concurrent_agg
+    end_col  = end_col_arg,
+    dose_col = dose_col,
+    gap_days = gap_days
   )
 }

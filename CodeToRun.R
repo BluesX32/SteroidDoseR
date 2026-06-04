@@ -61,12 +61,6 @@ GAP_DAYS       <- 30L
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
-# Concurrent dose aggregation mode for build_episodes() / run_pipeline().
-#   "per_drug"  — each drug forms its own episode track (default, current behaviour)
-#   "sum_all"   — sum all steroid doses per patient-day (pred-equiv) into one
-#                 "total_steroids" track before gap-bridging
-CONCURRENT_AGG <- "per_drug"
-
 # Optional patient filter — set to an integer vector of person_ids to restrict
 # extraction to a specific cohort, or leave NULL to include all patients in DB.
 COHORT_PERSON_IDS <- NULL
@@ -294,11 +288,10 @@ print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg
 # Person-level: run pipeline to get episodes, then show trajectories
 baseline_episodes <- run_pipeline(
   drug_df,
-  method         = "baseline",
-  m2_sig_parse   = "auto",
-  return_level   = "episode",
-  gap_days       = GAP_DAYS,
-  concurrent_agg = CONCURRENT_AGG
+  method       = "baseline",
+  m2_sig_parse = "auto",
+  return_level = "episode",
+  gap_days     = GAP_DAYS
 )
 
 show_person_trajectories(baseline_episodes, "Baseline")
@@ -326,10 +319,9 @@ nlp_df |>
 # Person-level
 nlp_episodes <- run_pipeline(
   drug_df,
-  method         = "nlp",
-  return_level   = "episode",
-  gap_days       = GAP_DAYS,
-  concurrent_agg = CONCURRENT_AGG
+  method       = "nlp",
+  return_level = "episode",
+  gap_days     = GAP_DAYS
 )
 
 show_person_trajectories(nlp_episodes, "NLP")
@@ -360,19 +352,11 @@ cat(sprintf(
   sum(ok_mask, na.rm = TRUE) - sum(nlp_df$parsed_status == "ok", na.rm = TRUE)
 ))
 
-# Advanced NLP episodes — convert to pred-equiv first (same as run_pipeline),
-# then build episodes so the dose scale matches baseline and NLP episodes.
-adv_nlp_df <- convert_pred_equiv(
-  adv_nlp_df,
-  drug_col = "drug_name_std",
-  dose_col = "daily_dose_mg"
-)
 adv_nlp_episodes <- build_episodes(
   adv_nlp_df,
-  end_col        = "drug_exposure_end_date",
-  dose_col       = "pred_equiv_mg",
-  gap_days       = GAP_DAYS,
-  concurrent_agg = CONCURRENT_AGG
+  end_col  = "drug_exposure_end_date",
+  dose_col = "daily_dose_mg",
+  gap_days = GAP_DAYS
 )
 
 show_person_trajectories(adv_nlp_episodes, "Advanced NLP")
@@ -427,57 +411,11 @@ cat(sprintf(
   nrow(gold_std), dplyr::n_distinct(gold_std$patient_id)
 ))
 
-# --- Convert gold standard doses to prednisone-equivalent -------------------
-# The gold standard records doses in the native drug unit (e.g., methylpred
-# 8 mg ≠ 10 mg pred-equiv). We identify each gold episode's drug by finding
-# the most-frequent drug in drug_df that overlaps the gold episode window,
-# then apply the same convert_pred_equiv() used on the computed side.
-# Use baseline_df (oral-filtered) so injection records cannot become the
-# dominant drug and corrupt the pred-equiv conversion.
-gold_drug_map <- baseline_df |>
-  dplyr::select(person_id, drug_name_std,
-                drug_exposure_start_date, drug_exposure_end_date) |>
-  dplyr::rename(patient_id = person_id) |>
-  dplyr::inner_join(
-    gold_std |> dplyr::select(patient_id, episode_start, episode_end),
-    by = "patient_id", relationship = "many-to-many"
-  ) |>
-  dplyr::filter(
-    as.Date(drug_exposure_start_date) <= as.Date(episode_end),
-    as.Date(drug_exposure_end_date)   >= as.Date(episode_start),
-    !is.na(drug_name_std)
-  ) |>
-  dplyr::group_by(patient_id, episode_start, episode_end, drug_name_std) |>
-  dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
-  dplyr::group_by(patient_id, episode_start, episode_end) |>
-  dplyr::slice_max(n, n = 1L, with_ties = FALSE) |>   # most common drug
-  dplyr::ungroup() |>
-  dplyr::select(patient_id, episode_start, episode_end, drug_name_std)
-
-gold_std <- gold_std |>
-  dplyr::left_join(gold_drug_map,
-                   by = c("patient_id", "episode_start", "episode_end")) |>
-  convert_pred_equiv(
-    drug_col = "drug_name_std",
-    dose_col = "median_daily_dose",
-    out_col  = "gold_pred_equiv_mg"
-  ) |>
-  dplyr::mutate(
-    median_daily_dose_raw = median_daily_dose,
-    median_daily_dose     = dplyr::coalesce(gold_pred_equiv_mg, median_daily_dose)
-  )
-
-cat(sprintf(
-  "Gold std drug mapping: %d episodes converted to pred-equiv | %d drug unknown (kept raw)\n",
-  sum(gold_std$pred_equiv_status == "ok",        na.rm = TRUE),
-  sum(gold_std$pred_equiv_status != "ok"| is.na(gold_std$pred_equiv_status), na.rm = TRUE)
-))
-cat("\nGold standard preview (with pred-equiv dose):\n")
+cat("\nGold standard preview:\n")
 print(head(gold_std[, c("patient_id", "episode_start", "episode_end",
-                        "drug_name_std", "median_daily_dose_raw",
-                        "median_daily_dose", "days_covered")]))
+                        "median_daily_dose")]))
 
-cat("\nGold standard dose distribution (pred-equiv):\n")
+cat("\nGold standard dose distribution:\n")
 print(summary(gold_std$median_daily_dose))
 
 # --- Distribution plot including gold standard (4 panels) -------------------
@@ -946,7 +884,6 @@ writeLines(c(
   "Episode building",
   strrep("-", 40),
   sprintf("GAP_DAYS:            %d", GAP_DAYS),
-  sprintf("CONCURRENT_AGG:      %s", CONCURRENT_AGG),
   "",
   "Evaluation",
   strrep("-", 40),
@@ -994,25 +931,11 @@ message(sprintf("Results saved to: %s", RUN_DIR))
 # launch_dose_dashboard() opens a Shiny app in the browser.
 # Pass raw_list (record-level data frames) to populate the Raw Records tab
 # with diagnostic columns (sig, imputation_method, daily_dose_mg_imputed,
-# pred_equiv_mg, etc.) so individual prescription rows can be inspected
-# alongside the dose trajectory plot.
+# etc.) so individual prescription rows can be inspected alongside the
+# dose trajectory plot.
 #
-# adv_nlp_df already has pred_equiv_mg (converted in Section 6).
-# Convert baseline_df and nlp_df to pred-equiv here for consistency.
 message("\n=== Launching interactive dose review dashboard ===")
 message("(Close the browser tab or press Escape in R to stop.)")
-
-baseline_eq <- convert_pred_equiv(
-  baseline_df,
-  drug_col = "drug_name_std",
-  dose_col = "daily_dose_mg_imputed"
-)
-
-nlp_eq <- convert_pred_equiv(
-  nlp_df,
-  drug_col = "drug_name_std",
-  dose_col = "daily_dose_mg"
-)
 
 launch_dose_dashboard(
   episode_list = list(
@@ -1021,9 +944,9 @@ launch_dose_dashboard(
     "Advanced NLP" = adv_nlp_episodes
   ),
   raw_list = list(
-    "Baseline"     = baseline_eq,
-    "NLP"          = nlp_eq,
-    "Advanced NLP" = adv_nlp_df   # pred_equiv_mg already present from Section 6
+    "Baseline"     = baseline_df,
+    "NLP"          = nlp_df,
+    "Advanced NLP" = adv_nlp_df
   ),
   gold_std = gold_std
 )
