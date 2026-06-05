@@ -779,8 +779,8 @@ for (i in seq_len(nrow(metrics_tbl))) {
 cat("\n")
 
 # NLP gain
-nlp_gain <- ev_adv$summary$n_matched_periods - ev_nlp$summary$n_matched_periods
-if (!is.na(nlp_gain) && nlp_gain != 0) {
+nlp_gain <- ev_adv$summary$n_matched_records - ev_nlp$summary$n_matched_records
+if (isTRUE(nlp_gain != 0)) {
   cat(sprintf(
     paste0(
       "Advanced NLP vs Standard NLP: Advanced NLP matched %d additional\n",

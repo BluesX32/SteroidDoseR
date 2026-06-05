@@ -10,81 +10,108 @@ parse_dmard_gold(
   drug_name_col = "dmardname",
   dose_col = "dmarddose",
   start_date_col = "dmard_start_date_est",
+  start_year_col = "dmardstartyear",
+  start_month_col = "dmardstartmonth",
+  start_day_col = "dmardstartday",
   status_col = "dmardstatus",
   last_changed_col = "last_changed_datetime",
   stop_date_col = "pastdmard_stop_date_est",
+  stop_year_col = "pastdmardstopyear",
+  stop_month_col = "pastdmardstopmonth",
+  stop_day_col = "pastdmardstopday",
   end_date_col = NULL,
   past_status_val = "past",
+  drug_filter = NULL,
+  exclude_non_daily = TRUE,
+  dose_min = 0,
+  dose_max = 300,
   today = Sys.Date()
 )
 }
 \arguments{
-\item{df}{A data frame -- the raw gold-standard CSV loaded with
-\code{readr::read_csv()} or equivalent.}
+\item{df}{A data frame -- the raw gold-standard CSV (pre-loaded).}
 
 \item{person_id_col}{\code{character(1)}. Patient identifier column.
 Default: \code{"myositis_omop_person_id"}.}
 
-\item{drug_name_col}{\code{character(1)}. DMARD name column (free text).
-Default: \code{"dmardname"}.}
+\item{drug_name_col}{\code{character(1)}. DMARD name column. Default: \code{"dmardname"}.}
 
-\item{dose_col}{\code{character(1)}. Free-text dose expression column.
-Default: \code{"dmarddose"}.}
+\item{dose_col}{\code{character(1)}. Free-text dose column. Default: \code{"dmarddose"}.}
 
-\item{start_date_col}{\code{character(1)}. Estimated DMARD start date column.
+\item{start_date_col}{\code{character(1)}. ISO start-date column.
 Default: \code{"dmard_start_date_est"}.}
 
-\item{status_col}{\code{character(1)} or \code{NULL}. Column recording DMARD status.
-Set \code{NULL} to skip. If declared but absent, a warning is issued.
+\item{start_year_col, start_month_col, start_day_col}{\code{character(1)} or \code{NULL}.
+Year/month/day fallback columns when \code{start_date_col} is NA.
+Defaults: \code{"dmardstartyear"}, \code{"dmardstartmonth"}, \code{"dmardstartday"}.}
+
+\item{status_col}{\code{character(1)} or \code{NULL}. DMARD status column.
 Default: \code{"dmardstatus"}.}
 
-\item{last_changed_col}{\code{character(1)} or \code{NULL}. Timestamp column used as
-the primary source for \code{episode_end} before other fallbacks. Set \code{NULL}
-to skip. Default: \code{"last_changed_datetime"}.}
+\item{last_changed_col}{\code{character(1)} or \code{NULL}. Last-updated timestamp
+column; primary source for \code{episode_end}. Default: \code{"last_changed_datetime"}.}
 
-\item{stop_date_col}{\code{character(1)} or \code{NULL}. Estimated stop-date column,
-used when status is past and \code{last_changed_col} is absent or NA.
-Default: \code{"pastdmard_stop_date_est"}.}
+\item{stop_date_col}{\code{character(1)} or \code{NULL}. ISO stop-date column (past
+records). Default: \code{"pastdmard_stop_date_est"}.}
 
-\item{end_date_col}{\code{character(1)} or \code{NULL}. Generic end-date fallback
-used when \code{status_col} is absent. Default: \code{NULL}.}
+\item{stop_year_col, stop_month_col, stop_day_col}{\code{character(1)} or \code{NULL}.
+Year/month/day fallback for the stop date. Defaults: \code{"pastdmardstopyear"},
+\code{"pastdmardstopmonth"}, \code{"pastdmardstopday"}.}
 
-\item{past_status_val}{\code{character(1)}. The value in \code{status_col} that
-indicates a discontinued DMARD. Default: \code{"past"}.}
+\item{end_date_col}{\code{character(1)} or \code{NULL}. Generic end-date fallback when
+\code{status_col} is absent. Default: \code{NULL}.}
 
-\item{today}{\code{Date}. Reference date used as \code{episode_end} when no end date
-can be derived. Default: \code{Sys.Date()}.}
+\item{past_status_val}{\code{character(1)}. Value in \code{status_col} indicating a
+discontinued DMARD. Default: \code{"past"}.}
+
+\item{drug_filter}{\code{character} vector or \code{NULL}. If supplied, only rows whose
+standardised drug name matches one of these values (case-insensitive) are
+retained. \code{NULL} keeps all drugs. Default: \code{NULL}.}
+
+\item{exclude_non_daily}{\code{logical(1)}. If \code{TRUE} (default), non-daily regimen
+records (weekly, monthly, infusion, weight-based) have \code{dose_daily_mg_equiv}
+set to \code{NA} and \code{parse_status} set to \code{"non_daily"}.}
+
+\item{dose_min, dose_max}{\code{numeric(1)}. Plausibility bounds (exclusive).
+\code{dose_daily_mg_equiv} outside \code{(dose_min, dose_max)} is set to \code{NA} with
+\code{parse_status = "implausible"}. Defaults: \code{0}, \code{300}.}
+
+\item{today}{\code{Date}. Fallback reference date for active records.
+Default: \code{Sys.Date()}.}
 }
 \value{
-A tibble with one row per input row:
-\describe{
-\item{person_id}{From \code{person_id_col}.}
-\item{drug_name_std}{Lowercased and whitespace-trimmed \code{drug_name_col}.}
-\item{episode_start}{\code{start_date_col} coerced to \code{Date}.}
-\item{episode_end}{\code{stop_date_col} if status is past and stop date
-present; \code{today} otherwise; \code{NA} if status is past but stop date missing.}
-\item{dose_raw}{Original dose string from \code{dose_col}.}
-\item{dose_amount, dose_unit, dose_per_kg, dose_frequency, freq_per_day,
-dose_mg_per_admin, dose_daily_mg_equiv, parse_status}{See
-\code{\link[=parse_dmard_dose]{parse_dmard_dose()}} for full descriptions.}
-}
+A tibble with one row per retained input row: \code{person_id},
+\code{drug_name_std}, \code{episode_start}, \code{episode_end}, \code{dose_raw},
+\code{dose_amount}, \code{dose_unit}, \code{dose_per_kg}, \code{dose_frequency},
+\code{freq_per_day}, \code{dose_mg_per_admin}, \code{dose_daily_mg_equiv},
+\code{non_daily_regimen}, \code{parse_status}.
 }
 \description{
-Accepts a raw clinical review CSV (typically one row per DMARD record per
-patient) with messy free-text dose expressions. Validates required columns,
-derives episode end-dates from status logic, and parses the dose column via
-\code{\link[=parse_dmard_dose]{parse_dmard_dose()}}. All column name arguments have defaults matching the
-actual field names used in the myositis clinical review export, but every
-name can be overridden to accommodate different site exports.
+Accepts a raw clinical review CSV (one row per DMARD record per patient)
+with messy free-text dose expressions. Aligns with the original
+\code{gold_standard.qmd} analysis pipeline: null-sentinel cleaning, year/month/day
+date fallbacks, negative-duration correction, non-daily regimen exclusion,
+and plausibility capping. All column name arguments are parameterised.
+}
+\details{
+\strong{End-date priority:}
+\itemize{
+\item Status = past: \code{last_changed} -> \code{stop_date} (ISO then parts) -> \code{NA}
+\item Status = current/other: \code{last_changed} -> \code{today}
+\item No status: \code{last_changed} -> \code{end_date_col} -> \code{today}
+}
+Negative durations (\code{episode_end < episode_start}) are corrected by swapping
+the two dates.
 }
 \examples{
 df <- tibble::tibble(
   myositis_omop_person_id = c(1L, 2L, 3L),
-  dmardname               = c("methotrexate", "mycophenolate", "rituximab"),
-  dmarddose               = c("15 mg weekly", "1500 mg daily", "1000 mg q6 months"),
+  dmardname               = c("Corticosteroids", "Corticosteroids", "Methotrexate"),
+  dmarddose               = c("10 mg daily", "1000 mg infusion", "15 mg weekly"),
   dmard_start_date_est    = c("2020-01-01", "2019-06-01", "2021-03-01"),
-  dmardstatus             = c("active", "past", "active"),
-  pastdmard_stop_date_est = c(NA, "2022-12-31", NA)
+  dmardstatus             = c("current", "past", "current"),
+  pastdmard_stop_date_est = c(NA, "2022-12-31", NA),
+  last_changed_datetime   = c("2024-01-01", NA, "2024-06-01")
 )
-parse_dmard_gold(df)
+parse_dmard_gold(df, drug_filter = "corticosteroids")
 }

@@ -5,6 +5,37 @@
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+#' Replace common null-sentinel strings with NA in all character columns
+#' @noRd
+.null_to_na_cols <- function(df) {
+  df |>
+    dplyr::mutate(dplyr::across(
+      dplyr::where(is.character),
+      ~ {
+        x <- stringr::str_trim(.x)
+        dplyr::if_else(x %in% c("NULL", "null", "NA", "N/A", "n/a", ""),
+                       NA_character_, x)
+      }
+    ))
+}
+
+#' Build a Date from separate year/month/day columns, with sensible defaults
+#' when month or day is missing (mirrors gold_standard.qmd make_date_from_parts)
+#' @noRd
+.make_date_from_parts <- function(y, m, d,
+                                   default_month = 6L,
+                                   default_day   = 15L) {
+  y <- suppressWarnings(as.integer(y))
+  m <- suppressWarnings(as.integer(m))
+  d <- suppressWarnings(as.integer(d))
+  m[is.na(m) | m < 1L | m > 12L] <- default_month
+  d[is.na(d) | d < 1L | d > 28L] <- default_day
+  out <- dplyr::if_else(!is.na(y),
+                         sprintf("%04d-%02d-%02d", y, m, d),
+                         NA_character_)
+  suppressWarnings(as.Date(out))
+}
+
 #' Empty parse-row template for failed DMARD dose parses
 #' @noRd
 .empty_dmard_parse_row <- function() {
@@ -235,100 +266,111 @@ parse_dmard_dose <- function(x) {
 
 #' Parse and validate a DMARD gold-standard data frame
 #'
-#' Accepts a raw clinical review CSV (typically one row per DMARD record per
-#' patient) with messy free-text dose expressions. Validates required columns,
-#' derives episode end-dates from status logic, and parses the dose column via
-#' [parse_dmard_dose()]. All column name arguments have defaults matching the
-#' actual field names used in the myositis clinical review export, but every
-#' name can be overridden to accommodate different site exports.
+#' Accepts a raw clinical review CSV (one row per DMARD record per patient)
+#' with messy free-text dose expressions. Aligns with the original
+#' `gold_standard.qmd` analysis pipeline: null-sentinel cleaning, year/month/day
+#' date fallbacks, negative-duration correction, non-daily regimen exclusion,
+#' and plausibility capping. All column name arguments are parameterised.
 #'
-#' @param df A data frame -- the raw gold-standard CSV loaded with
-#'   `readr::read_csv()` or equivalent.
+#' @param df A data frame -- the raw gold-standard CSV (pre-loaded).
 #' @param person_id_col `character(1)`. Patient identifier column.
 #'   Default: `"myositis_omop_person_id"`.
-#' @param drug_name_col `character(1)`. DMARD name column (free text).
-#'   Default: `"dmardname"`.
-#' @param dose_col `character(1)`. Free-text dose expression column.
-#'   Default: `"dmarddose"`.
-#' @param start_date_col `character(1)`. Estimated DMARD start date column.
+#' @param drug_name_col `character(1)`. DMARD name column. Default: `"dmardname"`.
+#' @param dose_col `character(1)`. Free-text dose column. Default: `"dmarddose"`.
+#' @param start_date_col `character(1)`. ISO start-date column.
 #'   Default: `"dmard_start_date_est"`.
-#' @param status_col `character(1)` or `NULL`. Column recording DMARD status.
-#'   Set `NULL` to skip status logic. If declared but absent, a warning is
-#'   issued. Default: `"dmardstatus"`.
-#' @param last_changed_col `character(1)` or `NULL`. Timestamp column
-#'   recording when the record was last updated. Used as the primary source
-#'   for `episode_end` before falling back to `stop_date_col` or `today`.
-#'   Set `NULL` to skip. If declared but absent, a warning is issued.
-#'   Default: `"last_changed_datetime"`.
-#' @param stop_date_col `character(1)` or `NULL`. Estimated stop-date column.
-#'   Used only when status is past AND `last_changed_col` is absent or NA.
-#'   Set `NULL` to skip. If declared but absent, a warning is issued.
-#'   Default: `"pastdmard_stop_date_est"`.
-#' @param end_date_col `character(1)` or `NULL`. Generic end-date column used
-#'   as a fallback when `status_col` is absent. Set `NULL` to skip.
-#'   Default: `NULL`.
-#' @param past_status_val `character(1)`. The value in `status_col` that
-#'   indicates a discontinued DMARD. Default: `"past"`.
-#' @param today `Date`. Reference date used as `episode_end` when no end date
-#'   can be derived. Default: `Sys.Date()`.
+#' @param start_year_col,start_month_col,start_day_col `character(1)` or `NULL`.
+#'   Year/month/day part columns used as fallback when `start_date_col` is NA.
+#'   Defaults: `"dmardstartyear"`, `"dmardstartmonth"`, `"dmardstartday"`.
+#'   Set any to `NULL` to disable the fallback.
+#' @param status_col `character(1)` or `NULL`. DMARD status column.
+#'   Default: `"dmardstatus"`.
+#' @param last_changed_col `character(1)` or `NULL`. Last-updated timestamp
+#'   column; primary source for `episode_end`. Default: `"last_changed_datetime"`.
+#' @param stop_date_col `character(1)` or `NULL`. ISO stop-date column (past
+#'   records). Default: `"pastdmard_stop_date_est"`.
+#' @param stop_year_col,stop_month_col,stop_day_col `character(1)` or `NULL`.
+#'   Year/month/day fallback for the stop date. Defaults: `"pastdmardstopyear"`,
+#'   `"pastdmardstopmonth"`, `"pastdmardstopday"`.
+#' @param end_date_col `character(1)` or `NULL`. Generic end-date fallback when
+#'   `status_col` is absent. Default: `NULL`.
+#' @param past_status_val `character(1)`. Value in `status_col` indicating
+#'   a discontinued DMARD. Default: `"past"`.
+#' @param drug_filter `character` vector or `NULL`. If supplied, only rows
+#'   whose standardised drug name matches one of these values (case-insensitive)
+#'   are retained. `NULL` keeps all drugs. Default: `NULL`.
+#' @param exclude_non_daily `logical(1)`. If `TRUE` (default), doses flagged as
+#'   non-daily regimens (weekly, monthly, infusion, weight-based, etc.) have
+#'   `dose_daily_mg_equiv` set to `NA` and `parse_status` set to `"non_daily"`,
+#'   matching the original analysis pipeline.
+#' @param dose_min,dose_max `numeric(1)`. Plausibility bounds (exclusive).
+#'   `dose_daily_mg_equiv` values outside `(dose_min, dose_max)` are set to
+#'   `NA` with `parse_status = "implausible"`. Defaults: `0`, `300`.
+#' @param today `Date`. Fallback reference date for active records.
+#'   Default: `Sys.Date()`.
 #'
 #' @details
-#' **End-date priority logic:**
-#'
-#' When `status_col` is present:
+#' **End-date priority:**
 #' \itemize{
-#'   \item Status = past: `last_changed_col` -> `stop_date_col` -> `NA`
-#'   \item Status = current: `last_changed_col` -> `today`
+#'   \item Status = past: `last_changed` -> `stop_date` (ISO then parts) -> `NA`
+#'   \item Status = current/other: `last_changed` -> `today`
+#'   \item No status: `last_changed` -> `end_date_col` -> `today`
 #' }
-#' When `status_col` is absent:
-#' \itemize{
-#'   \item `last_changed_col` -> `end_date_col` -> `today`
-#' }
+#' Negative durations (`episode_end < episode_start`) are corrected by swapping
+#' the two dates, mirroring the original pipeline's imputation step.
 #'
-#' @return A tibble with one row per input row:
-#' \describe{
-#'   \item{`person_id`}{From `person_id_col`.}
-#'   \item{`drug_name_std`}{Lowercased and whitespace-trimmed `drug_name_col`.}
-#'   \item{`episode_start`}{`start_date_col` coerced to `Date`.}
-#'   \item{`episode_end`}{Derived from end-date priority logic (see Details).}
-#'   \item{`dose_raw`}{Original dose string from `dose_col`.}
-#'   \item{`dose_amount`, `dose_unit`, `dose_per_kg`, `dose_frequency`,
-#'     `freq_per_day`, `dose_mg_per_admin`, `dose_daily_mg_equiv`,
-#'     `parse_status`}{See [parse_dmard_dose()] for full descriptions.}
-#' }
+#' @return A tibble with one row per retained input row and columns:
+#' `person_id`, `drug_name_std`, `episode_start`, `episode_end`, `dose_raw`,
+#' `dose_amount`, `dose_unit`, `dose_per_kg`, `dose_frequency`, `freq_per_day`,
+#' `dose_mg_per_admin`, `dose_daily_mg_equiv`, `non_daily_regimen`,
+#' `parse_status`.
 #'
 #' @export
 #'
 #' @examples
 #' df <- tibble::tibble(
 #'   myositis_omop_person_id = c(1L, 2L, 3L),
-#'   dmardname               = c("methotrexate", "mycophenolate", "rituximab"),
-#'   dmarddose               = c("15 mg weekly", "1500 mg daily", "1000 mg q6 months"),
+#'   dmardname               = c("Corticosteroids", "Corticosteroids", "Methotrexate"),
+#'   dmarddose               = c("10 mg daily", "1000 mg infusion", "15 mg weekly"),
 #'   dmard_start_date_est    = c("2020-01-01", "2019-06-01", "2021-03-01"),
-#'   dmardstatus             = c("active", "past", "active"),
-#'   pastdmard_stop_date_est = c(NA, "2022-12-31", NA)
+#'   dmardstatus             = c("current", "past", "current"),
+#'   pastdmard_stop_date_est = c(NA, "2022-12-31", NA),
+#'   last_changed_datetime   = c("2024-01-01", NA, "2024-06-01")
 #' )
-#' parse_dmard_gold(df)
+#' parse_dmard_gold(df, drug_filter = "corticosteroids")
 parse_dmard_gold <- function(df,
                               person_id_col    = "myositis_omop_person_id",
                               drug_name_col    = "dmardname",
                               dose_col         = "dmarddose",
                               start_date_col   = "dmard_start_date_est",
+                              start_year_col   = "dmardstartyear",
+                              start_month_col  = "dmardstartmonth",
+                              start_day_col    = "dmardstartday",
                               status_col       = "dmardstatus",
                               last_changed_col = "last_changed_datetime",
                               stop_date_col    = "pastdmard_stop_date_est",
+                              stop_year_col    = "pastdmardstopyear",
+                              stop_month_col   = "pastdmardstopmonth",
+                              stop_day_col     = "pastdmardstopday",
                               end_date_col     = NULL,
                               past_status_val  = "past",
+                              drug_filter      = NULL,
+                              exclude_non_daily = TRUE,
+                              dose_min         = 0,
+                              dose_max         = 300,
                               today            = Sys.Date()) {
 
-  # --- required columns -------------------------------------------------------
+  # --- 1. Null-sentinel cleaning ----------------------------------------------
+  df <- .null_to_na_cols(df)
+
+  # --- 2. Required columns ----------------------------------------------------
   assert_required_cols(
     df,
     c(person_id_col, drug_name_col, dose_col, start_date_col),
     "df"
   )
 
-  # --- optional columns: NULL out if declared but absent ----------------------
+  # --- 3. Silence absent optional columns -------------------------------------
   .opt <- function(col, label) {
     if (!is.null(col) && !col %in% names(df)) {
       rlang::warn(paste0(label, " '", col, "' not found in df; ignoring."))
@@ -341,59 +383,100 @@ parse_dmard_gold <- function(df,
   last_changed_col <- .opt(last_changed_col, "last_changed_col")
   stop_date_col    <- .opt(stop_date_col,    "stop_date_col")
   end_date_col     <- .opt(end_date_col,     "end_date_col")
+  start_year_col   <- .opt(start_year_col,   "start_year_col")
+  start_month_col  <- .opt(start_month_col,  "start_month_col")
+  start_day_col    <- .opt(start_day_col,    "start_day_col")
+  stop_year_col    <- .opt(stop_year_col,    "stop_year_col")
+  stop_month_col   <- .opt(stop_month_col,   "stop_month_col")
+  stop_day_col     <- .opt(stop_day_col,     "stop_day_col")
 
-  # --- build base working frame -----------------------------------------------
+  # --- 4. Build working frame -------------------------------------------------
+  has_start_parts <- !is.null(start_year_col) && !is.null(start_month_col) &&
+                       !is.null(start_day_col)
+  has_stop_parts  <- !is.null(stop_year_col)  && !is.null(stop_month_col)  &&
+                       !is.null(stop_day_col)
+
   base <- df |>
     dplyr::transmute(
-      person_id        = .data[[person_id_col]],
-      drug_name_std    = stringr::str_squish(
-                           stringr::str_to_lower(as.character(.data[[drug_name_col]]))
-                         ),
-      episode_start    = safe_as_date(.data[[start_date_col]]),
-      dose_raw         = as.character(.data[[dose_col]]),
-      .status          = if (!is.null(status_col))
-                           as.character(.data[[status_col]])
-                         else NA_character_,
-      .last_changed    = if (!is.null(last_changed_col))
-                           safe_as_date(.data[[last_changed_col]])
-                         else as.Date(NA_character_),
-      .stop_raw        = if (!is.null(stop_date_col))
-                           safe_as_date(.data[[stop_date_col]])
-                         else as.Date(NA_character_),
-      .end_raw         = if (!is.null(end_date_col))
-                           safe_as_date(.data[[end_date_col]])
-                         else as.Date(NA_character_)
+      person_id     = .data[[person_id_col]],
+      drug_name_std = stringr::str_squish(
+                        stringr::str_to_lower(as.character(.data[[drug_name_col]]))
+                      ),
+      dose_raw      = as.character(.data[[dose_col]]),
+      .status       = if (!is.null(status_col))
+                        as.character(.data[[status_col]])
+                      else NA_character_,
+      .last_changed = if (!is.null(last_changed_col))
+                        safe_as_date(.data[[last_changed_col]])
+                      else as.Date(NA_character_),
+      # start date: ISO primary, parts fallback
+      .start_iso    = safe_as_date(.data[[start_date_col]]),
+      .start_parts  = if (has_start_parts)
+                        .make_date_from_parts(
+                          .data[[start_year_col]],
+                          .data[[start_month_col]],
+                          .data[[start_day_col]]
+                        )
+                      else as.Date(NA_character_),
+      # stop date: ISO primary, parts fallback
+      .stop_iso     = if (!is.null(stop_date_col))
+                        safe_as_date(.data[[stop_date_col]])
+                      else as.Date(NA_character_),
+      .stop_parts   = if (has_stop_parts)
+                        .make_date_from_parts(
+                          .data[[stop_year_col]],
+                          .data[[stop_month_col]],
+                          .data[[stop_day_col]]
+                        )
+                      else as.Date(NA_character_),
+      .end_raw      = if (!is.null(end_date_col))
+                        safe_as_date(.data[[end_date_col]])
+                      else as.Date(NA_character_)
+    ) |>
+    dplyr::mutate(
+      episode_start = dplyr::coalesce(.data$.start_iso, .data$.start_parts),
+      .stop_raw     = dplyr::coalesce(.data$.stop_iso,  .data$.stop_parts)
     )
 
+  # --- 5. Drug filter ---------------------------------------------------------
+  if (!is.null(drug_filter)) {
+    filter_std <- stringr::str_squish(stringr::str_to_lower(as.character(drug_filter)))
+    base <- base |> dplyr::filter(.data$drug_name_std %in% filter_std)
+    if (nrow(base) == 0L) {
+      rlang::warn(paste0(
+        "drug_filter matched no rows. Check that drug_filter values match ",
+        "the lowercased drug_name_col entries."
+      ))
+      return(dplyr::bind_cols(
+        base |> dplyr::select("person_id", "drug_name_std",
+                              "episode_start", "dose_raw"),
+        tibble::tibble(episode_end = as.Date(character(0))),
+        .empty_dmard_parse_row()[0L, ]
+      ))
+    }
+  }
+
+  # --- 6. Derive episode_end --------------------------------------------------
   today_date <- as.Date(today)
   has_status <- !is.na(base$.status)
   is_past    <- has_status & base$.status == past_status_val
 
-  # --- derive episode_end from priority logic ---------------------------------
-  #
-  # Status exists, past:    last_changed -> stop_date -> NA
-  # Status exists, current: last_changed -> today
-  # No status:              last_changed -> end_date  -> today
   base <- base |>
     dplyr::mutate(
       episode_end = dplyr::case_when(
-        # past: last_changed first
-        is_past & !is.na(.data$.last_changed)                          ~ .data$.last_changed,
-        # past: fall back to stop_date
-        is_past & !is.na(.data$.stop_raw)                              ~ .data$.stop_raw,
-        # past: no date available
-        is_past                                                         ~ as.Date(NA_character_),
-        # current (status known, not past): last_changed -> today
-        has_status & !is.na(.data$.last_changed)                       ~ .data$.last_changed,
-        has_status                                                      ~ today_date,
-        # no status: last_changed -> end_date -> today
-        !has_status & !is.na(.data$.last_changed)                      ~ .data$.last_changed,
-        !has_status & !is.na(.data$.end_raw)                           ~ .data$.end_raw,
-        TRUE                                                            ~ today_date
+        is_past & !is.na(.data$.last_changed)  ~ .data$.last_changed,
+        is_past & !is.na(.data$.stop_raw)      ~ .data$.stop_raw,
+        is_past                                 ~ as.Date(NA_character_),
+        has_status & !is.na(.data$.last_changed) ~ .data$.last_changed,
+        has_status                              ~ today_date,
+        !has_status & !is.na(.data$.last_changed) ~ .data$.last_changed,
+        !has_status & !is.na(.data$.end_raw)   ~ .data$.end_raw,
+        TRUE                                   ~ today_date
       )
     )
 
-  n_null <- sum(is_past & is.na(base$.last_changed) & is.na(base$.stop_raw))
+  n_null <- sum(is_past & is.na(base$.last_changed) & is.na(base$.stop_raw),
+                na.rm = TRUE)
   if (n_null > 0L) {
     rlang::warn(paste0(
       n_null, " past row(s) have neither last_changed nor stop_date -- ",
@@ -401,10 +484,77 @@ parse_dmard_gold <- function(df,
     ))
   }
 
-  # --- parse dose column ------------------------------------------------------
+  # --- 7. Negative-duration correction ----------------------------------------
+  # Swap start/end when end < start (mirrors original imputation step)
+  base <- base |>
+    dplyr::mutate(
+      .swap        = !is.na(.data$episode_start) &
+                       !is.na(.data$episode_end) &
+                       .data$episode_end < .data$episode_start,
+      episode_start = dplyr::if_else(.data$.swap, .data$episode_end,   .data$episode_start),
+      episode_end   = dplyr::if_else(.data$.swap, .data$episode_start, .data$episode_end)
+    )
+
+  n_swap <- sum(base$.swap, na.rm = TRUE)
+  if (n_swap > 0L) {
+    rlang::warn(paste0(
+      n_swap, " row(s) had episode_end < episode_start; start/end dates swapped."
+    ))
+  }
+
+  # --- 8. Parse dose ----------------------------------------------------------
   parsed <- parse_dmard_dose(base$dose_raw)
 
-  # --- assemble output --------------------------------------------------------
+  # --- 9. Non-daily regimen exclusion -----------------------------------------
+  # Patterns that indicate a non-daily regimen (mirrors original pipeline).
+  # dose_daily_mg_equiv is set to NA; parse_status updated to "non_daily".
+  non_daily_pat <- paste0(
+    "g/kg|grams?/kg|\\binfusion\\b|\\bmonthly\\b|\\bweekly\\b|",
+    "\\bevery\\b|\\bover\\b|\\bgram\\b"
+  )
+  non_daily_flag <- stringr::str_detect(
+    stringr::str_to_lower(base$dose_raw),
+    non_daily_pat
+  ) & !is.na(base$dose_raw)
+
+  # Also flag weight-based and infusion-course records from the parser
+  non_daily_flag <- non_daily_flag |
+    (parsed$parse_status %in% c("weight_required") & !is.na(parsed$parse_status)) |
+    (!is.na(parsed$dose_frequency) &
+       parsed$dose_frequency %in% c("weekly", "q2weeks", "q4weeks",
+                                     "monthly", "q2months", "q3months",
+                                     "q6months", "infusion_course"))
+
+  parsed <- parsed |>
+    dplyr::mutate(
+      non_daily_regimen = non_daily_flag,
+      parse_status = dplyr::if_else(
+        non_daily_flag & .data$parse_status == "ok",
+        "non_daily", .data$parse_status
+      ),
+      dose_daily_mg_equiv = dplyr::if_else(
+        non_daily_flag & isTRUE(exclude_non_daily),
+        NA_real_, .data$dose_daily_mg_equiv
+      )
+    )
+
+  # --- 10. Plausibility cap ---------------------------------------------------
+  # 0 < dose_daily_mg_equiv < dose_max (mirrors original pred_equiv_flagged logic)
+  implausible <- !is.na(parsed$dose_daily_mg_equiv) &
+    (parsed$dose_daily_mg_equiv <= dose_min |
+       parsed$dose_daily_mg_equiv >= dose_max)
+
+  parsed <- parsed |>
+    dplyr::mutate(
+      parse_status = dplyr::if_else(
+        implausible, "implausible", .data$parse_status
+      ),
+      dose_daily_mg_equiv = dplyr::if_else(
+        implausible, NA_real_, .data$dose_daily_mg_equiv
+      )
+    )
+
+  # --- 11. Assemble output ----------------------------------------------------
   base |>
     dplyr::select("person_id", "drug_name_std", "episode_start", "episode_end",
                   "dose_raw") |>
