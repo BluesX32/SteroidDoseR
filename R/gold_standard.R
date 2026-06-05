@@ -605,22 +605,6 @@ parse_dmard_gold <- function(df,
 #'   Default: `"dose_daily_mg_equiv"`.
 #' @param min_overlap_days `integer(1)`. Minimum overlap in days for a
 #'   computed episode to count. Default: `1L`.
-#' @param convert_to_pred_equiv `logical(1)`. If `TRUE` (default), both
-#'   computed and gold doses are converted to prednisone equivalents before
-#'   error calculation, placing them on a common scale regardless of which
-#'   specific corticosteroid was used.
-#'
-#'   For computed episodes, [convert_pred_equiv()] is applied using the
-#'   `drug_name_std` column and the built-in (or user-supplied) equivalency
-#'   table.
-#'
-#'   For gold records, the steroid type is detected from the `dose_raw` column
-#'   (if present) using the same rules as the original `gold_standard.qmd`:
-#'   dexamethasone x6.7, methylprednisolone/medrol x1.3, all others x1.0
-#'   (assumed to be prednisone or a generic corticosteroid).
-#' @param equiv_table Optional custom equivalency table passed to
-#'   [convert_pred_equiv()] for the computed side. `NULL` uses the built-in
-#'   table. Default: `NULL`.
 #'
 #' @return A named list with three elements:
 #' \describe{
@@ -659,19 +643,17 @@ parse_dmard_gold <- function(df,
 #' compare_dmard_episodes(computed, gold)
 compare_dmard_episodes <- function(computed_df,
                                     gold_df,
-                                    computed_id_col      = "person_id",
-                                    computed_drug_col    = "drug_name_std",
-                                    computed_start_col   = "episode_start",
-                                    computed_end_col     = "episode_end",
-                                    computed_dose_col    = "median_daily_dose",
-                                    gold_id_col          = "person_id",
-                                    gold_drug_col        = "drug_name_std",
-                                    gold_start_col       = "episode_start",
-                                    gold_end_col         = "episode_end",
-                                    gold_dose_col        = "dose_daily_mg_equiv",
-                                    min_overlap_days     = 1L,
-                                    convert_to_pred_equiv = TRUE,
-                                    equiv_table          = NULL) {
+                                    computed_id_col    = "person_id",
+                                    computed_drug_col  = "drug_name_std",
+                                    computed_start_col = "episode_start",
+                                    computed_end_col   = "episode_end",
+                                    computed_dose_col  = "median_daily_dose",
+                                    gold_id_col        = "person_id",
+                                    gold_drug_col      = "drug_name_std",
+                                    gold_start_col     = "episode_start",
+                                    gold_end_col       = "episode_end",
+                                    gold_dose_col      = "dose_daily_mg_equiv",
+                                    min_overlap_days   = 1L) {
 
   assert_required_cols(computed_df,
     c(computed_id_col, computed_drug_col, computed_start_col,
@@ -681,31 +663,6 @@ compare_dmard_episodes <- function(computed_df,
     c(gold_id_col, gold_drug_col, gold_start_col,
       gold_end_col, gold_dose_col),
     "gold_df")
-
-  # --- Step 0: prednisone-equivalent conversion -------------------------------
-  # Convert both sides to a common scale before error calculation.
-  if (isTRUE(convert_to_pred_equiv)) {
-
-    # Computed: use convert_pred_equiv() with the built-in (or custom) table
-    computed_df <- convert_pred_equiv(
-      computed_df,
-      drug_col    = computed_drug_col,
-      dose_col    = computed_dose_col,
-      equiv_table = equiv_table
-    )
-    computed_dose_col <- "pred_equiv_mg"
-
-    # Gold: detect steroid type from dose_raw (mirrors gold_standard.qmd logic)
-    if ("dose_raw" %in% names(gold_df)) {
-      raw_lower <- stringr::str_to_lower(as.character(gold_df$dose_raw))
-      gold_factor <- dplyr::case_when(
-        stringr::str_detect(raw_lower, "dexameth")          ~ 6.7,
-        stringr::str_detect(raw_lower, "medrol|methylpred") ~ 1.3,
-        TRUE                                                  ~ 1.0
-      )
-      gold_df[[gold_dose_col]] <- gold_df[[gold_dose_col]] * gold_factor
-    }
-  }
 
   # --- select only needed columns to avoid name conflicts --------------------
   # Mirror eval.R: join by patient ID only, then filter by date overlap.

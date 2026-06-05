@@ -17,9 +17,7 @@ compare_dmard_episodes(
   gold_start_col = "episode_start",
   gold_end_col = "episode_end",
   gold_dose_col = "dose_daily_mg_equiv",
-  min_overlap_days = 1L,
-  convert_to_pred_equiv = TRUE,
-  equiv_table = NULL
+  min_overlap_days = 1L
 )
 }
 \arguments{
@@ -64,16 +62,6 @@ Default: \code{"dose_daily_mg_equiv"}.}
 
 \item{min_overlap_days}{\code{integer(1)}. Minimum overlap in days for a
 computed episode to count. Default: \code{1L}.}
-
-\item{convert_to_pred_equiv}{\code{logical(1)}. If \code{TRUE} (default), both
-computed and gold doses are converted to prednisone equivalents before error
-calculation. Computed episodes are converted via \code{\link[=convert_pred_equiv]{convert_pred_equiv()}} using
-\code{drug_name_std}. Gold doses are scaled using steroid type detected from
-\code{dose_raw}: dexamethasone x6.7, methylprednisolone/medrol x1.3, others x1.0.}
-
-\item{equiv_table}{Optional custom equivalency table passed to
-\code{\link[=convert_pred_equiv]{convert_pred_equiv()}} for the computed side. \code{NULL} uses the built-in
-table. Default: \code{NULL}.}
 }
 \value{
 A named list with three elements:
