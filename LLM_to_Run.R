@@ -42,6 +42,15 @@ OUTPUT_DIR   <- file.path(getwd(), "output", "llm_notes")
 COHORT_PERSON_IDS <- NULL
 
 # ---------------------------------------------------------------------------
+# Column mapping — set these to match the column names your SQL returns.
+# The script renames them internally so the rest of the pipeline is unchanged.
+# ---------------------------------------------------------------------------
+COL_PERSON_ID <- "person_id"   # unique patient identifier
+COL_NOTE_ID   <- "note_id"     # unique note identifier
+COL_NOTE_TEXT <- "note_text"   # free-text note content
+# Any additional columns your SQL returns are passed through to the output as-is.
+
+# ---------------------------------------------------------------------------
 # 1. Package setup
 # ---------------------------------------------------------------------------
 
@@ -86,48 +95,37 @@ invisible(lapply(needed, library, character.only = TRUE))
 # conn <- DatabaseConnector::connect(connectionDetails)
 
 # Query helper — normalises DBI and DatabaseConnector into one function.
-# query_db(sql_string) → data.frame
-query_db <- function(sql_string) {
-  if (exists("conn", inherits = FALSE) && inherits(conn, "DatabaseConnectorConnection")) {
-    DatabaseConnector::querySql(conn, sql_string, snakeCaseToCamelCase = FALSE)
-  } else if (exists("conn", inherits = FALSE)) {
-    DBI::dbGetQuery(conn, sql_string)
+# Supports SqlRender template parameters via `...` (same signature as CodeToRun.R).
+# query_db(sql, param = value, ...) → data.frame
+query_db <- function(sql, ...) {
+  if (inherits(conn, "DatabaseConnectorConnection")) {
+    DatabaseConnector::renderTranslateQuerySql(
+      conn, sql, ..., snakeCaseToCamelCase = FALSE
+    )
   } else {
-    stop("No active database connection. Fill in Option A or B above, or load notes from a local CSV.")
+    DBI::dbGetQuery(
+      conn,
+      SqlRender::translate(SqlRender::render(sql, ...), targetDialect = DB_DIALECT)
+    )
   }
 }
 
 # ---------------------------------------------------------------------------
 # STEP 2 — [USER] Write your SQL here to extract progress notes
 # ---------------------------------------------------------------------------
-# Your query must return a data frame with AT MINIMUM these columns:
+# Your query can return any column names — set COL_* in Section 0 to match.
+# Any extra columns (note_date, visit_occurrence_id, etc.) are passed through
+# to the output unchanged.
 #
-#   person_id   — integer patient identifier (OMOP person_id)
-#   note_id     — integer or character note identifier
-#   note_text   — character, the full progress note text
-#
-# Optional but useful: note_date, note_type, visit_occurrence_id
-#
-# Example skeleton (replace with your actual schema / filters):
-#
-#   notes_sql <- "
-#     SELECT
-#       n.person_id,
-#       n.note_id,
-#       n.note_date,
-#       n.note_text
-#     FROM cdm.note AS n
-#     WHERE n.note_type_concept_id IN (44814637, 44814638)  -- progress notes
-#       AND n.note_date BETWEEN '2015-01-01' AND '2025-12-31'
-#     ORDER BY n.person_id, n.note_date
-#   "
-#   notes_df <- query_db(notes_sql)
+# SqlRender template parameters are supported via query_db():
+#   notes_df <- query_db(notes_sql, cdm_schema = cdm_schema)
+#   Then use @cdm_schema.note in your SQL.
 
 # ── [USER SECTION START] ──────────────────────────────────────────────────
 notes_sql <- "
   -- WRITE YOUR SQL HERE
-  -- Must return: person_id, note_id, note_text
-  -- Example (edit to match your schema):
+  -- Set COL_PERSON_ID / COL_NOTE_ID / COL_NOTE_TEXT in Section 0 to match
+  -- whatever column names you select here.
   SELECT
     person_id,
     note_id,
@@ -142,15 +140,28 @@ notes_sql <- "
 #   Alternative — load from CSV:
 #     notes_df <- readr::read_csv("/path/to/your/notes.csv")
 
-notes_df <- query_db(notes_sql)
+notes_df        <- query_db(notes_sql)
 names(notes_df) <- tolower(names(notes_df))
 
-# Validate required columns
-required_cols <- c("person_id", "note_id", "note_text")
-missing_cols  <- setdiff(required_cols, names(notes_df))
+# Validate that the user-configured column names exist in the result
+user_cols    <- c(COL_PERSON_ID, COL_NOTE_ID, COL_NOTE_TEXT)
+missing_cols <- setdiff(tolower(user_cols), names(notes_df))
 if (length(missing_cols) > 0) {
-  stop("notes_df is missing required columns: ", paste(missing_cols, collapse = ", "))
+  stop(
+    "notes_df is missing columns: ", paste(missing_cols, collapse = ", "), "\n",
+    "Update COL_PERSON_ID / COL_NOTE_ID / COL_NOTE_TEXT in Section 0 to match ",
+    "the column names returned by your SQL.\n",
+    "Columns present: ", paste(names(notes_df), collapse = ", ")
+  )
 }
+
+# Rename to canonical internal names so the rest of the pipeline is uniform
+notes_df <- dplyr::rename(
+  notes_df,
+  person_id = !!tolower(COL_PERSON_ID),
+  note_id   = !!tolower(COL_NOTE_ID),
+  note_text = !!tolower(COL_NOTE_TEXT)
+)
 
 # Optional cohort filter
 if (!is.null(COHORT_PERSON_IDS)) {
