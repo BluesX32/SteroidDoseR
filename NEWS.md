@@ -2,6 +2,13 @@
 
 ## New features
 
+* **`CodeToRun.R` simplified to two methods** (`CodeToRun.R`): Standard NLP
+  (`calc_daily_dose_nlp()`) removed from the main analysis script. The Advanced
+  NLP method (`calc_daily_dose_nlp_advanced()`) is now labelled simply as
+  "NLP" throughout — variables, plots, output files, and the report all use
+  `nlp_*` names. The two-method structure (Baseline vs NLP) reduces redundancy
+  while retaining the more capable parser.
+
 * **`evaluate_detection()` — binary steroid detection evaluation** (`eval.R`):
   New function that evaluates whether the pipeline correctly identifies who is
   on steroids, using two separate gold-standard cohorts: confirmed steroid users

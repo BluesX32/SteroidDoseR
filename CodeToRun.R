@@ -2,8 +2,8 @@
 # SteroidDoseR — Main Study Analysis Script
 #
 # Primary execution script for the corticosteroid dose study.
-# Computes prednisone-equivalent daily doses using three methods
-# (Baseline, NLP, Advanced NLP) and evaluates against a gold standard.
+# Computes prednisone-equivalent daily doses using two methods
+# (Baseline, NLP) and evaluates against a gold standard.
 #
 # Analysis workflow
 # -----------------
@@ -11,7 +11,7 @@
 #                              Optionally restrict to COHORT_PERSON_IDS.
 # STEP 2 — Medication filter : restrict to steroid concept IDs (SQL) and oral
 #                              route + known steroids (filter_oral = TRUE in R).
-# STEP 3 — Dose calculation  : Baseline (M1-M4), NLP, Advanced NLP.
+# STEP 3 — Dose calculation  : Baseline (M1-M4), NLP (Advanced).
 # STEP 4 — Evaluation        : compare to gold standard per overlapping window.
 #
 # Usage
@@ -56,7 +56,6 @@ USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
 GAP_DAYS       <- 30L
-
 
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
 GOLD_NEG_PATH  <- "/your/path/to/gold-negative"   # CSV with confirmed non-users; must have a patient ID column
@@ -230,7 +229,6 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
   ))
   cat("    doses shown in mg prednisone-equivalent\n")
 
-  # Select patients with the most episodes (most informative trajectories)
   sample_pts <- episodes_df |>
     dplyr::count(person_id, sort = TRUE) |>
     dplyr::slice_head(n = n_patients) |>
@@ -250,12 +248,10 @@ show_person_trajectories <- function(episodes_df, method_name, n_patients = 3L) 
 }
 
 
-
-
 # ===========================================================================
 # 4. BASELINE METHOD
 # ===========================================================================
-message("\n=== [1/3] Baseline method ===")
+message("\n=== [1/2] Baseline method ===")
 
 baseline_df <- calc_daily_dose_baseline(
   drug_df,
@@ -286,7 +282,6 @@ baseline_df |>
 cat("\nDose summary (non-missing):\n")
 print(summary(baseline_df$daily_dose_mg_imputed[!is.na(baseline_df$daily_dose_mg_imputed)]))
 
-# Person-level: run pipeline to get episodes, then show trajectories
 baseline_episodes <- run_pipeline(
   drug_df,
   method       = "baseline",
@@ -298,76 +293,38 @@ baseline_episodes <- run_pipeline(
 show_person_trajectories(baseline_episodes, "Baseline")
 
 # ===========================================================================
-# 5. NLP METHOD
+# 5. NLP METHOD  (Advanced NLP parser — taper-aware, extended SIG vocabulary)
 # ===========================================================================
-message("\n=== [2/3] NLP method ===")
+message("\n=== [2/2] NLP method ===")
 
-nlp_df <- calc_daily_dose_nlp(drug_df)
-
-cat("\nparsed_status breakdown:\n")
-print(table(nlp_df$parsed_status, useNA = "ifany"))
-
-cat("\nDose summary (parsed_status == 'ok'):\n")
-print(summary(nlp_df$daily_dose_mg[nlp_df$parsed_status == "ok"]))
-
-cat("\nTop 15 unparsed SIG strings:\n")
-nlp_df |>
-  dplyr::filter(parsed_status == "no_parse") |>
-  dplyr::count(sig, sort = TRUE) |>
-  head(15) |>
-  print()
-
-# Person-level
-nlp_episodes <- run_pipeline(
-  drug_df,
-  method       = "nlp",
-  return_level = "episode",
-  gap_days     = GAP_DAYS
-)
-
-show_person_trajectories(nlp_episodes, "NLP")
-
-# ===========================================================================
-# 6. ADVANCED NLP METHOD
-# ===========================================================================
-message("\n=== [3/3] Advanced NLP method ===")
-
-adv_nlp_df <- calc_daily_dose_nlp_advanced(
+nlp_df <- calc_daily_dose_nlp_advanced(
   drug_df,
   max_daily_dose_mg = 2000,
   expand_tapers     = FALSE,
   filter_oral       = TRUE
 )
 
-cat("\nparsed_status breakdown (Advanced NLP):\n")
-print(table(adv_nlp_df$parsed_status, useNA = "ifany"))
+cat("\nparsed_status breakdown:\n")
+print(table(nlp_df$parsed_status, useNA = "ifany"))
 
 cat("\nDose summary (parsed_status == 'ok' or 'taper_ok'):\n")
-ok_mask <- adv_nlp_df$parsed_status %in% c("ok", "taper_ok")
-print(summary(adv_nlp_df$daily_dose_mg[ok_mask]))
+ok_mask <- nlp_df$parsed_status %in% c("ok", "taper_ok")
+print(summary(nlp_df$daily_dose_mg[ok_mask]))
 
-cat(sprintf(
-  "\nGain over standard NLP: %d → %d records parsed (+%d)\n",
-  sum(nlp_df$parsed_status == "ok", na.rm = TRUE),
-  sum(ok_mask, na.rm = TRUE),
-  sum(ok_mask, na.rm = TRUE) - sum(nlp_df$parsed_status == "ok", na.rm = TRUE)
-))
-
-adv_nlp_episodes <- build_episodes(
-  adv_nlp_df,
+nlp_episodes <- build_episodes(
+  nlp_df,
   end_col  = "drug_exposure_end_date",
   dose_col = "daily_dose_mg",
   gap_days = GAP_DAYS
 )
 
-show_person_trajectories(adv_nlp_episodes, "Advanced NLP")
+show_person_trajectories(nlp_episodes, "NLP")
 
 # ===========================================================================
-# 7. DOSE DISTRIBUTIONS
+# 6. DOSE DISTRIBUTIONS
 # ===========================================================================
 message("\n=== Dose distributions ===")
 
-# Build a combined data frame for plotting (gold panel added after Section 8)
 make_dist_df <- function(episodes_df, method_label) {
   episodes_df |>
     dplyr::filter(!is.na(median_daily_dose), median_daily_dose > 0) |>
@@ -376,16 +333,14 @@ make_dist_df <- function(episodes_df, method_label) {
 }
 
 dist_df <- dplyr::bind_rows(
-  make_dist_df(baseline_episodes,  "Baseline"),
-  make_dist_df(nlp_episodes,       "NLP"),
-  make_dist_df(adv_nlp_episodes,   "Advanced NLP")
+  make_dist_df(baseline_episodes, "Baseline"),
+  make_dist_df(nlp_episodes,      "NLP")
 )
-# NOTE: Distribution plot printed after Section 8 once gold standard is loaded.
+# NOTE: Distribution plot printed after Section 7 once gold standard is loaded.
 
-# Descriptive summary per method
 cat("\nDose distribution summary by method (mg prednisone-equivalent):\n")
 dist_df |>
-  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "Advanced NLP"))) |>
+  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP"))) |>
   dplyr::group_by(method) |>
   dplyr::summarise(
     n_episodes = dplyr::n(),
@@ -401,7 +356,7 @@ dist_df |>
   print()
 
 # ===========================================================================
-# 8. Load gold standard
+# 7. Load gold standard
 # ===========================================================================
 message("\n=== Loading gold standard ===")
 
@@ -424,7 +379,7 @@ print(head(gold_std[, c("person_id", "drug_name_std", "episode_start",
 cat("\nDaily mg equivalent distribution (parseable records):\n")
 print(summary(gold_std$dose_daily_mg_equiv[gold_std$parse_status == "ok"]))
 
-# --- Distribution plot including gold standard (4 panels) -------------------
+# --- Distribution plot including gold standard (3 panels) -------------------
 gold_dist_df <- gold_std |>
   dplyr::filter(!is.na(dose_daily_mg_equiv), dose_daily_mg_equiv > 0) |>
   dplyr::transmute(
@@ -435,15 +390,13 @@ gold_dist_df <- gold_std |>
   )
 
 dist_method_colors <- c(
-  "Baseline"     = "#2271B3",
-  "NLP"          = "#E69F00",
-  "Advanced NLP" = "#009E73",
-  "Gold"         = "#333333"
+  "Baseline" = "#2271B3",
+  "NLP"      = "#009E73",
+  "Gold"     = "#333333"
 )
 
 dist_df_all <- dplyr::bind_rows(dist_df, gold_dist_df) |>
-  dplyr::mutate(method = factor(method,
-                                levels = c("Baseline", "NLP", "Advanced NLP", "Gold")))
+  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "Gold")))
 
 p_dist <- ggplot2::ggplot(
   dist_df_all,
@@ -469,11 +422,10 @@ p_dist <- ggplot2::ggplot(
 print(p_dist)
 
 # ===========================================================================
-# 9. Episode-level comparison (each method vs gold standard)
+# 8. Episode-level comparison (each method vs gold standard)
 # ===========================================================================
 message("\n=== Episode-level comparisons vs gold standard ===")
 
-# gold_std must have parse_status == "ok" to have a usable dose for comparison
 gold_std_ok <- gold_std |> dplyr::filter(parse_status == "ok")
 cat(sprintf(
   "Gold records with parseable dose: %d / %d\n",
@@ -501,20 +453,14 @@ cat(sprintf(
   ev
 }
 
-# --- 9a. Baseline ---
 message("\n  Baseline vs gold standard ...")
 ev_baseline <- .run_comparison(baseline_episodes, "Baseline")
 
-# --- 9b. NLP ---
 message("\n  NLP vs gold standard ...")
 ev_nlp <- .run_comparison(nlp_episodes, "NLP")
 
-# --- 9c. Advanced NLP ---
-message("\n  Advanced NLP vs gold standard ...")
-ev_adv <- .run_comparison(adv_nlp_episodes, "Advanced NLP")
-
 # ===========================================================================
-# 9b. Binary detection evaluation (kappa, sensitivity, specificity)
+# 8b. Binary detection evaluation (kappa, sensitivity, specificity)
 #     Requires GOLD_NEG_PATH — a CSV whose rows are confirmed non-steroid users.
 #     Set GOLD_NEG_ID_COL to whichever column holds the patient ID.
 # ===========================================================================
@@ -528,9 +474,9 @@ if (!is.null(GOLD_NEG_PATH) && file.exists(GOLD_NEG_PATH)) {
 
   .run_detection <- function(episodes_df, label) {
     det <- evaluate_detection(
-      computed_df      = episodes_df,
-      gold_positive_df = gold_std_ok,
-      gold_negative_df = gold_neg,
+      computed_df         = episodes_df,
+      gold_positive_df    = gold_std_ok,
+      gold_negative_df    = gold_neg,
       detection_threshold = 0,
       obs_window_source   = "computed",
       computed_id_col     = "person_id",
@@ -549,14 +495,13 @@ if (!is.null(GOLD_NEG_PATH) && file.exists(GOLD_NEG_PATH)) {
 
   det_baseline <- .run_detection(baseline_episodes, "Baseline")
   det_nlp      <- .run_detection(nlp_episodes,      "NLP")
-  det_adv      <- .run_detection(adv_nlp_episodes,  "Advanced NLP")
 } else {
   message("\nSkipping binary detection evaluation — GOLD_NEG_PATH not set or file not found.")
-  det_baseline <- det_nlp <- det_adv <- NULL
+  det_baseline <- det_nlp <- NULL
 }
 
 # ===========================================================================
-# 10. Comparison scatter plots (method dose vs gold dose)
+# 9. Comparison scatter plots (method dose vs gold dose)
 # ===========================================================================
 message("\n=== Comparison scatter plots ===")
 
@@ -574,10 +519,9 @@ make_scatter_df <- function(ev_result, method_label) {
 
 scatter_df <- dplyr::bind_rows(
   make_scatter_df(ev_baseline, "Baseline"),
-  make_scatter_df(ev_nlp,      "NLP"),
-  make_scatter_df(ev_adv,      "Advanced NLP")
+  make_scatter_df(ev_nlp,      "NLP")
 ) |>
-  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "Advanced NLP")))
+  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP")))
 
 p_scatter <- ggplot2::ggplot(
   scatter_df,
@@ -600,7 +544,7 @@ p_scatter <- ggplot2::ggplot(
 print(p_scatter)
 
 # ===========================================================================
-# 10.5 Bland-Altman plots (method dose vs gold standard)
+# 9.5 Bland-Altman plots (method dose vs gold standard)
 # ===========================================================================
 message("\n=== Bland-Altman plots ===")
 
@@ -611,7 +555,6 @@ ba_df <- scatter_df |>
     diff      = method_dose - gold_dose
   )
 
-# Per-method bias and 95% limits of agreement
 ba_limits <- ba_df |>
   dplyr::group_by(method) |>
   dplyr::summarise(
@@ -677,11 +620,11 @@ p_ba <- ggplot2::ggplot(ba_df, ggplot2::aes(x = mean_dose, y = diff)) +
   ggplot2::labs(
     title    = "Bland-Altman: method dose minus gold standard",
     subtitle = paste0(
-      "Red dashed = mean bias; blue dotted = 95% limits of agreement (\u00b11.96 SD);\n",
+      "Red dashed = mean bias; blue dotted = 95% limits of agreement (±1.96 SD);\n",
       "zero line = perfect agreement"
     ),
     x = "Mean of method and gold standard (mg pred-equiv)",
-    y = "Method \u2212 Gold standard (mg pred-equiv)"
+    y = "Method − Gold standard (mg pred-equiv)"
   ) +
   ggplot2::theme_bw() +
   ggplot2::theme(strip.text = ggplot2::element_text(face = "bold"))
@@ -689,7 +632,7 @@ p_ba <- ggplot2::ggplot(ba_df, ggplot2::aes(x = mean_dose, y = diff)) +
 print(p_ba)
 
 # ===========================================================================
-# 11. REPORT
+# 10. REPORT
 # ===========================================================================
 message("\n\n")
 cat(strrep("=", 70), "\n")
@@ -715,34 +658,28 @@ cat(sprintf("  Overlapping patients:     %d\n\n",               length(overlap_p
 cat("EPISODE COUNTS BY SOURCE\n")
 cat(strrep("-", 40), "\n")
 episode_counts <- tibble::tibble(
-  Source            = c("Baseline", "NLP", "Advanced NLP", "Gold Standard"),
-  Patients          = c(dplyr::n_distinct(baseline_episodes$person_id),
-                        dplyr::n_distinct(nlp_episodes$person_id),
-                        dplyr::n_distinct(adv_nlp_episodes$person_id),
-                        dplyr::n_distinct(gold_std$person_id)),
+  Source               = c("Baseline", "NLP", "Gold Standard"),
+  Patients             = c(dplyr::n_distinct(baseline_episodes$person_id),
+                           dplyr::n_distinct(nlp_episodes$person_id),
+                           dplyr::n_distinct(gold_std$person_id)),
   Records_pre_collapse = c(
     sum(baseline_episodes$n_records, na.rm = TRUE),
     sum(nlp_episodes$n_records,      na.rm = TRUE),
-    sum(adv_nlp_episodes$n_records,  na.rm = TRUE),
     NA_integer_
   ),
-  Episodes          = c(nrow(baseline_episodes),
-                        nrow(nlp_episodes),
-                        nrow(adv_nlp_episodes),
-                        nrow(gold_std)),
-  Gold_total        = c(rep(ev_baseline$summary$n_gold_records, 3L), NA_integer_),
-  Matched_to_Gold   = c(ev_baseline$summary$n_matched_records,
-                        ev_nlp$summary$n_matched_records,
-                        ev_adv$summary$n_matched_records,
-                        NA_integer_),
-  Coverage_pct      = c(round(ev_baseline$summary$coverage_pct, 1),
-                        round(ev_nlp$summary$coverage_pct,      1),
-                        round(ev_adv$summary$coverage_pct,      1),
-                        NA_real_),
-  Median_mg         = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
-                        stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
-                        stats::median(adv_nlp_episodes$median_daily_dose,   na.rm = TRUE),
-                        stats::median(gold_std$dose_daily_mg_equiv,         na.rm = TRUE))
+  Episodes             = c(nrow(baseline_episodes),
+                           nrow(nlp_episodes),
+                           nrow(gold_std)),
+  Gold_total           = c(rep(ev_baseline$summary$n_gold_records, 2L), NA_integer_),
+  Matched_to_Gold      = c(ev_baseline$summary$n_matched_records,
+                           ev_nlp$summary$n_matched_records,
+                           NA_integer_),
+  Coverage_pct         = c(round(ev_baseline$summary$coverage_pct, 1),
+                           round(ev_nlp$summary$coverage_pct,      1),
+                           NA_real_),
+  Median_mg            = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
+                           stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
+                           stats::median(gold_std$dose_daily_mg_equiv,         na.rm = TRUE))
 )
 print(as.data.frame(episode_counts), row.names = FALSE)
 cat("\n")
@@ -750,38 +687,29 @@ cat("\n")
 cat("GOLD STANDARD COMPARISON (episode-level, median dose)\n")
 cat(strrep("-", 40), "\n")
 metrics_tbl <- tibble::tibble(
-  Method           = c("Baseline", "NLP", "Advanced NLP"),
-  Common_Patients  = c(ev_baseline$n_common_patients,
-                       ev_nlp$n_common_patients,
-                       ev_adv$n_common_patients),
-  Coverage_pct     = round(c(ev_baseline$summary$coverage_pct,
-                             ev_nlp$summary$coverage_pct,
-                             ev_adv$summary$coverage_pct), 1),
-  MAE_mg           = round(c(ev_baseline$summary$MAE,
-                             ev_nlp$summary$MAE,
-                             ev_adv$summary$MAE), 2),
-  MBE_mg           = round(c(ev_baseline$summary$MBE,
-                             ev_nlp$summary$MBE,
-                             ev_adv$summary$MBE), 2),
-  RMSE_mg          = round(c(ev_baseline$summary$RMSE,
-                             ev_nlp$summary$RMSE,
-                             ev_adv$summary$RMSE), 2),
-  MAPE_pct         = round(c(ev_baseline$summary$MAPE,
-                             ev_nlp$summary$MAPE,
-                             ev_adv$summary$MAPE), 1),
-  Pearson_r        = round(c(ev_baseline$summary$pearson_corr,
-                             ev_nlp$summary$pearson_corr,
-                             ev_adv$summary$pearson_corr), 3),
-  Spearman_rho     = round(c(ev_baseline$summary$spearman_corr,
-                             ev_nlp$summary$spearman_corr,
-                             ev_adv$summary$spearman_corr), 3)
+  Method          = c("Baseline", "NLP"),
+  Common_Patients = c(ev_baseline$n_common_patients,
+                      ev_nlp$n_common_patients),
+  Coverage_pct    = round(c(ev_baseline$summary$coverage_pct,
+                            ev_nlp$summary$coverage_pct), 1),
+  MAE_mg          = round(c(ev_baseline$summary$MAE,
+                            ev_nlp$summary$MAE), 2),
+  MBE_mg          = round(c(ev_baseline$summary$MBE,
+                            ev_nlp$summary$MBE), 2),
+  RMSE_mg         = round(c(ev_baseline$summary$RMSE,
+                            ev_nlp$summary$RMSE), 2),
+  MAPE_pct        = round(c(ev_baseline$summary$MAPE,
+                            ev_nlp$summary$MAPE), 1),
+  Pearson_r       = round(c(ev_baseline$summary$pearson_corr,
+                            ev_nlp$summary$pearson_corr), 3),
+  Spearman_rho    = round(c(ev_baseline$summary$spearman_corr,
+                            ev_nlp$summary$spearman_corr), 3)
 )
 print(as.data.frame(metrics_tbl), row.names = FALSE)
 
 cat("\nINTERPRETATION\n")
 cat(strrep("-", 40), "\n")
 
-# Coverage interpretation
 best_cov_idx  <- which.max(metrics_tbl$Coverage_pct)
 best_cov_name <- metrics_tbl$Method[best_cov_idx]
 cat(sprintf(
@@ -793,7 +721,6 @@ cat(sprintf(
   best_cov_name, metrics_tbl$Coverage_pct[best_cov_idx]
 ))
 
-# Accuracy interpretation
 best_mae_idx  <- which.min(metrics_tbl$MAE_mg)
 best_mae_name <- metrics_tbl$Method[best_mae_idx]
 cat(sprintf(
@@ -805,7 +732,6 @@ cat(sprintf(
   best_mae_name, metrics_tbl$MAE_mg[best_mae_idx]
 ))
 
-# Bias interpretation
 for (i in seq_len(nrow(metrics_tbl))) {
   mbe <- metrics_tbl$MBE_mg[i]
   if (is.na(mbe)) {
@@ -821,21 +747,6 @@ for (i in seq_len(nrow(metrics_tbl))) {
 }
 cat("\n")
 
-# NLP gain
-nlp_gain <- ev_adv$summary$n_matched_records - ev_nlp$summary$n_matched_records
-if (isTRUE(nlp_gain != 0)) {
-  cat(sprintf(
-    paste0(
-      "Advanced NLP vs Standard NLP: Advanced NLP matched %d additional\n",
-      "  gold-standard episodes (+%d records parsed via taper/advanced rules),\n",
-      "  demonstrating the value of extended SIG parsing.\n\n"
-    ),
-    nlp_gain,
-    sum(adv_nlp_df$parsed_status == "taper_ok", na.rm = TRUE)
-  ))
-}
-
-# Correlation
 best_cor_idx  <- which.max(metrics_tbl$Pearson_r)
 best_cor_name <- metrics_tbl$Method[best_cor_idx]
 cat(sprintf(
@@ -856,24 +767,20 @@ cat(paste0(
   "    structured OMOP fields (quantity, days_supply, dose_unit), making\n",
   "    it suitable when SIG text quality is low.\n",
   "  - NLP is preferable when SIG text is consistently populated and\n",
-  "    accurately recorded, yielding more precise dose estimates.\n",
-  "  - Advanced NLP additionally handles taper schedules, recovering\n",
-  "    records that standard NLP cannot parse, at the cost of added\n",
-  "    complexity in SIG parsing.\n"
+  "    accurately recorded, yielding more precise dose estimates and\n",
+  "    handling taper schedules via advanced SIG parsing.\n"
 ))
 
 cat(strrep("=", 70), "\n")
 
 # ===========================================================================
-# 12. Save results to a timestamped run folder
+# 11. Save results to a timestamped run folder
 # ===========================================================================
 message("\n=== Saving results ===")
 
-# Each run gets its own subfolder so previous results are never overwritten.
 RUN_DIR <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
 dir.create(RUN_DIR, recursive = TRUE)
 
-# ── params.txt — human-readable record of every configuration value ──────────
 writeLines(c(
   "SteroidDoseR — Run Parameters",
   strrep("=", 40),
@@ -901,69 +808,58 @@ writeLines(c(
   sprintf("GOLD_STD_PATH:       %s", GOLD_STD_PATH)
 ), con = file.path(RUN_DIR, "params.txt"))
 
-# ── Record-level dose data (one row per drug-exposure record) ────────────────
-readr::write_csv(baseline_df,            file.path(RUN_DIR, "records_baseline.csv"))
-readr::write_csv(nlp_df,                 file.path(RUN_DIR, "records_nlp.csv"))
-readr::write_csv(adv_nlp_df,             file.path(RUN_DIR, "records_adv_nlp.csv"))
+# ── Record-level dose data ────────────────────────────────────────────────────
+readr::write_csv(baseline_df,  file.path(RUN_DIR, "records_baseline.csv"))
+readr::write_csv(nlp_df,       file.path(RUN_DIR, "records_nlp.csv"))
 
-# ── Episode-level summaries (one row per patient-drug episode) ────────────────
-readr::write_csv(baseline_episodes,      file.path(RUN_DIR, "episodes_baseline.csv"))
-readr::write_csv(nlp_episodes,           file.path(RUN_DIR, "episodes_nlp.csv"))
-readr::write_csv(adv_nlp_episodes,       file.path(RUN_DIR, "episodes_adv_nlp.csv"))
+# ── Episode-level summaries ───────────────────────────────────────────────────
+readr::write_csv(baseline_episodes, file.path(RUN_DIR, "episodes_baseline.csv"))
+readr::write_csv(nlp_episodes,      file.path(RUN_DIR, "episodes_nlp.csv"))
 
-# ── Gold standard (with pred-equiv conversion applied) ───────────────────────
-readr::write_csv(gold_std,               file.path(RUN_DIR, "gold_standard.csv"))
+# ── Gold standard ─────────────────────────────────────────────────────────────
+readr::write_csv(gold_std, file.path(RUN_DIR, "gold_standard.csv"))
 
-# ── Evaluation comparison tables (one row per matched gold episode) ──────────
+# ── Evaluation comparison tables ──────────────────────────────────────────────
 readr::write_csv(ev_baseline$comparison, file.path(RUN_DIR, "comparison_baseline.csv"))
 readr::write_csv(ev_nlp$comparison,      file.path(RUN_DIR, "comparison_nlp.csv"))
-readr::write_csv(ev_adv$comparison,      file.path(RUN_DIR, "comparison_adv_nlp.csv"))
 
 # ── Summary tables ────────────────────────────────────────────────────────────
-readr::write_csv(episode_counts,         file.path(RUN_DIR, "episode_counts.csv"))
-readr::write_csv(metrics_tbl,            file.path(RUN_DIR, "metrics_table.csv"))
+readr::write_csv(episode_counts, file.path(RUN_DIR, "episode_counts.csv"))
+readr::write_csv(metrics_tbl,    file.path(RUN_DIR, "metrics_table.csv"))
 
-# ── Plot data (for reproducing figures without re-running) ────────────────────
-readr::write_csv(dist_df_all,            file.path(RUN_DIR, "plot_data_dose_distribution.csv"))
-readr::write_csv(scatter_df,             file.path(RUN_DIR, "plot_data_scatter.csv"))
-readr::write_csv(ba_df,                  file.path(RUN_DIR, "plot_data_bland_altman.csv"))
-readr::write_csv(ba_limits,              file.path(RUN_DIR, "bland_altman_limits.csv"))
+# ── Plot data ─────────────────────────────────────────────────────────────────
+readr::write_csv(dist_df_all, file.path(RUN_DIR, "plot_data_dose_distribution.csv"))
+readr::write_csv(scatter_df,  file.path(RUN_DIR, "plot_data_scatter.csv"))
+readr::write_csv(ba_df,       file.path(RUN_DIR, "plot_data_bland_altman.csv"))
+readr::write_csv(ba_limits,   file.path(RUN_DIR, "bland_altman_limits.csv"))
 
 # ── Figures ───────────────────────────────────────────────────────────────────
-ggplot2::ggsave(file.path(RUN_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 10, dpi = 150)
+ggplot2::ggsave(file.path(RUN_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 8,  dpi = 150)
 ggplot2::ggsave(file.path(RUN_DIR, "plot_scatter.png"),           p_scatter, width = 10, height = 5,  dpi = 150)
 ggplot2::ggsave(file.path(RUN_DIR, "plot_bland_altman.png"),      p_ba,      width = 10, height = 5,  dpi = 150)
 
 message(sprintf("Results saved to: %s", RUN_DIR))
 
 # ===========================================================================
-# 13. Interactive dose review dashboard
+# 12. Interactive dose review dashboard
 # ===========================================================================
-# launch_dose_dashboard() opens a Shiny app in the browser.
-# Pass raw_list (record-level data frames) to populate the Raw Records tab
-# with diagnostic columns (sig, imputation_method, daily_dose_mg_imputed,
-# etc.) so individual prescription rows can be inspected alongside the
-# dose trajectory plot.
-#
 message("\n=== Launching interactive dose review dashboard ===")
 message("(Close the browser tab or press Escape in R to stop.)")
 
 launch_dose_dashboard(
   episode_list = list(
-    "Baseline"     = baseline_episodes,
-    "NLP"          = nlp_episodes,
-    "Advanced NLP" = adv_nlp_episodes
+    "Baseline" = baseline_episodes,
+    "NLP"      = nlp_episodes
   ),
   raw_list = list(
-    "Baseline"     = baseline_df,
-    "NLP"          = nlp_df,
-    "Advanced NLP" = adv_nlp_df
+    "Baseline" = baseline_df,
+    "NLP"      = nlp_df
   ),
   gold_std = gold_std
 )
 
 # ===========================================================================
-# 14. Disconnect (live DB only)
+# 13. Disconnect (live DB only)
 # ===========================================================================
 if (!USE_SYNTHETIC) {
   if (inherits(conn, "DatabaseConnectorConnection")) {
@@ -974,4 +870,3 @@ if (!USE_SYNTHETIC) {
 }
 
 message("\n=== Analysis complete ===")
-

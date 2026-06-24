@@ -2,7 +2,7 @@
 
 Compute prednisone-equivalent daily doses from OMOP CDM corticosteroid records.
 
-Three complementary methods — **Baseline** (structured OMOP fields), **NLP** (free-text SIG parsing), and **Advanced NLP** (taper-aware) — produce episode-level dose trajectories that can be evaluated against a manually reviewed gold standard and explored in an interactive dashboard.
+Two complementary methods — **Baseline** (structured OMOP fields) and **NLP** (taper-aware Advanced NLP SIG parser) — produce episode-level dose trajectories that can be evaluated against a manually reviewed gold standard and explored in an interactive dashboard.
 
 ---
 
@@ -150,11 +150,8 @@ Choose one method, or run all three to compare:
 # Baseline: 4-step cascade on structured OMOP fields
 baseline_df <- calc_daily_dose_baseline(drug_df, m2_sig_parse = "auto")
 
-# NLP: parse free-text SIG instructions
-nlp_df      <- calc_daily_dose_nlp(drug_df)
-
-# Advanced NLP: handles tapers and extended frequency patterns
-adv_nlp_df  <- calc_daily_dose_nlp_advanced(drug_df, expand_tapers = FALSE)
+# NLP: taper-aware Advanced NLP SIG parser
+nlp_df <- calc_daily_dose_nlp_advanced(drug_df, expand_tapers = FALSE)
 ```
 
 **Key diagnostic columns produced:**
@@ -315,8 +312,7 @@ ggplot2::ggsave("dose_review.pdf", p, width = 12, height = 8)
 | Method | Function | Approach | Best when |
 |--------|----------|----------|-----------|
 | **Baseline** | `calc_daily_dose_baseline()` | 4-step cascade (M1 original dose → M2 tablets×freq×strength → M3 quantity/duration → M4 quantity/days_supply) | Structured OMOP fields well-populated; SIG absent or unreliable |
-| **NLP** | `calc_daily_dose_nlp()` | Regex SIG parsing; 11-phase frequency extraction; strength fallback from `amount_value`/drug name (unit-checked); structural M1/M3/M4 fallback for any unresolved record including prn/taper/free_text | `sig` column consistently populated |
-| **Advanced NLP** | `calc_daily_dose_nlp_advanced()` | Same as NLP + half-tablet forms (`1/2`, `½`, "half a tablet") and taper schedule decomposition into per-step rows. Frequency and mg extraction are identical to standard NLP. | Taper SIGs where per-step dose curves matter |
+| **NLP** | `calc_daily_dose_nlp_advanced()` | Taper-aware Advanced NLP SIG parser: regex frequency extraction, half-tablet forms, taper schedule decomposition, strength fallback from `amount_value`/drug name (unit-checked), structural M1/M3/M4 fallback for unresolved records | `sig` column consistently populated; taper schedules present |
 
 All methods apply `filter_oral = TRUE` by default and cap doses at `max_daily_dose_mg = 2000`.
 
