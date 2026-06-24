@@ -328,3 +328,62 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
 
   result
 }
+
+# ---------------------------------------------------------------------------
+# Internal: re-apply adaptive decision to pre-computed hierarchical intermediates
+# ---------------------------------------------------------------------------
+
+#' Re-apply the adaptive decision rule to pre-computed hierarchical intermediates
+#'
+#' Used for parameter grid search: run `calc_daily_dose_hierarchical()` once to
+#' obtain `bl_dose`, `sig_dose`, `sig_status`, and `sig_taper_flag`, then call
+#' this function repeatedly with different parameter combinations to find the
+#' combination that minimises MAE against a held-out gold standard — without
+#' re-running the baseline and NLP parsers each time.
+#'
+#' @param df Data frame with columns `bl_dose`, `sig_dose`, `sig_status`,
+#'   `sig_taper_flag` (as produced by `calc_daily_dose_hierarchical()`).
+#' @param match_tol `numeric(1)`. `|diff| <= match_tol` → `"cross_checked"`.
+#' @param diff_thr `numeric(1)`. `|diff| > diff_thr` → `"adaptive_override"`;
+#'   between `match_tol` and `diff_thr` → `"blended"`.
+#' @param override `character(1)`. Which source wins when `|diff| > diff_thr`:
+#'   `"nlp"` (default) or `"baseline"`.
+#' @return `df` with `daily_dose_mg` and `hierarchical_method` columns updated.
+#' @noRd
+apply_adaptive_decision <- function(df, match_tol, diff_thr, override = "nlp") {
+  bl    <- df$bl_dose
+  sig   <- df$sig_dose
+  stat  <- df$sig_status
+  taper <- !is.na(df$sig_taper_flag) & df$sig_taper_flag
+
+  bl_ok         <- !is.na(bl)
+  sig_ok_steady <- !is.na(sig) & !is.na(stat) & stat == "ok" & !taper
+  sig_ok_taper  <- taper & !is.na(sig)
+
+  dose_diff <- abs(bl - sig)
+
+  daily_dose <- dplyr::case_when(
+    bl_ok & sig_ok_steady & dose_diff <= match_tol  ~ sig,
+    bl_ok & sig_ok_steady & dose_diff <= diff_thr   ~ (bl + sig) / 2,
+    bl_ok & sig_ok_steady & dose_diff >  diff_thr   ~
+      if (override == "nlp") sig else bl,
+    bl_ok & !sig_ok_steady & !sig_ok_taper          ~ bl,
+    !bl_ok & sig_ok_steady                          ~ sig,
+    !bl_ok & sig_ok_taper                           ~ sig,
+    TRUE                                            ~ NA_real_
+  )
+
+  method <- dplyr::case_when(
+    bl_ok & sig_ok_steady & dose_diff <= match_tol  ~ "cross_checked",
+    bl_ok & sig_ok_steady & dose_diff <= diff_thr   ~ "blended",
+    bl_ok & sig_ok_steady & dose_diff >  diff_thr   ~ "adaptive_override",
+    bl_ok & !sig_ok_steady & !sig_ok_taper          ~ "baseline_only",
+    !bl_ok & sig_ok_steady                          ~ "nlp_fills_baseline",
+    !bl_ok & sig_ok_taper                           ~ "nlp_taper",
+    TRUE                                            ~ "missing"
+  )
+
+  df$daily_dose_mg       <- daily_dose
+  df$hierarchical_method <- method
+  df
+}

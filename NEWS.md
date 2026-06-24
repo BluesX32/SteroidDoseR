@@ -15,6 +15,14 @@
   directly within R is retained: `LLM_to_Run.R` (ollama via httr2) and
   `R/nlp_notes.R` + `inst/python/medspacy_pipeline.py` (medspaCy via reticulate).
 
+* **`parameter_selection.R` and `CodeToRun_hierarchical.R` removed**: Both
+  top-level scripts have been deleted. `apply_adaptive_decision()` — the core
+  helper that re-applies the hierarchical decision rule to pre-computed
+  intermediates (enabling efficient parameter grid search) — has been
+  internalized as an unexported function in `R/hierarchical.R`. All other
+  logic in those scripts was run-script boilerplate already covered by
+  existing package functions.
+
 * **`evaluate_detection()` — binary steroid detection evaluation** (`eval.R`):
   New function that evaluates whether the pipeline correctly identifies who is
   on steroids, using two separate gold-standard cohorts: confirmed steroid users
