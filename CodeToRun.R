@@ -59,6 +59,7 @@ GAP_DAYS       <- 30L
 
 
 GOLD_STD_PATH  <- "/your/path/to/gold-standard"
+GOLD_NEG_PATH  <- "/your/path/to/gold-negative"   # CSV with confirmed non-users; must have a patient ID column
 OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
 
 # Optional patient filter — set to an integer vector of person_ids to restrict
@@ -511,6 +512,48 @@ ev_nlp <- .run_comparison(nlp_episodes, "NLP")
 # --- 9c. Advanced NLP ---
 message("\n  Advanced NLP vs gold standard ...")
 ev_adv <- .run_comparison(adv_nlp_episodes, "Advanced NLP")
+
+# ===========================================================================
+# 9b. Binary detection evaluation (kappa, sensitivity, specificity)
+#     Requires GOLD_NEG_PATH — a CSV whose rows are confirmed non-steroid users.
+#     Set GOLD_NEG_ID_COL to whichever column holds the patient ID.
+# ===========================================================================
+GOLD_NEG_ID_COL <- "person_id"   # adjust to match your CSV column name
+
+if (!is.null(GOLD_NEG_PATH) && file.exists(GOLD_NEG_PATH)) {
+  message("\n=== Binary detection evaluation (gold positive vs gold negative) ===")
+
+  gold_neg <- readr::read_csv(GOLD_NEG_PATH, show_col_types = FALSE)
+  cat(sprintf("Gold negative: %d confirmed non-users\n", nrow(gold_neg)))
+
+  .run_detection <- function(episodes_df, label) {
+    det <- evaluate_detection(
+      computed_df      = episodes_df,
+      gold_positive_df = gold_std_ok,
+      gold_negative_df = gold_neg,
+      detection_threshold = 0,
+      obs_window_source   = "computed",
+      computed_id_col     = "person_id",
+      gold_pos_id_col     = "person_id",
+      gold_neg_id_col     = GOLD_NEG_ID_COL
+    )
+    m <- det$metrics
+    cat(sprintf(
+      "\n%s:\n  TP=%d  FN=%d  FP=%d  TN=%d\n  Sensitivity=%.3f  Specificity=%.3f  PPV=%.3f  NPV=%.3f\n  Accuracy=%.3f  F1=%.3f  Kappa=%.3f\n",
+      label, m$TP, m$FN, m$FP, m$TN,
+      m$sensitivity, m$specificity, m$PPV, m$NPV,
+      m$accuracy, m$F1, m$kappa
+    ))
+    det
+  }
+
+  det_baseline <- .run_detection(baseline_episodes, "Baseline")
+  det_nlp      <- .run_detection(nlp_episodes,      "NLP")
+  det_adv      <- .run_detection(adv_nlp_episodes,  "Advanced NLP")
+} else {
+  message("\nSkipping binary detection evaluation — GOLD_NEG_PATH not set or file not found.")
+  det_baseline <- det_nlp <- det_adv <- NULL
+}
 
 # ===========================================================================
 # 10. Comparison scatter plots (method dose vs gold dose)
