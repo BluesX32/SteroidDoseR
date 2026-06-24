@@ -281,3 +281,340 @@ evaluate_against_gold <- function(computed_df,
     )
   )
 }
+
+
+#' Evaluate binary steroid detection against two gold standards
+#'
+#' Computes TP / FP / TN / FN and Cohen's kappa from two gold-standard
+#' cohorts: patients confirmed to be on steroids (`gold_positive_df`) and
+#' patients confirmed to have never used steroids (`gold_negative_df`).
+#'
+#' **Gold positives — episode-level (TP / FN):**
+#' A gold-positive episode is **True Positive** when a computed episode for
+#' the same patient overlaps it and has `computed_dose >= detection_threshold`.
+#' Otherwise it is **False Negative**.
+#'
+#' **Gold negatives — patient-level (FP / TN):**
+#' A gold-negative patient is **False Positive** when the algorithm assigns
+#' them a dose `>= detection_threshold` within their observation window.
+#' Otherwise it is **True Negative**. The window is set by
+#' `obs_window_source`:
+#' \describe{
+#'   \item{`"computed"` (default)}{Window = all computed episodes for that
+#'     patient. Patients absent from `computed_df` are automatically TN.
+#'     Preferred when no explicit observation window is available.}
+#'   \item{`"explicit"`}{Each row of `gold_negative_df` carries its own
+#'     window via `gold_neg_start_col` / `gold_neg_end_col` (e.g. the
+#'     patient's enrolment period).}
+#'   \item{`"study"`}{A single fixed window (`study_start` to `study_end`)
+#'     applies to every gold-negative patient.}
+#' }
+#'
+#' @param computed_df Data frame of computed episode summaries (output of
+#'   [build_episodes()] after [convert_pred_equiv()]).
+#' @param gold_positive_df Data frame of confirmed steroid-user episodes.
+#'   Must contain `gold_pos_id_col`, `gold_pos_start_col`, `gold_pos_end_col`.
+#' @param gold_negative_df Data frame of confirmed steroid-naive patients
+#'   (one row per patient). Must contain `gold_neg_id_col`. When
+#'   `obs_window_source = "explicit"` also requires `gold_neg_start_col` and
+#'   `gold_neg_end_col`.
+#' @param detection_threshold `numeric(1)`. Minimum computed dose (mg
+#'   pred-equiv/day) to count as detected. Default `0` (any positive dose).
+#'   Use `5` or `10` to exclude trace / data-artifact doses.
+#' @param obs_window_source `character(1)`. How to define the observation
+#'   window for gold-negative patients. One of `"computed"` (default),
+#'   `"explicit"`, or `"study"`. See Details.
+#' @param study_start Date or `character`. Study start date. Required when
+#'   `obs_window_source = "study"`.
+#' @param study_end Date or `character`. Study end date. Required when
+#'   `obs_window_source = "study"`.
+#' @param computed_id_col `character(1)`. Patient ID column in `computed_df`.
+#'   Default `"person_id"`.
+#' @param computed_start_col `character(1)`. Episode start column in
+#'   `computed_df`. Default `"episode_start"`.
+#' @param computed_end_col `character(1)`. Episode end column in
+#'   `computed_df`. Default `"episode_end"`.
+#' @param computed_dose_col `character(1)`. Dose column in `computed_df`.
+#'   Default `"median_daily_dose"`.
+#' @param gold_pos_id_col `character(1)`. Patient ID column in
+#'   `gold_positive_df`. Default `"patient_id"`.
+#' @param gold_pos_start_col `character(1)`. Episode start column in
+#'   `gold_positive_df`. Default `"episode_start"`.
+#' @param gold_pos_end_col `character(1)`. Episode end column in
+#'   `gold_positive_df`. Default `"episode_end"`.
+#' @param gold_neg_id_col `character(1)`. Patient ID column in
+#'   `gold_negative_df`. Default `"patient_id"`.
+#' @param gold_neg_start_col `character(1)`. Observation start column in
+#'   `gold_negative_df`. Used only when `obs_window_source = "explicit"`.
+#'   Default `"obs_start"`.
+#' @param gold_neg_end_col `character(1)`. Observation end column in
+#'   `gold_negative_df`. Used only when `obs_window_source = "explicit"`.
+#'   Default `"obs_end"`.
+#'
+#' @return A named list with four elements:
+#' \describe{
+#'   \item{`$confusion`}{2×2 matrix. Rows = Gold (Positive / Negative);
+#'     columns = Computed (Detected / Not detected). Cells: TP, FN, FP, TN.}
+#'   \item{`$metrics`}{One-row tibble: `n_gold_positive`, `n_gold_negative`,
+#'     `TP`, `FN`, `FP`, `TN`, `sensitivity`, `specificity`, `PPV`, `NPV`,
+#'     `accuracy`, `F1`, `kappa`.}
+#'   \item{`$detail_positive`}{Gold-positive rows with added `detected`
+#'     (logical) and `classification` (`"TP"` / `"FN"`).}
+#'   \item{`$detail_negative`}{Gold-negative rows with added `detected`
+#'     (logical) and `classification` (`"FP"` / `"TN"`).}
+#' }
+#'
+#' @export
+#'
+#' @examples
+#' computed <- tibble::tibble(
+#'   person_id         = c(1L, 2L),
+#'   episode_start     = as.Date(c("2023-01-01", "2023-03-01")),
+#'   episode_end       = as.Date(c("2023-06-30", "2023-09-30")),
+#'   median_daily_dose = c(20, 5)
+#' )
+#' gold_pos <- tibble::tibble(
+#'   patient_id    = 1L,
+#'   episode_start = as.Date("2023-01-01"),
+#'   episode_end   = as.Date("2023-06-30")
+#' )
+#' gold_neg <- tibble::tibble(patient_id = c(3L, 4L))
+#' evaluate_detection(computed, gold_pos, gold_neg)
+evaluate_detection <- function(
+  computed_df,
+  gold_positive_df,
+  gold_negative_df,
+  detection_threshold = 0,
+  obs_window_source   = c("computed", "explicit", "study"),
+  study_start         = NULL,
+  study_end           = NULL,
+  computed_id_col     = "person_id",
+  computed_start_col  = "episode_start",
+  computed_end_col    = "episode_end",
+  computed_dose_col   = "median_daily_dose",
+  gold_pos_id_col     = "patient_id",
+  gold_pos_start_col  = "episode_start",
+  gold_pos_end_col    = "episode_end",
+  gold_neg_id_col     = "patient_id",
+  gold_neg_start_col  = "obs_start",
+  gold_neg_end_col    = "obs_end"
+) {
+  obs_window_source <- match.arg(obs_window_source)
+
+  assert_required_cols(computed_df,
+    c(computed_id_col, computed_start_col, computed_end_col, computed_dose_col),
+    "computed_df")
+  assert_required_cols(gold_positive_df,
+    c(gold_pos_id_col, gold_pos_start_col, gold_pos_end_col),
+    "gold_positive_df")
+  assert_required_cols(gold_negative_df, gold_neg_id_col, "gold_negative_df")
+
+  if (obs_window_source == "explicit") {
+    assert_required_cols(gold_negative_df,
+      c(gold_neg_start_col, gold_neg_end_col),
+      "gold_negative_df (obs_window_source = 'explicit')")
+  }
+  if (obs_window_source == "study") {
+    if (is.null(study_start) || is.null(study_end))
+      rlang::abort(
+        "study_start and study_end must be provided when obs_window_source = 'study'."
+      )
+    study_start <- safe_as_date(study_start)
+    study_end   <- safe_as_date(study_end)
+  }
+
+  # --- normalise computed -----------------------------------------------
+  comp <- computed_df |>
+    dplyr::rename(
+      person_id     = dplyr::all_of(computed_id_col),
+      episode_start = dplyr::all_of(computed_start_col),
+      episode_end   = dplyr::all_of(computed_end_col),
+      computed_dose = dplyr::all_of(computed_dose_col)
+    ) |>
+    dplyr::mutate(
+      episode_start = safe_as_date(.data$episode_start),
+      episode_end   = safe_as_date(.data$episode_end),
+      computed_dose = safe_as_numeric(.data$computed_dose)
+    )
+
+  comp_above <- dplyr::filter(comp, .data$computed_dose >= detection_threshold)
+
+  # --- GOLD POSITIVES: TP / FN ------------------------------------------
+  gpos <- gold_positive_df |>
+    dplyr::rename(
+      patient_id    = dplyr::all_of(gold_pos_id_col),
+      episode_start = dplyr::all_of(gold_pos_start_col),
+      episode_end   = dplyr::all_of(gold_pos_end_col)
+    ) |>
+    dplyr::mutate(
+      episode_start = safe_as_date(.data$episode_start),
+      episode_end   = safe_as_date(.data$episode_end)
+    )
+
+  pos_detected <- gpos |>
+    dplyr::rename(g_start = "episode_start", g_end = "episode_end") |>
+    dplyr::left_join(
+      comp_above |>
+        dplyr::rename(c_start = "episode_start", c_end = "episode_end"),
+      by = c("patient_id" = "person_id"),
+      relationship = "many-to-many"
+    ) |>
+    dplyr::mutate(
+      overlap = as.integer(
+        pmin(.data$g_end, .data$c_end, na.rm = FALSE) -
+          pmax(.data$g_start, .data$c_start, na.rm = FALSE)
+      ) + 1L,
+      overlap = dplyr::if_else(
+        is.na(.data$overlap) | .data$overlap < 1L, 0L, .data$overlap
+      )
+    ) |>
+    dplyr::group_by(.data$patient_id, .data$g_start, .data$g_end) |>
+    dplyr::summarise(
+      detected = any(.data$overlap >= 1L, na.rm = TRUE),
+      .groups  = "drop"
+    )
+
+  detail_positive <- gpos |>
+    dplyr::left_join(
+      pos_detected,
+      by = c("patient_id",
+             "episode_start" = "g_start",
+             "episode_end"   = "g_end")
+    ) |>
+    dplyr::mutate(
+      detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
+      classification = dplyr::if_else(.data$detected, "TP", "FN")
+    )
+
+  # --- GOLD NEGATIVES: FP / TN ------------------------------------------
+  gneg <- gold_negative_df |>
+    dplyr::rename(patient_id = dplyr::all_of(gold_neg_id_col))
+
+  if (obs_window_source == "computed") {
+    detected_ids <- comp_above |>
+      dplyr::distinct(.data$person_id) |>
+      dplyr::rename(patient_id = "person_id") |>
+      dplyr::mutate(detected = TRUE)
+
+    detail_negative <- gneg |>
+      dplyr::left_join(detected_ids, by = "patient_id") |>
+      dplyr::mutate(
+        detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
+        classification = dplyr::if_else(.data$detected, "FP", "TN")
+      )
+
+  } else if (obs_window_source == "explicit") {
+    gneg <- gneg |>
+      dplyr::rename(
+        obs_start = dplyr::all_of(gold_neg_start_col),
+        obs_end   = dplyr::all_of(gold_neg_end_col)
+      ) |>
+      dplyr::mutate(
+        obs_start = safe_as_date(.data$obs_start),
+        obs_end   = safe_as_date(.data$obs_end)
+      )
+
+    neg_detected <- gneg |>
+      dplyr::left_join(
+        comp_above |>
+          dplyr::rename(c_start = "episode_start", c_end = "episode_end"),
+        by = c("patient_id" = "person_id"),
+        relationship = "many-to-many"
+      ) |>
+      dplyr::mutate(
+        overlap = as.integer(
+          pmin(.data$obs_end, .data$c_end, na.rm = FALSE) -
+            pmax(.data$obs_start, .data$c_start, na.rm = FALSE)
+        ) + 1L,
+        overlap = dplyr::if_else(
+          is.na(.data$overlap) | .data$overlap < 1L, 0L, .data$overlap
+        )
+      ) |>
+      dplyr::group_by(.data$patient_id) |>
+      dplyr::summarise(
+        detected = any(.data$overlap >= 1L, na.rm = TRUE),
+        .groups  = "drop"
+      )
+
+    detail_negative <- gneg |>
+      dplyr::left_join(neg_detected, by = "patient_id") |>
+      dplyr::mutate(
+        detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
+        classification = dplyr::if_else(.data$detected, "FP", "TN")
+      )
+
+  } else {
+    # obs_window_source == "study"
+    detected_ids <- comp_above |>
+      dplyr::filter(
+        .data$episode_start <= study_end,
+        .data$episode_end   >= study_start
+      ) |>
+      dplyr::distinct(.data$person_id) |>
+      dplyr::rename(patient_id = "person_id") |>
+      dplyr::mutate(detected = TRUE)
+
+    detail_negative <- gneg |>
+      dplyr::left_join(detected_ids, by = "patient_id") |>
+      dplyr::mutate(
+        detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
+        classification = dplyr::if_else(.data$detected, "FP", "TN")
+      )
+  }
+
+  # --- confusion matrix -------------------------------------------------
+  n_tp <- sum(detail_positive$classification == "TP")
+  n_fn <- sum(detail_positive$classification == "FN")
+  n_fp <- sum(detail_negative$classification == "FP")
+  n_tn <- sum(detail_negative$classification == "TN")
+  n    <- n_tp + n_fn + n_fp + n_tn
+
+  # Standard clinical layout: rows = gold, cols = computed (detected / not)
+  confusion <- matrix(
+    c(n_tp, n_fp, n_fn, n_tn),
+    nrow     = 2L, ncol = 2L,
+    dimnames = list(
+      Gold     = c("Positive", "Negative"),
+      Computed = c("Detected", "Not detected")
+    )
+  )
+
+  # --- metrics ----------------------------------------------------------
+  sensitivity <- if ((n_tp + n_fn) > 0L) n_tp / (n_tp + n_fn) else NA_real_
+  specificity <- if ((n_tn + n_fp) > 0L) n_tn / (n_tn + n_fp) else NA_real_
+  ppv         <- if ((n_tp + n_fp) > 0L) n_tp / (n_tp + n_fp) else NA_real_
+  npv         <- if ((n_tn + n_fn) > 0L) n_tn / (n_tn + n_fn) else NA_real_
+  accuracy    <- if (n > 0L) (n_tp + n_tn) / n else NA_real_
+  f1          <- if (!is.na(ppv) && !is.na(sensitivity) &&
+                     (ppv + sensitivity) > 0)
+                   2 * ppv * sensitivity / (ppv + sensitivity) else NA_real_
+
+  # Cohen's kappa = (observed agreement - chance agreement) / (1 - chance)
+  p_e   <- ((n_tp + n_fp) / n) * ((n_tp + n_fn) / n) +
+            ((n_fn + n_tn) / n) * ((n_fp + n_tn) / n)
+  kappa <- if (!is.na(accuracy) && (1 - p_e) > 0)
+             (accuracy - p_e) / (1 - p_e) else NA_real_
+
+  metrics <- tibble::tibble(
+    n_gold_positive = as.integer(n_tp + n_fn),
+    n_gold_negative = as.integer(n_fp + n_tn),
+    TP          = as.integer(n_tp),
+    FN          = as.integer(n_fn),
+    FP          = as.integer(n_fp),
+    TN          = as.integer(n_tn),
+    sensitivity = sensitivity,
+    specificity = specificity,
+    PPV         = ppv,
+    NPV         = npv,
+    accuracy    = accuracy,
+    F1          = f1,
+    kappa       = kappa
+  )
+
+  list(
+    confusion       = confusion,
+    metrics         = metrics,
+    detail_positive = detail_positive,
+    detail_negative = detail_negative
+  )
+}

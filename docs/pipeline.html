@@ -88,7 +88,8 @@
     <li><a href="pipeline.html#equiv">Prednisone equivalency</a></li>
     <li><a href="pipeline.html#episodes">Episode building</a></li>
     <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
-    <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+    <li><a href="pipeline.html#evaluation">Evaluation (dose accuracy)</a></li>
+    <li><a href="pipeline.html#detection">Evaluation (binary detection)</a></li>
     <li><a href="pipeline.html#viz">Visualization</a></li>
   </ul>
   <div class="nav-section-label">Reference</div>
@@ -423,6 +424,133 @@ eval_result <span class="op">&lt;-</span> <span class="fn">evaluate_against_gold
 s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 <span class="fn">sprintf</span>(<span class="st">"Coverage: %.1f%%  MAE: %.2f  MBE: %.2f  RMSE: %.2f"</span>,
         s<span class="op">$</span>coverage_pct, s<span class="op">$</span>MAE, s<span class="op">$</span>MBE, s<span class="op">$</span>RMSE)
+</code></pre>
+
+<!-- ── DETECTION EVALUATION ──────────────────────────────────────── -->
+<h2 id="detection">Binary detection evaluation <span class="badge badge-new">v0.4.0</span></h2>
+
+<p>
+  <code>evaluate_against_gold()</code> measures <em>dose accuracy</em> for
+  patients already known to be on steroids. A complementary question is
+  whether the pipeline correctly <em>identifies</em> who is on steroids at
+  all — especially when you also have a cohort of patients confirmed to have
+  never used steroids. <code>evaluate_detection()</code> answers this with a
+  standard 2×2 confusion matrix and Cohen's kappa.
+</p>
+
+<div class="fn-sig">evaluate_detection(
+  computed_df,
+  gold_positive_df,
+  gold_negative_df,
+  detection_threshold = 0,
+  obs_window_source   = c("computed", "explicit", "study"),
+  study_start         = NULL,
+  study_end           = NULL,
+  computed_id_col     = "person_id",
+  computed_start_col  = "episode_start",
+  computed_end_col    = "episode_end",
+  computed_dose_col   = "median_daily_dose",
+  gold_pos_id_col     = "patient_id",
+  gold_pos_start_col  = "episode_start",
+  gold_pos_end_col    = "episode_end",
+  gold_neg_id_col     = "patient_id",
+  gold_neg_start_col  = "obs_start",
+  gold_neg_end_col    = "obs_end"
+)</div>
+
+<h3>Two-stage evaluation framework</h3>
+<p>
+  Detection evaluation (Stage 1) and dose accuracy evaluation (Stage 2) answer
+  different questions and should be run separately:
+</p>
+<ul>
+  <li><strong>Stage 1 — did we detect steroid use?</strong> Use
+    <code>evaluate_detection()</code> with confirmed users <em>and</em>
+    confirmed non-users. Produces kappa, sensitivity, specificity.</li>
+  <li><strong>Stage 2 — how accurate is the dose among detected users?</strong>
+    Use <code>evaluate_against_gold()</code> on the TP subset (or the full gold
+    positive cohort). Produces MAE, MAPE, agreement categories.</li>
+</ul>
+
+<h3>Classification logic</h3>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Computed dose ≥ threshold</th><th>Computed dose &lt; threshold or absent</th></tr>
+  <tr><td><strong>Gold positive</strong> (confirmed user)</td><td>True Positive (TP)</td><td>False Negative (FN)</td></tr>
+  <tr><td><strong>Gold negative</strong> (confirmed non-user)</td><td>False Positive (FP)</td><td>True Negative (TN)</td></tr>
+</table>
+</div>
+<p>
+  Gold positives are evaluated at the <strong>episode level</strong> — a gold
+  episode is TP when a computed episode for the same patient overlaps it by ≥ 1
+  day and has <code>computed_dose >= detection_threshold</code>.
+</p>
+<p>
+  Gold negatives are evaluated at the <strong>patient level</strong> — because
+  a confirmed non-user has no treatment episode, no date window can be defined
+  from the gold data alone. Instead the observation window is derived from one
+  of three sources (see <code>obs_window_source</code> below).
+</p>
+
+<h3>Key parameters</h3>
+<div class="table-wrap">
+<table class="param-table">
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>detection_threshold</td><td>0</td><td>Minimum computed dose (mg pred-equiv/day) to count as detected. Use <code>5</code> or <code>10</code> to exclude trace/artifact doses.</td></tr>
+  <tr><td>obs_window_source</td><td>"computed"</td><td>How to define the observation window for gold-negative patients. See table below.</td></tr>
+  <tr><td>study_start / study_end</td><td>NULL</td><td>Required when <code>obs_window_source = "study"</code>. Accepts Date or ISO character.</td></tr>
+  <tr><td>gold_neg_start_col / gold_neg_end_col</td><td>"obs_start" / "obs_end"</td><td>Required when <code>obs_window_source = "explicit"</code>.</td></tr>
+</table>
+</div>
+
+<h3>Observation window options for gold negatives</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>obs_window_source</th><th>Window definition</th><th>Best when</th></tr>
+  <tr>
+    <td><code>"computed"</code> (default)</td>
+    <td>Window = all computed episodes for that patient. Patients absent from <code>computed_df</code> are automatically TN.</td>
+    <td>No explicit observation period is available; any detection in the data constitutes a false positive.</td>
+  </tr>
+  <tr>
+    <td><code>"explicit"</code></td>
+    <td>Each row in <code>gold_negative_df</code> carries its own <code>obs_start</code> / <code>obs_end</code> (e.g. enrolment period).</td>
+    <td>Each patient has a known follow-up window (e.g. from a registry or observation_period table).</td>
+  </tr>
+  <tr>
+    <td><code>"study"</code></td>
+    <td>A single fixed date range (<code>study_start</code> to <code>study_end</code>) applies to all gold-negative patients.</td>
+    <td>All patients share the same study period and any detection within it counts as FP.</td>
+  </tr>
+</table>
+</div>
+
+<h3>Return value</h3>
+<ul>
+  <li><strong><code>$confusion</code></strong> — 2×2 matrix: rows = Gold (Positive / Negative), columns = Computed (Detected / Not detected).</li>
+  <li><strong><code>$metrics</code></strong> — One-row tibble: <code>n_gold_positive</code>, <code>n_gold_negative</code>, <code>TP</code>, <code>FN</code>, <code>FP</code>, <code>TN</code>, <code>sensitivity</code>, <code>specificity</code>, <code>PPV</code>, <code>NPV</code>, <code>accuracy</code>, <code>F1</code>, <code>kappa</code>.</li>
+  <li><strong><code>$detail_positive</code></strong> — Gold-positive rows with <code>detected</code> (logical) and <code>classification</code> (<code>"TP"</code> / <code>"FN"</code>).</li>
+  <li><strong><code>$detail_negative</code></strong> — Gold-negative rows with <code>detected</code> (logical) and <code>classification</code> (<code>"FP"</code> / <code>"TN"</code>).</li>
+</ul>
+
+<h3>Example</h3>
+<pre><code><span class="cm"># Stage 1: detection</span>
+det <span class="op">&lt;-</span> <span class="fn">evaluate_detection</span>(
+  computed_df      <span class="op">=</span> baseline_ep,
+  gold_positive_df <span class="op">=</span> gold_positive,
+  gold_negative_df <span class="op">=</span> gold_negative,
+  detection_threshold <span class="op">=</span> <span class="nm">0</span>
+)
+det<span class="op">$</span>confusion   <span class="cm"># 2×2 table</span>
+det<span class="op">$</span>metrics    <span class="cm"># kappa, sensitivity, specificity, PPV, NPV, F1</span>
+
+<span class="cm"># Stage 2: dose accuracy restricted to true positives</span>
+tp_episodes <span class="op">&lt;-</span> det<span class="op">$</span>detail_positive <span class="op">|&gt;</span>
+  <span class="fn">filter</span>(classification <span class="op">==</span> <span class="st">"TP"</span>)
+ev <span class="op">&lt;-</span> <span class="fn">evaluate_against_gold</span>(baseline_ep, tp_episodes,
+                             gold_id_col   <span class="op">=</span> <span class="st">"patient_id"</span>,
+                             gold_dose_col <span class="op">=</span> <span class="st">"median_daily_dose"</span>)
+ev<span class="op">$</span>summary    <span class="cm"># MAE, MBE, MAPE among confirmed users we detected</span>
 </code></pre>
 
 <!-- ── VISUALIZATION ─────────────────────────────────────────────── -->

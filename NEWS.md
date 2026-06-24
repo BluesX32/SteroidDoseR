@@ -2,6 +2,25 @@
 
 ## New features
 
+* **`evaluate_detection()` — binary steroid detection evaluation** (`eval.R`):
+  New function that evaluates whether the pipeline correctly identifies who is
+  on steroids, using two separate gold-standard cohorts: confirmed steroid users
+  (`gold_positive_df`) and confirmed steroid-naive patients (`gold_negative_df`).
+  Gold positives are classified episode-level (TP if a computed episode overlaps
+  the gold window with `computed_dose >= detection_threshold`; FN otherwise).
+  Gold negatives are classified patient-level (FP if any detection is found
+  within their observation window; TN otherwise). The observation window for
+  gold negatives is controlled by `obs_window_source`: `"computed"` (window =
+  all computed episodes for that patient; default), `"explicit"` (per-patient
+  `obs_start`/`obs_end` columns), or `"study"` (fixed `study_start`/`study_end`
+  parameters). Returns `$confusion` (2×2 matrix), `$metrics` (sensitivity,
+  specificity, PPV, NPV, accuracy, F1, Cohen's kappa), `$detail_positive`, and
+  `$detail_negative`.
+
+
+
+## New features
+
 * **medspaCy clinical note parser** (`nlp_notes.R`): new `calc_daily_dose_nlp_notes()`,
   `parse_note_one()`, and `parse_notes()` functions extract steroid doses from
   unstructured clinical note text using a medspaCy + scispaCy Python pipeline

@@ -213,6 +213,36 @@ ev$comparison # one row per gold episode: gold_dose, computed_dose, agreement_ca
 ev$stratified # metrics by dose range (Low / Medium / High / Very High)
 ```
 
+### 6b. Binary detection evaluation (kappa, sensitivity, specificity)
+
+When you have two separate gold cohorts — confirmed steroid users and confirmed
+steroid-naive patients — use `evaluate_detection()` to assess whether the
+pipeline correctly detects who is on steroids, independent of dose accuracy:
+
+```r
+# gold_positive_df: patients confirmed to be on steroids (episode-level rows)
+# gold_negative_df: patients confirmed to have never used steroids (one row per patient)
+
+det <- evaluate_detection(
+  computed_df      = baseline_ep,
+  gold_positive_df = gold_positive,
+  gold_negative_df = gold_negative,
+  detection_threshold = 0       # any computed dose counts as detected
+  # obs_window_source = "computed"  # default: window = all computed episodes per patient
+  # obs_window_source = "explicit"  # gold_negative_df must have obs_start / obs_end columns
+  # obs_window_source = "study"     # study_start / study_end apply to all gold negatives
+)
+
+det$confusion  # 2×2 matrix: Gold (Positive/Negative) × Computed (Detected/Not detected)
+det$metrics    # sensitivity, specificity, PPV, NPV, accuracy, F1, kappa
+det$detail_positive  # per gold-positive episode: classification = "TP" or "FN"
+det$detail_negative  # per gold-negative patient:  classification = "FP" or "TN"
+```
+
+For dose accuracy among true positives, filter `detail_positive` to TPs and
+pass them to `evaluate_against_gold()`.
+```
+
 ---
 
 ## Visualization
