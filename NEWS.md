@@ -9,6 +9,12 @@
   `nlp_*` names. The two-method structure (Baseline vs NLP) reduces redundancy
   while retaining the more capable parser.
 
+* **LLM scaffolding removed** (`LLMToRun.R`, `LLMToRun.ipynb`, `LLM/connection.py`
+  deleted): conda environment setup, Databricks Python connection testing, and
+  the associated Jupyter notebook have been removed. Note extraction that runs
+  directly within R is retained: `LLM_to_Run.R` (ollama via httr2) and
+  `R/nlp_notes.R` + `inst/python/medspacy_pipeline.py` (medspaCy via reticulate).
+
 * **`evaluate_detection()` — binary steroid detection evaluation** (`eval.R`):
   New function that evaluates whether the pipeline correctly identifies who is
   on steroids, using two separate gold-standard cohorts: confirmed steroid users
@@ -56,12 +62,6 @@
   historical detection, and section header scanning.
 
 ## Bug fixes
-
-* `LLMToRun.R`: set `CONDA_PKGS_DIRS` to `C:/Temp/conda_pkgs` before any
-  `reticulate::conda_*` call.  In JHU's environment `C:\Users\<name>` is a
-  redirected network folder; conda's libmamba solver fails to lock repodata
-  cache files on SMB shares (errno 22 / `EINVAL`).  Using a guaranteed-local
-  path avoids the lock entirely.
 
 * **NLP structural fallback now covers prn/taper/free_text records** (`nlp.R`,
   `nlp_advanced.R`, BUG-10): the baseline M1/M3/M4 fallback previously only
