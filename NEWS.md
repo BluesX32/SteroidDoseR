@@ -2,6 +2,18 @@
 
 ## New features
 
+* **DMARD-generic functions renamed/removed** (`gold_standard.R`): The package
+  now exclusively handles corticosteroids.
+  - `parse_dmard_gold()` → `parse_steroid_gold()`: default `drug_filter`
+    changed from `NULL` (keep all drugs) to `"corticosteroids"`. This ensures
+    clinical review CSVs that contain mixed DMARD entries are automatically
+    filtered to corticosteroid rows. `CodeToRun.R` updated to match.
+  - `compare_dmard_episodes()` removed: functionality is covered by the
+    existing `evaluate_against_gold()` (which does not require a drug-name
+    join because all doses are in prednisone-equivalent units).
+  - `parse_dmard_dose()` made internal (`@noRd`); it remains available as a
+    helper within `parse_steroid_gold()`.
+
 * **`CodeToRun.R` simplified to two methods** (`CodeToRun.R`): Standard NLP
   (`calc_daily_dose_nlp()`) removed from the main analysis script. The Advanced
   NLP method (`calc_daily_dose_nlp_advanced()`) is now labelled simply as

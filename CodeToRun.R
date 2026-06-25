@@ -361,7 +361,7 @@ dist_df |>
 message("\n=== Loading gold standard ===")
 
 gold_std_raw <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
-gold_std     <- parse_dmard_gold(gold_std_raw)
+gold_std     <- parse_steroid_gold(gold_std_raw)
 
 cat(sprintf(
   "Gold standard: %d records from %d patients\n",
@@ -433,7 +433,11 @@ cat(sprintf(
 ))
 
 .run_comparison <- function(episodes_df, label) {
-  ev <- compare_dmard_episodes(episodes_df, gold_std_ok)
+  ev <- evaluate_against_gold(
+    episodes_df,
+    gold_std_ok,
+    gold_dose_col = "dose_daily_mg_equiv"
+  )
   ev$n_common_patients <- length(intersect(
     unique(episodes_df$person_id), unique(gold_std_ok$person_id)
   ))
@@ -441,15 +445,15 @@ cat(sprintf(
     "\n%s: %d common patients | %d/%d gold records matched (%.1f%% coverage)\n",
     label,
     ev$n_common_patients,
-    ev$summary$n_matched_records,
-    ev$summary$n_gold_records,
+    ev$summary$n_matched_periods,
+    ev$summary$n_gold_periods,
     ev$summary$coverage_pct
   ))
   cat(sprintf("  MAE=%.2f  MBE=%.2f  RMSE=%.2f  MAPE=%.1f%%  r=%.3f\n",
     ev$summary$MAE, ev$summary$MBE, ev$summary$RMSE,
     ev$summary$MAPE, ev$summary$pearson_corr))
-  cat("By drug:\n")
-  print(as.data.frame(ev$stratified$by_drug))
+  cat("By dose range:\n")
+  print(as.data.frame(ev$stratified$by_dose_range))
   ev
 }
 

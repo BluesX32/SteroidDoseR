@@ -212,65 +212,22 @@
   )
 }
 
-# ---------------------------------------------------------------------------
-# Exported: parse_dmard_dose()
-# ---------------------------------------------------------------------------
-
-#' Parse a vector of free-text DMARD dose strings
-#'
-#' Vectorised wrapper over the internal single-record parser. Each string is
-#' normalised, then amount, unit, per-kg flag, and frequency are extracted via
-#' regex. A daily mg equivalent is computed where possible.
-#'
-#' @param x Character vector of free-text dose strings (e.g. `"2g q6 months"`,
-#'   `"1000 mg PO BID"`, `"1g/kg/q2 wk"`).
-#'
-#' @return A tibble with one row per element of `x` and columns:
-#' \describe{
-#'   \item{`dose_amount`}{Numeric dose amount as written (before unit conversion).}
-#'   \item{`dose_unit`}{`"mg"` or `"g"`; `NA` when no unit found.}
-#'   \item{`dose_per_kg`}{`TRUE` when `/kg` detected; patient weight required
-#'     to compute a daily mg equivalent.}
-#'   \item{`dose_frequency`}{Standardised label: `"daily"`, `"bid"`, `"weekly"`,
-#'     `"q2weeks"`, `"q4weeks"`, `"monthly"`, `"q3months"`, `"q6months"`,
-#'     `"infusion_course"`, etc.; `NA` when not parseable.}
-#'   \item{`freq_per_day`}{Numeric doses per calendar day corresponding to
-#'     `dose_frequency` (e.g. `1/180` for `"q6months"`); `NA` when unknown.}
-#'   \item{`dose_mg_per_admin`}{`dose_amount` converted to mg (g * 1000);
-#'     `NA` when `dose_per_kg` is `TRUE`.}
-#'   \item{`dose_daily_mg_equiv`}{`dose_mg_per_admin * freq_per_day`; `NA`
-#'     when `dose_per_kg` is `TRUE` or frequency is unknown.}
-#'   \item{`parse_status`}{`"ok"`, `"weight_required"`, `"no_freq"`,
-#'     `"no_unit"`, `"no_parse"`, `"empty"`, or `"error"`.}
-#' }
-#'
-#' @export
-#'
-#' @examples
-#' parse_dmard_dose(c(
-#'   "1000 mg PO BID",
-#'   "2g q6 months",
-#'   "1g/kg/q2 wk",
-#'   "3g/d",
-#'   "8.75",
-#'   "every 6 months",
-#'   "120 grams over 6 days"
-#' ))
+#' @noRd
 parse_dmard_dose <- function(x) {
   purrr::map_dfr(as.character(x), .parse_dmard_dose_one)
 }
 
 # ---------------------------------------------------------------------------
-# Exported: parse_dmard_gold()
+# Exported: parse_steroid_gold()
 # ---------------------------------------------------------------------------
 
-#' Parse and validate a DMARD gold-standard data frame
+#' Parse and validate a corticosteroid gold-standard data frame
 #'
-#' Accepts a raw clinical review CSV (one row per DMARD record per patient)
-#' with messy free-text dose expressions. Aligns with the original
-#' `gold_standard.qmd` analysis pipeline: null-sentinel cleaning, year/month/day
-#' date fallbacks, negative-duration correction, non-daily regimen exclusion,
-#' and plausibility capping. All column name arguments are parameterised.
+#' Accepts a raw clinical review CSV (one row per corticosteroid record per
+#' patient) with messy free-text dose expressions. Applies null-sentinel
+#' cleaning, year/month/day date fallbacks, negative-duration correction,
+#' non-daily regimen exclusion, and plausibility capping. All column name
+#' arguments are parameterised.
 #'
 #' @param df A data frame -- the raw gold-standard CSV (pre-loaded).
 #' @param person_id_col `character(1)`. Patient identifier column.
@@ -296,9 +253,9 @@ parse_dmard_dose <- function(x) {
 #'   `status_col` is absent. Default: `NULL`.
 #' @param past_status_val `character(1)`. Value in `status_col` indicating
 #'   a discontinued DMARD. Default: `"past"`.
-#' @param drug_filter `character` vector or `NULL`. If supplied, only rows
-#'   whose standardised drug name matches one of these values (case-insensitive)
-#'   are retained. `NULL` keeps all drugs. Default: `NULL`.
+#' @param drug_filter `character` vector or `NULL`. Only rows whose standardised
+#'   drug name matches one of these values (case-insensitive) are retained.
+#'   Default: `"corticosteroids"`. Set to `NULL` to keep all drugs.
 #' @param exclude_non_daily `logical(1)`. If `TRUE` (default), doses flagged as
 #'   non-daily regimens (weekly, monthly, infusion, weight-based, etc.) have
 #'   `dose_daily_mg_equiv` set to `NA` and `parse_status` set to `"non_daily"`,
@@ -337,24 +294,24 @@ parse_dmard_dose <- function(x) {
 #'   pastdmard_stop_date_est = c(NA, "2022-12-31", NA),
 #'   last_changed_datetime   = c("2024-01-01", NA, "2024-06-01")
 #' )
-#' parse_dmard_gold(df, drug_filter = "corticosteroids")
-parse_dmard_gold <- function(df,
-                              person_id_col    = "myositis_omop_person_id",
-                              drug_name_col    = "dmardname",
-                              dose_col         = "dmarddose",
-                              start_date_col   = "dmard_start_date_est",
-                              start_year_col   = "dmardstartyear",
-                              start_month_col  = "dmardstartmonth",
-                              start_day_col    = "dmardstartday",
-                              status_col       = "dmardstatus",
-                              last_changed_col = "last_changed_datetime",
-                              stop_date_col    = "pastdmard_stop_date_est",
-                              stop_year_col    = "pastdmardstopyear",
-                              stop_month_col   = "pastdmardstopmonth",
-                              stop_day_col     = "pastdmardstopday",
-                              end_date_col     = NULL,
-                              past_status_val  = "past",
-                              drug_filter      = NULL,
+#' parse_steroid_gold(df)
+parse_steroid_gold <- function(df,
+                                person_id_col    = "myositis_omop_person_id",
+                                drug_name_col    = "dmardname",
+                                dose_col         = "dmarddose",
+                                start_date_col   = "dmard_start_date_est",
+                                start_year_col   = "dmardstartyear",
+                                start_month_col  = "dmardstartmonth",
+                                start_day_col    = "dmardstartday",
+                                status_col       = "dmardstatus",
+                                last_changed_col = "last_changed_datetime",
+                                stop_date_col    = "pastdmard_stop_date_est",
+                                stop_year_col    = "pastdmardstopyear",
+                                stop_month_col   = "pastdmardstopmonth",
+                                stop_day_col     = "pastdmardstopday",
+                                end_date_col     = NULL,
+                                past_status_val  = "past",
+                                drug_filter      = "corticosteroids",
                               exclude_non_daily = TRUE,
                               dose_min         = 0,
                               dose_max         = 300,
@@ -559,252 +516,4 @@ parse_dmard_gold <- function(df,
     dplyr::select("person_id", "drug_name_std", "episode_start", "episode_end",
                   "dose_raw") |>
     dplyr::bind_cols(parsed)
-}
-
-# ---------------------------------------------------------------------------
-# Exported: compare_dmard_episodes()
-# ---------------------------------------------------------------------------
-
-#' Compare DMARD gold-standard records against computed drug episodes
-#'
-#' For each gold-standard record (patient + drug + date window), finds all
-#' computed episodes for the same patient and drug that overlap the gold
-#' window, clips each to the intersection, then computes a duration-weighted
-#' mean dose. Error metrics are calculated against the gold dose.
-#'
-#' All column name arguments have defaults matching the output of
-#' [parse_dmard_gold()] and [build_episodes()], but every name can be
-#' overridden.
-#'
-#' @param computed_df Data frame of computed drug episodes (output of
-#'   [build_episodes()]). Must contain columns named by `computed_id_col`,
-#'   `computed_drug_col`, `computed_start_col`, `computed_end_col`, and
-#'   `computed_dose_col`.
-#' @param gold_df Data frame of parsed gold-standard records (output of
-#'   [parse_dmard_gold()]). Must contain columns named by `gold_id_col`,
-#'   `gold_drug_col`, `gold_start_col`, `gold_end_col`, and `gold_dose_col`.
-#' @param computed_id_col `character(1)`. Patient ID in `computed_df`.
-#'   Default: `"person_id"`.
-#' @param computed_drug_col `character(1)`. Drug name in `computed_df`.
-#'   Default: `"drug_name_std"`.
-#' @param computed_start_col `character(1)`. Episode start in `computed_df`.
-#'   Default: `"episode_start"`.
-#' @param computed_end_col `character(1)`. Episode end in `computed_df`.
-#'   Default: `"episode_end"`.
-#' @param computed_dose_col `character(1)`. Dose column in `computed_df`.
-#'   Default: `"median_daily_dose"`.
-#' @param gold_id_col `character(1)`. Patient ID in `gold_df`.
-#'   Default: `"person_id"`.
-#' @param gold_drug_col `character(1)`. Drug name in `gold_df`.
-#'   Default: `"drug_name_std"`.
-#' @param gold_start_col `character(1)`. Gold window start in `gold_df`.
-#'   Default: `"episode_start"`.
-#' @param gold_end_col `character(1)`. Gold window end in `gold_df`.
-#'   Default: `"episode_end"`.
-#' @param gold_dose_col `character(1)`. Gold dose in `gold_df`.
-#'   Default: `"dose_daily_mg_equiv"`.
-#' @param min_overlap_days `integer(1)`. Minimum overlap in days for a
-#'   computed episode to count. Default: `1L`.
-#'
-#' @return A named list with three elements:
-#' \describe{
-#'   \item{`$comparison`}{One row per gold record. Key columns:
-#'     `person_id`, `drug_name_std`, `gold_start`, `gold_end`,
-#'     `gold_dose`, `computed_dose` (duration-weighted mean),
-#'     `n_computed_episodes`, `total_overlap_days`, `gold_duration`,
-#'     `overlap_pct`, `absolute_error`, `bias_error`,
-#'     `relative_error_pct`, `absolute_relative_error_pct`,
-#'     `agreement_category`, `error_direction`.}
-#'   \item{`$summary`}{One-row tibble: `n_gold_records`,
-#'     `n_matched_records`, `coverage_pct`, `MAE`, `MBE`, `RMSE`,
-#'     `median_AE`, `MAPE`, `mean_relative_bias_pct`,
-#'     `pearson_corr`, `spearman_corr`.}
-#'   \item{`$stratified`}{List with `by_drug` (metrics per
-#'     `drug_name_std`).}
-#' }
-#'
-#' @export
-#'
-#' @examples
-#' computed <- tibble::tibble(
-#'   person_id         = 1L,
-#'   drug_name_std     = "methotrexate",
-#'   episode_start     = as.Date("2020-01-01"),
-#'   episode_end       = as.Date("2022-12-31"),
-#'   median_daily_dose = 15 / 7   # 15 mg/week -> daily equiv
-#' )
-#' gold <- tibble::tibble(
-#'   person_id           = 1L,
-#'   drug_name_std       = "methotrexate",
-#'   episode_start       = as.Date("2020-06-01"),
-#'   episode_end         = as.Date("2022-06-01"),
-#'   dose_daily_mg_equiv = 15 / 7
-#' )
-#' compare_dmard_episodes(computed, gold)
-compare_dmard_episodes <- function(computed_df,
-                                    gold_df,
-                                    computed_id_col    = "person_id",
-                                    computed_drug_col  = "drug_name_std",
-                                    computed_start_col = "episode_start",
-                                    computed_end_col   = "episode_end",
-                                    computed_dose_col  = "median_daily_dose",
-                                    gold_id_col        = "person_id",
-                                    gold_drug_col      = "drug_name_std",
-                                    gold_start_col     = "episode_start",
-                                    gold_end_col       = "episode_end",
-                                    gold_dose_col      = "dose_daily_mg_equiv",
-                                    min_overlap_days   = 1L) {
-
-  assert_required_cols(computed_df,
-    c(computed_id_col, computed_drug_col, computed_start_col,
-      computed_end_col, computed_dose_col),
-    "computed_df")
-  assert_required_cols(gold_df,
-    c(gold_id_col, gold_drug_col, gold_start_col,
-      gold_end_col, gold_dose_col),
-    "gold_df")
-
-  # --- select only needed columns to avoid name conflicts --------------------
-  # Mirror eval.R: join by patient ID only, then filter by date overlap.
-  # Drug name is carried from the gold record for stratification, not used
-  # as a join key (computed episodes may use different name formats).
-  comp <- computed_df |>
-    dplyr::select(
-      person_id = dplyr::all_of(computed_id_col),
-      c_start   = dplyr::all_of(computed_start_col),
-      c_end     = dplyr::all_of(computed_end_col),
-      c_dose    = dplyr::all_of(computed_dose_col)
-    ) |>
-    dplyr::mutate(
-      c_start = safe_as_date(.data$c_start),
-      c_end   = safe_as_date(.data$c_end),
-      c_dose  = safe_as_numeric(.data$c_dose)
-    )
-
-  gold <- gold_df |>
-    dplyr::select(
-      person_id     = dplyr::all_of(gold_id_col),
-      drug_name_std = dplyr::all_of(gold_drug_col),
-      g_start       = dplyr::all_of(gold_start_col),
-      g_end         = dplyr::all_of(gold_end_col),
-      gold_dose     = dplyr::all_of(gold_dose_col)
-    ) |>
-    dplyr::mutate(
-      g_start   = safe_as_date(.data$g_start),
-      g_end     = safe_as_date(.data$g_end),
-      gold_dose = safe_as_numeric(.data$gold_dose)
-    ) |>
-    dplyr::filter(!is.na(.data$g_start), !is.na(.data$g_end))
-
-  # --- overlap join by patient ID only (same approach as eval.R) -------------
-  # For each gold record, find ALL computed episodes that overlap the gold
-  # window. No drug-name constraint: the gold drug label is an attribute of
-  # the gold record, not a filter on computed episodes.
-  merged <- gold |>
-    dplyr::left_join(
-      comp,
-      by           = "person_id",
-      relationship = "many-to-many"
-    ) |>
-    dplyr::mutate(
-      ovlp_start = pmax(.data$g_start, .data$c_start, na.rm = FALSE),
-      ovlp_end   = pmin(.data$g_end,   .data$c_end,   na.rm = FALSE),
-      ovlp_days  = as.integer(.data$ovlp_end - .data$ovlp_start) + 1L,
-      ovlp_days  = dplyr::if_else(.data$ovlp_days < 1L, 0L, .data$ovlp_days)
-    ) |>
-    dplyr::filter(.data$ovlp_days >= min_overlap_days)
-
-  # --- duration-weighted mean dose per gold record ----------------------------
-  # Refinement over eval.R's slice(1L): instead of taking the single best-
-  # overlapping episode, weight ALL overlapping computed episodes by their
-  # overlap duration within the gold window.
-  weighted <- merged |>
-    dplyr::group_by(.data$person_id, .data$drug_name_std,
-                    .data$g_start, .data$g_end, .data$gold_dose) |>
-    dplyr::summarise(
-      computed_dose       = sum(.data$c_dose * .data$ovlp_days, na.rm = TRUE) /
-                              sum(.data$ovlp_days),
-      n_computed_episodes = dplyr::n(),
-      total_overlap_days  = sum(.data$ovlp_days),
-      .groups = "drop"
-    )
-
-  # --- build comparison (one row per gold record, even if unmatched) ----------
-  comparison <- gold |>
-    dplyr::left_join(
-      weighted,
-      by = c("person_id", "drug_name_std", "g_start", "g_end", "gold_dose")
-    ) |>
-    dplyr::rename(gold_start = "g_start", gold_end = "g_end") |>
-    dplyr::mutate(
-      gold_duration = as.integer(.data$gold_end - .data$gold_start) + 1L,
-      overlap_pct   = 100 * .data$total_overlap_days / .data$gold_duration,
-
-      absolute_error              = abs(.data$computed_dose - .data$gold_dose),
-      bias_error                  = .data$computed_dose - .data$gold_dose,
-      relative_error_pct          = (.data$computed_dose - .data$gold_dose) /
-                                      .data$gold_dose * 100,
-      absolute_relative_error_pct = abs(.data$relative_error_pct),
-
-      agreement_category = dplyr::case_when(
-        .data$absolute_relative_error_pct <= 5  ~ "Exact (<=5%)",
-        .data$absolute_relative_error_pct <= 20 ~ "Good (<=20%)",
-        .data$absolute_relative_error_pct <= 50 ~ "Moderate (<=50%)",
-        !is.na(.data$absolute_relative_error_pct) ~ "Poor (>50%)",
-        TRUE ~ NA_character_
-      ),
-      error_direction = dplyr::case_when(
-        .data$bias_error > 0  ~ "Over-estimation",
-        .data$bias_error < 0  ~ "Under-estimation",
-        .data$bias_error == 0 ~ "Exact match",
-        TRUE ~ NA_character_
-      )
-    )
-
-  n_gold    <- nrow(gold)
-  n_matched <- sum(!is.na(comparison$computed_dose))
-  matched   <- comparison |> dplyr::filter(!is.na(.data$computed_dose))
-
-  # --- summary metrics --------------------------------------------------------
-  pcor <- if (nrow(matched) >= 3L)
-    stats::cor(matched$computed_dose, matched$gold_dose,
-               use = "complete.obs", method = "pearson")
-  else NA_real_
-
-  scor <- if (nrow(matched) >= 3L)
-    stats::cor(matched$computed_dose, matched$gold_dose,
-               use = "complete.obs", method = "spearman")
-  else NA_real_
-
-  summary_tbl <- tibble::tibble(
-    n_gold_records         = n_gold,
-    n_matched_records      = n_matched,
-    coverage_pct           = 100 * n_matched / n_gold,
-    MAE                    = mean(matched$absolute_error,              na.rm = TRUE),
-    MBE                    = mean(matched$bias_error,                  na.rm = TRUE),
-    RMSE                   = sqrt(mean(matched$bias_error^2,           na.rm = TRUE)),
-    median_AE              = stats::median(matched$absolute_error,     na.rm = TRUE),
-    MAPE                   = mean(matched$absolute_relative_error_pct, na.rm = TRUE),
-    mean_relative_bias_pct = mean(matched$relative_error_pct,         na.rm = TRUE),
-    pearson_corr           = pcor,
-    spearman_corr          = scor
-  )
-
-  # --- stratified by drug -----------------------------------------------------
-  strat_drug <- comparison |>
-    dplyr::filter(!is.na(.data$computed_dose)) |>
-    dplyr::group_by(.data$drug_name_std) |>
-    dplyr::summarise(
-      n    = dplyr::n(),
-      MAE  = mean(.data$absolute_error,              na.rm = TRUE),
-      MBE  = mean(.data$bias_error,                  na.rm = TRUE),
-      MAPE = mean(.data$absolute_relative_error_pct, na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  list(
-    comparison = comparison,
-    summary    = summary_tbl,
-    stratified = list(by_drug = strat_drug)
-  )
 }
