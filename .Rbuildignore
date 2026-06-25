@@ -17,3 +17,7 @@
 ^R\.env$
 ^\.venv$
 ^\.ipynb_checkpoints$
+^LLM_to_Run\.R$
+^LLMToRun\.R$
+^LLMToRun\.ipynb$
+^LLM$
