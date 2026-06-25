@@ -618,3 +618,175 @@ evaluate_detection <- function(
     detail_negative = detail_negative
   )
 }
+
+# ---------------------------------------------------------------------------
+# Internal: classify SIG text into interpretable categories
+# ---------------------------------------------------------------------------
+
+#' Classify SIG text into clinically meaningful categories
+#'
+#' Used by error-decomposition and manual-review extras scripts to label each
+#' drug-exposure record's SIG string as one of: `"steady"`, `"taper"`,
+#' `"escalation"`, `"prn"`, `"conflicting"`, `"ambiguous"`, `"no_sig"`.
+#'
+#' @param sig_text     Character vector of raw SIG strings.
+#' @param sig_status   Character vector of parser status (`"ok"`, `"taper"`, etc.).
+#' @param sig_taper_flag Logical vector; `TRUE` when taper language detected.
+#' @param bl_dose      Numeric vector of baseline doses (mg/day).
+#' @param sig_dose     Numeric vector of NLP doses (mg/day).
+#' @param conflict_thr Numeric(1). `|bl_dose - sig_dose|` above this → `"conflicting"`.
+#' @return Character vector of SIG type labels.
+#' @noRd
+classify_sig_type <- function(sig_text, sig_status, sig_taper_flag,
+                               bl_dose, sig_dose, conflict_thr = 20) {
+  taper_flag <- !is.na(sig_taper_flag) & sig_taper_flag
+  both_avail <- !is.na(bl_dose) & !is.na(sig_dose)
+  txt_lc     <- tolower(ifelse(is.na(sig_text), "", sig_text))
+
+  dplyr::case_when(
+    taper_flag | (!is.na(sig_status) & sig_status %in% c("taper", "taper_ok"))
+      ~ "taper",
+    both_avail & abs(bl_dose - sig_dose) > conflict_thr
+      ~ "conflicting",
+    (!is.na(sig_status) & sig_status == "prn") |
+      grepl("\\bas needed\\b|\\bprn\\b", txt_lc)
+      ~ "prn",
+    grepl("\\bincrease|\\bescalate|\\btitrate|\\bump\\s+to|\\bump\\s+dose", txt_lc) &
+      !grepl("\\btaper|\\bdecrease|\\breduce|\\bwean", txt_lc)
+      ~ "escalation",
+    is.na(sig_text) | sig_text == ""
+      ~ "no_sig",
+    !is.na(sig_status) & sig_status %in% c("no_parse", "free_text", "empty")
+      ~ "ambiguous",
+    !is.na(sig_status) & sig_status == "ok"
+      ~ "steady",
+    TRUE ~ "ambiguous"
+  )
+}
+
+# ---------------------------------------------------------------------------
+# Internal: gold-anchored dose comparison
+# ---------------------------------------------------------------------------
+
+#' Compare computed record-level doses against gold-standard episodes
+#'
+#' Alternative to [evaluate_against_gold()]: instead of building gap-bridged
+#' episodes, this function clips every computed drug-exposure record to each
+#' overlapping gold window, day-expands, sums doses per calendar day (handling
+#' concurrent prescriptions correctly), and returns per-gold-episode averages.
+#'
+#' The denominator is always the full gold duration, so days with no matching
+#' record contribute 0 dose — coverage gaps are visible in `avg_daily_dose_mg`
+#' rather than being silently ignored.
+#'
+#' @param records_df Data frame with columns `person_id`,
+#'   `drug_exposure_start_date`, `drug_exposure_end_date`, `pred_equiv_mg`.
+#'   Typically the output of `convert_pred_equiv()` on record-level doses.
+#' @param gold_df Data frame with columns `patient_id`, `episode_start`,
+#'   `episode_end`, `median_daily_dose`, `gold_duration_days`.
+#' @return One row per gold episode with columns: `patient_id`, `episode_start`,
+#'   `episode_end`, `gold_duration_days`, `gold_dose`, `n_records`,
+#'   `coverage_days`, `coverage_pct`, `cumulative_dose_mg`, `avg_daily_dose_mg`.
+#' @noRd
+compute_gold_anchored <- function(records_df, gold_df) {
+  overlapping <- records_df |>
+    dplyr::transmute(
+      pt_id     = as.integer(person_id),
+      rec_start = drug_exposure_start_date,
+      rec_end   = drug_exposure_end_date,
+      dose      = pred_equiv_mg
+    ) |>
+    dplyr::inner_join(
+      gold_df |>
+        dplyr::transmute(
+          pt_id     = as.integer(patient_id),
+          g_start   = episode_start,
+          g_end     = episode_end,
+          gold_dur  = gold_duration_days,
+          gold_dose = median_daily_dose
+        ),
+      by = "pt_id", relationship = "many-to-many"
+    ) |>
+    dplyr::filter(rec_start <= g_end, rec_end >= g_start)
+
+  empty_result <- gold_df |>
+    dplyr::transmute(
+      patient_id         = as.integer(patient_id),
+      episode_start, episode_end,
+      gold_duration_days,
+      gold_dose          = median_daily_dose,
+      n_records          = 0L,
+      coverage_days      = 0L,
+      coverage_pct       = 0,
+      cumulative_dose_mg = NA_real_,
+      avg_daily_dose_mg  = NA_real_
+    )
+
+  if (nrow(overlapping) == 0L) {
+    warning("No records overlap any gold episode.")
+    return(empty_result)
+  }
+
+  overlapping <- overlapping |>
+    dplyr::mutate(
+      clip_start = pmax(rec_start, g_start),
+      clip_end   = pmin(rec_end,   g_end)
+    ) |>
+    dplyr::filter(!is.na(clip_start), !is.na(clip_end), clip_start <= clip_end)
+
+  if (nrow(overlapping) == 0L) {
+    warning("No valid clipped records remain after date-bound check.")
+    return(empty_result)
+  }
+
+  daily_totals <- overlapping |>
+    dplyr::rowwise() |>
+    dplyr::mutate(day = list(seq.Date(clip_start, clip_end, by = "day"))) |>
+    dplyr::ungroup() |>
+    tidyr::unnest(cols = day) |>
+    dplyr::group_by(pt_id, g_start, g_end, gold_dur, gold_dose, day) |>
+    dplyr::summarise(day_dose = sum(dose, na.rm = TRUE), .groups = "drop")
+
+  episode_summary <- daily_totals |>
+    dplyr::group_by(pt_id, g_start, g_end, gold_dur, gold_dose) |>
+    dplyr::summarise(
+      coverage_days      = dplyr::n(),
+      cumulative_dose_mg = sum(day_dose, na.rm = TRUE),
+      .groups            = "drop"
+    ) |>
+    dplyr::mutate(
+      coverage_pct      = round(100 * coverage_days / gold_dur, 1),
+      avg_daily_dose_mg = round(cumulative_dose_mg / gold_dur, 3)
+    )
+
+  n_records_per_ep <- overlapping |>
+    dplyr::group_by(pt_id, g_start, g_end) |>
+    dplyr::summarise(n_records = dplyr::n(), .groups = "drop")
+
+  episode_summary <- episode_summary |>
+    dplyr::left_join(n_records_per_ep, by = c("pt_id", "g_start", "g_end"))
+
+  gold_df |>
+    dplyr::transmute(
+      patient_id         = as.integer(patient_id),
+      episode_start, episode_end,
+      gold_duration_days,
+      gold_dose          = median_daily_dose
+    ) |>
+    dplyr::left_join(
+      episode_summary |>
+        dplyr::transmute(
+          patient_id         = pt_id,
+          episode_start      = g_start,
+          episode_end        = g_end,
+          n_records, coverage_days, coverage_pct,
+          cumulative_dose_mg, avg_daily_dose_mg
+        ),
+      by = c("patient_id", "episode_start", "episode_end")
+    ) |>
+    dplyr::mutate(
+      n_records     = dplyr::coalesce(n_records, 0L),
+      coverage_days = dplyr::coalesce(coverage_days, 0L),
+      coverage_pct  = dplyr::coalesce(coverage_pct, 0)
+    )
+}

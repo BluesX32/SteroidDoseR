@@ -15,6 +15,17 @@
   directly within R is retained: `LLM_to_Run.R` (ollama via httr2) and
   `R/nlp_notes.R` + `inst/python/medspacy_pipeline.py` (medspaCy via reticulate).
 
+* **Top-level run scripts consolidated** (`CodeToRun_jh.R`, `CodeToRun_test.R`,
+  `error_decomposition.R`, `manual_review.R`, `CodeToRun_hierarchical.R`,
+  `parameter_selection.R` cleaned up):
+  - `CodeToRun_jh.R` — stale 3-method copy of the old `CodeToRun.R` — deleted.
+  - `CodeToRun_test.R` — experimental gold-anchored episode comparison — deleted;
+    `compute_gold_anchored()` internalized to `R/eval.R` (`@noRd`).
+  - `error_decomposition.R` and `manual_review.R` — moved to `extras/`; broken
+    `RESULTS_DIR` load paths (referencing deleted `CodeToRun_hierarchical.R`
+    output) removed; both now always recompute from scratch.
+  - `classify_sig_type()` internalized to `R/eval.R` (`@noRd`).
+
 * **`parameter_selection.R` and `CodeToRun_hierarchical.R` removed**: Both
   top-level scripts have been deleted. `apply_adaptive_decision()` — the core
   helper that re-applies the hierarchical decision rule to pre-computed

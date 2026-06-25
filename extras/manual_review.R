@@ -1,14 +1,7 @@
-# manual_review.R
+# manual_review.R  (extras/)
 # Generates a long-format CSV pairing gold-standard episodes with the
 # computed drug-exposure records that overlap them, then launches a Shiny
 # dashboard for patient-by-patient manual review.
-#
-# Run modes
-# ---------
-#   RESULTS_DIR = "output_hierarchical/YYYY-MM-DD_HH-MM-SS"
-#     → load saved CSVs from a prior CodeToRun_hierarchical.R run (fast)
-#   RESULTS_DIR = NULL
-#     → recompute from scratch
 #
 # CSV structure (one row per gold episode OR computed record)
 # ----------------------------------------------------------
@@ -41,9 +34,6 @@ library(dplyr)
 # ===========================================================================
 # 0. Configuration
 # ===========================================================================
-RESULTS_DIR <- NULL   # e.g. "output_hierarchical/2025-05-24_14-32-05"
-
-# Only used when RESULTS_DIR = NULL
 USE_SYNTHETIC  <- FALSE
 START_DATE     <- "2015-01-01"
 END_DATE       <- "2025-12-31"
@@ -66,128 +56,111 @@ STEROID_CONCEPT_IDS <- as.integer(readr::read_csv(
 # ===========================================================================
 # 1. Load data
 # ===========================================================================
-if (!is.null(RESULTS_DIR)) {
-  message(sprintf("Loading saved results from: %s", RESULTS_DIR))
-  hier_df       <- readr::read_csv(file.path(RESULTS_DIR, "records_hierarchical.csv"),
-                                   show_col_types = FALSE)
-  hier_episodes <- readr::read_csv(file.path(RESULTS_DIR, "episodes_hierarchical.csv"),
-                                   show_col_types = FALSE)
-  gold_std      <- readr::read_csv(file.path(RESULTS_DIR, "gold_standard.csv"),
-                                   show_col_types = FALSE)
-  hier_df$drug_exposure_start_date <- as.Date(hier_df$drug_exposure_start_date)
-  hier_df$drug_exposure_end_date   <- as.Date(hier_df$drug_exposure_end_date)
-  hier_episodes$episode_start      <- as.Date(hier_episodes$episode_start)
-  hier_episodes$episode_end        <- as.Date(hier_episodes$episode_end)
-  gold_std$episode_start           <- as.Date(gold_std$episode_start)
-  gold_std$episode_end             <- as.Date(gold_std$episode_end)
+if (!USE_SYNTHETIC) {
+  # ── Option B: DatabaseConnector ──────────────────────────────────────────
+  # cdm_schema   <- "database.dbo"
+  # vocab_schema <- "database.dbo"
+  # connectionDetails <- DatabaseConnector::createConnectionDetails(...)
+  # conn <- DatabaseConnector::connect(connectionDetails)
 
-} else {
-  if (!USE_SYNTHETIC) {
-    # ── Option B: DatabaseConnector ──────────────────────────────────────────
-    # cdm_schema   <- "database.dbo"
-    # vocab_schema <- "database.dbo"
-    # connectionDetails <- DatabaseConnector::createConnectionDetails(...)
-    # conn <- DatabaseConnector::connect(connectionDetails)
+  # ── Option C: DBI / odbc ─────────────────────────────────────────────────
+  # library(DBI); library(odbc)
+  # DB_DIALECT <- "spark"
+  # conn <- DBI::dbConnect(...)
+}
 
-    # ── Option C: DBI / odbc ─────────────────────────────────────────────────
-    # library(DBI); library(odbc)
-    # DB_DIALECT <- "spark"
-    # conn <- DBI::dbConnect(...)
-  }
+read_pkg_sql <- function(f) {
+  p <- system.file("sql", f, package = "SteroidDoseR")
+  if (!nchar(p)) p <- file.path("inst", "sql", f)
+  SqlRender::readSql(p)
+}
 
-  read_pkg_sql <- function(f) {
-    p <- system.file("sql", f, package = "SteroidDoseR")
-    if (!nchar(p)) p <- file.path("inst", "sql", f)
-    SqlRender::readSql(p)
-  }
-
-  if (!USE_SYNTHETIC) {
-    query_omop <- function(sql, ...) {
-      if (inherits(conn, "DatabaseConnectorConnection"))
-        DatabaseConnector::renderTranslateQuerySql(conn, sql, ...,
-                                                   snakeCaseToCamelCase = FALSE)
-      else
-        DBI::dbGetQuery(conn, SqlRender::translate(
-          SqlRender::render(sql, ...), targetDialect = DB_DIALECT))
-    }
-  }
-
-  if (USE_SYNTHETIC) {
-    message("Using bundled synthetic data")
-    drug_df <- readr::read_csv(
-      system.file("extdata", "synthetic_drug_exposure.csv",
-                  package = "SteroidDoseR"),
-      show_col_types = FALSE)
-  } else {
-    message("Extracting from live OMOP CDM")
-    sql <- read_pkg_sql("extract_drug_exposure.sql")
-    drug_df <- query_omop(
-      sql,
-      cdm_schema     = cdm_schema,
-      vocab_schema   = vocab_schema,
-      start_date     = START_DATE,
-      end_date       = END_DATE,
-      concept_filter = paste(STEROID_CONCEPT_IDS, collapse = ","),
-      person_filter  = if (!is.null(COHORT_PERSON_IDS))
-                         paste(COHORT_PERSON_IDS, collapse = ",") else ""
-    )
-    names(drug_df) <- tolower(names(drug_df))
-    drug_df$drug_exposure_start_date <- as.Date(drug_df$drug_exposure_start_date)
-    drug_df$drug_exposure_end_date   <- as.Date(drug_df$drug_exposure_end_date)
-  }
-
-  drug_df <- drug_df |>
-    dplyr::mutate(drug_name_std = standardize_drug_name(drug_concept_name))
-  if (!"drug_exposure_id" %in% names(drug_df))
-    drug_df <- drug_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
-
-  hier_df <- calc_daily_dose_hierarchical(
-    drug_df, diff_threshold = DIFF_THRESHOLD, match_tol = MATCH_TOL,
-    max_daily_dose_mg = 2000, filter_oral = TRUE)
-
-  hier_eq <- convert_pred_equiv(hier_df,
-                                drug_col = "drug_name_std",
-                                dose_col = "daily_dose_mg")
-  hier_episodes <- build_episodes(hier_eq,
-                                  end_col        = "drug_exposure_end_date",
-                                  dose_col       = "pred_equiv_mg",
-                                  gap_days       = GAP_DAYS,
-                                  concurrent_agg = CONCURRENT_AGG)
-
-  gold_std <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
-  gold_std$episode_start <- as.Date(gold_std$episode_start)
-  gold_std$episode_end   <- as.Date(gold_std$episode_end)
-
-  # Gold pred-equiv conversion
-  gold_drug_map <- hier_df |>
-    dplyr::select(person_id, drug_name_std,
-                  drug_exposure_start_date, drug_exposure_end_date) |>
-    dplyr::rename(patient_id = person_id) |>
-    dplyr::inner_join(
-      gold_std |> dplyr::select(patient_id, episode_start, episode_end),
-      by = "patient_id", relationship = "many-to-many") |>
-    dplyr::filter(drug_exposure_start_date <= episode_end,
-                  drug_exposure_end_date   >= episode_start,
-                  !is.na(drug_name_std)) |>
-    dplyr::group_by(patient_id, episode_start, episode_end, drug_name_std) |>
-    dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
-    dplyr::group_by(patient_id, episode_start, episode_end) |>
-    dplyr::slice_max(n, n = 1L, with_ties = FALSE) |>
-    dplyr::ungroup() |>
-    dplyr::select(patient_id, episode_start, episode_end, drug_name_std)
-
-  gold_std <- gold_std |>
-    dplyr::left_join(gold_drug_map,
-                     by = c("patient_id", "episode_start", "episode_end")) |>
-    convert_pred_equiv(drug_col = "drug_name_std", dose_col = "median_daily_dose",
-                       out_col  = "gold_pred_equiv_mg") |>
-    dplyr::mutate(median_daily_dose =
-                    dplyr::coalesce(gold_pred_equiv_mg, median_daily_dose))
-
-  if (!USE_SYNTHETIC && exists("conn")) {
+if (!USE_SYNTHETIC) {
+  query_omop <- function(sql, ...) {
     if (inherits(conn, "DatabaseConnectorConnection"))
-      DatabaseConnector::disconnect(conn) else DBI::dbDisconnect(conn)
+      DatabaseConnector::renderTranslateQuerySql(conn, sql, ...,
+                                                 snakeCaseToCamelCase = FALSE)
+    else
+      DBI::dbGetQuery(conn, SqlRender::translate(
+        SqlRender::render(sql, ...), targetDialect = DB_DIALECT))
   }
+}
+
+if (USE_SYNTHETIC) {
+  message("Using bundled synthetic data")
+  drug_df <- readr::read_csv(
+    system.file("extdata", "synthetic_drug_exposure.csv",
+                package = "SteroidDoseR"),
+    show_col_types = FALSE)
+} else {
+  message("Extracting from live OMOP CDM")
+  sql <- read_pkg_sql("extract_drug_exposure.sql")
+  drug_df <- query_omop(
+    sql,
+    cdm_schema     = cdm_schema,
+    vocab_schema   = vocab_schema,
+    start_date     = START_DATE,
+    end_date       = END_DATE,
+    concept_filter = paste(STEROID_CONCEPT_IDS, collapse = ","),
+    person_filter  = if (!is.null(COHORT_PERSON_IDS))
+                       paste(COHORT_PERSON_IDS, collapse = ",") else ""
+  )
+  names(drug_df) <- tolower(names(drug_df))
+  drug_df$drug_exposure_start_date <- as.Date(drug_df$drug_exposure_start_date)
+  drug_df$drug_exposure_end_date   <- as.Date(drug_df$drug_exposure_end_date)
+}
+
+drug_df <- drug_df |>
+  dplyr::mutate(drug_name_std = standardize_drug_name(drug_concept_name))
+if (!"drug_exposure_id" %in% names(drug_df))
+  drug_df <- drug_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
+
+hier_df <- calc_daily_dose_hierarchical(
+  drug_df, diff_threshold = DIFF_THRESHOLD, match_tol = MATCH_TOL,
+  max_daily_dose_mg = 2000, filter_oral = TRUE)
+
+hier_eq <- convert_pred_equiv(hier_df,
+                              drug_col = "drug_name_std",
+                              dose_col = "daily_dose_mg")
+hier_episodes <- build_episodes(hier_eq,
+                                end_col        = "drug_exposure_end_date",
+                                dose_col       = "pred_equiv_mg",
+                                gap_days       = GAP_DAYS,
+                                concurrent_agg = CONCURRENT_AGG)
+
+gold_std <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
+gold_std$episode_start <- as.Date(gold_std$episode_start)
+gold_std$episode_end   <- as.Date(gold_std$episode_end)
+
+# Gold pred-equiv conversion
+gold_drug_map <- hier_df |>
+  dplyr::select(person_id, drug_name_std,
+                drug_exposure_start_date, drug_exposure_end_date) |>
+  dplyr::rename(patient_id = person_id) |>
+  dplyr::inner_join(
+    gold_std |> dplyr::select(patient_id, episode_start, episode_end),
+    by = "patient_id", relationship = "many-to-many") |>
+  dplyr::filter(drug_exposure_start_date <= episode_end,
+                drug_exposure_end_date   >= episode_start,
+                !is.na(drug_name_std)) |>
+  dplyr::group_by(patient_id, episode_start, episode_end, drug_name_std) |>
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
+  dplyr::group_by(patient_id, episode_start, episode_end) |>
+  dplyr::slice_max(n, n = 1L, with_ties = FALSE) |>
+  dplyr::ungroup() |>
+  dplyr::select(patient_id, episode_start, episode_end, drug_name_std)
+
+gold_std <- gold_std |>
+  dplyr::left_join(gold_drug_map,
+                   by = c("patient_id", "episode_start", "episode_end")) |>
+  convert_pred_equiv(drug_col = "drug_name_std", dose_col = "median_daily_dose",
+                     out_col  = "gold_pred_equiv_mg") |>
+  dplyr::mutate(median_daily_dose =
+                  dplyr::coalesce(gold_pred_equiv_mg, median_daily_dose))
+
+if (!USE_SYNTHETIC && exists("conn")) {
+  if (inherits(conn, "DatabaseConnectorConnection"))
+    DatabaseConnector::disconnect(conn) else DBI::dbDisconnect(conn)
 }
 
 message(sprintf(
