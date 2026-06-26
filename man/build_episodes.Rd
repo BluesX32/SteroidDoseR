@@ -74,6 +74,15 @@ A data frame with one row per patient-drug episode:
 episode. Use this (via \code{computed_dose_col = "mean_daily_dose"} in
 \code{\link[=evaluate_against_gold]{evaluate_against_gold()}}) to weight longer prescriptions more heavily
 than short ones.}
+\item{dose_implausible}{\code{logical}. \code{TRUE} when \code{mean_daily_dose < 1} mg/day —
+the smallest commercially available tablet strength. These episodes are
+almost always PRN artefacts, quantity÷days_supply rounding errors, or
+non-oral records that slipped through the route filter. Exclude from
+primary analyses but inspect rather than silently drop.}
+\item{pulse_episode}{\code{logical}. \code{TRUE} when \code{mean_daily_dose > 100} mg/day
+pred-equivalent. Likely IV methylprednisolone pulse courses converted to
+oral equivalents. These are real episodes but may not be captured in a
+gold standard annotated for chronic oral dosing; report separately.}
 \item{\emph{extra_cols} columns}{Any columns listed in \code{extra_cols} that were
 present in the input are appended as their statistical mode per episode
 (most common value across all records merged into the episode).}

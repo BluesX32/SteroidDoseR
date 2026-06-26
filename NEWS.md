@@ -2,6 +2,15 @@
 
 ## New features
 
+* **`dose_implausible` and `pulse_episode` flags in `build_episodes()`**
+  (`R/episodes.R`): Every episode tibble now includes two logical flag columns.
+  `dose_implausible = TRUE` when `mean_daily_dose < 1` mg/day (sub-tablet-strength
+  episodes that are almost always PRN artefacts or quantity÷days_supply rounding
+  errors). `pulse_episode = TRUE` when `mean_daily_dose > 100` mg/day pred-equivalent
+  (likely IV pulse courses). `CodeToRun.R` now excludes `dose_implausible` episodes
+  from the primary evaluation and reports pulse sensitivity inline. A parsed-status ×
+  dose breakdown table verifies that PRN removal is working as intended.
+
 * **PRN exclusion** (`R/nlp_advanced.R`, `R/nlp.R`, `R/hierarchical.R`):
   All three NLP-based daily-dose functions now accept `prn_action = c("na", "keep")`
   (default `"na"`). Records whose parsed SIG status is `"prn"` (as-needed) receive

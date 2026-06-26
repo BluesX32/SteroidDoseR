@@ -60,6 +60,15 @@
 #'     episode. Use this (via `computed_dose_col = "mean_daily_dose"` in
 #'     [evaluate_against_gold()]) to weight longer prescriptions more heavily
 #'     than short ones.}
+#'   \item{dose_implausible}{`logical`. `TRUE` when `mean_daily_dose < 1` mg/day
+#'     — the smallest commercially available tablet strength. These episodes are
+#'     almost always PRN artefacts, quantity÷days_supply rounding errors, or
+#'     non-oral records that slipped through the route filter. Filter them out
+#'     of primary analyses but inspect them rather than silently dropping.}
+#'   \item{pulse_episode}{`logical`. `TRUE` when `mean_daily_dose > 100` mg/day
+#'     pred-equivalent. Likely IV methylprednisolone pulse courses converted to
+#'     oral equivalents. These episodes are real but may not be captured in a
+#'     gold standard annotated for chronic oral dosing; report separately.}
 #' }
 #'
 #' @export
@@ -232,7 +241,11 @@ build_episodes <- function(connector_or_df,
       "episode_start", "episode_end", "n_days", "n_records",
       "median_daily_dose", "min_daily_dose", "max_daily_dose", "mean_daily_dose"
     ) |>
-    dplyr::arrange(.data$person_id, .data$drug_name_std, .data$episode_start)
+    dplyr::arrange(.data$person_id, .data$drug_name_std, .data$episode_start) |>
+    dplyr::mutate(
+      dose_implausible = !is.na(.data$mean_daily_dose) & .data$mean_daily_dose < 1,
+      pulse_episode    = !is.na(.data$mean_daily_dose) & .data$mean_daily_dose > 100
+    )
 
   # --- propagate extra_cols by statistical mode per episode ------------------
   if (!is.null(extra_lookup) && length(extra_present) > 0L) {
@@ -340,6 +353,8 @@ gap_sensitivity <- function(drug_df,
     median_daily_dose = numeric(0),
     min_daily_dose    = numeric(0),
     max_daily_dose    = numeric(0),
-    mean_daily_dose   = numeric(0)
+    mean_daily_dose   = numeric(0),
+    dose_implausible  = logical(0),
+    pulse_episode     = logical(0)
   )
 }

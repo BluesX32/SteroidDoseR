@@ -371,6 +371,21 @@ nlp_episodes <- build_episodes(
 
 show_person_trajectories(nlp_episodes, "NLP")
 
+# Plausibility flag summary (applies to both methods)
+.flag_summary <- function(ep, label) {
+  n_impl  <- sum(ep$dose_implausible, na.rm = TRUE)
+  n_pulse <- sum(ep$pulse_episode,    na.rm = TRUE)
+  cat(sprintf(
+    "\n%s flags: %d dose_implausible (<1 mg/day, %.1f%%), %d pulse_episode (>100 mg/day, %.1f%%) of %d episodes\n",
+    label,
+    n_impl,  100 * n_impl  / nrow(ep),
+    n_pulse, 100 * n_pulse / nrow(ep),
+    nrow(ep)
+  ))
+}
+.flag_summary(baseline_episodes, "Baseline")
+.flag_summary(nlp_episodes,      "NLP")
+
 # ===========================================================================
 # 6. DOSE DISTRIBUTIONS
 # ===========================================================================
@@ -388,6 +403,27 @@ dist_df <- dplyr::bind_rows(
   make_dist_df(nlp_episodes,      "NLP")
 )
 # NOTE: Distribution plot printed after Section 7 once gold standard is loaded.
+
+# Parsed-status × dose breakdown — verifies PRN removal and shows which
+# categories drive the low-dose (<1 mg) and high-dose (>100 mg) tails.
+if ("parsed_status" %in% names(nlp_episodes)) {
+  cat("\nNLP episodes: dose distribution by parsed_status:\n")
+  nlp_episodes |>
+    dplyr::filter(!is.na(mean_daily_dose)) |>
+    dplyr::group_by(parsed_status) |>
+    dplyr::summarise(
+      n               = dplyr::n(),
+      pct_implausible = round(100 * mean(dose_implausible, na.rm = TRUE), 1),
+      pct_pulse       = round(100 * mean(pulse_episode,    na.rm = TRUE), 1),
+      q25             = round(stats::quantile(mean_daily_dose, 0.25, na.rm = TRUE), 1),
+      median          = round(stats::median(mean_daily_dose, na.rm = TRUE), 1),
+      q75             = round(stats::quantile(mean_daily_dose, 0.75, na.rm = TRUE), 1),
+      .groups = "drop"
+    ) |>
+    dplyr::arrange(dplyr::desc(n)) |>
+    as.data.frame() |>
+    print(row.names = FALSE)
+}
 
 cat("\nDose distribution summary by method (mg prednisone-equivalent):\n")
 dist_df |>
@@ -484,13 +520,22 @@ cat(sprintf(
 ))
 
 .run_comparison <- function(episodes_df, label) {
+  n_impl  <- sum(episodes_df$dose_implausible, na.rm = TRUE)
+  n_pulse <- sum(episodes_df$pulse_episode,    na.rm = TRUE)
+  if (n_impl > 0L)
+    cat(sprintf("  [%s] Excluding %d dose_implausible episodes (<1 mg/day) from primary evaluation\n",
+                label, n_impl))
+
+  # Primary evaluation: exclude artefactual sub-1 mg episodes
+  episodes_clean <- episodes_df |> dplyr::filter(!.data$dose_implausible)
+
   ev <- evaluate_against_gold(
-    episodes_df,
+    episodes_clean,
     gold_std_ok,
     gold_dose_col = "dose_daily_mg_equiv"
   )
   ev$n_common_patients <- length(intersect(
-    unique(episodes_df$person_id), unique(gold_std_ok$person_id)
+    unique(episodes_clean$person_id), unique(gold_std_ok$person_id)
   ))
   cat(sprintf(
     "\n%s: %d common patients | %d/%d gold records matched (%.1f%% coverage)\n",
@@ -503,6 +548,21 @@ cat(sprintf(
   cat(sprintf("  MAE=%.2f  MBE=%.2f  RMSE=%.2f  MAPE=%.1f%%  r=%.3f\n",
     ev$summary$MAE, ev$summary$MBE, ev$summary$RMSE,
     ev$summary$MAPE, ev$summary$pearson_corr))
+
+  # Pulse sensitivity: show metrics with and without >100 mg episodes
+  if (n_pulse > 0L) {
+    ev_np <- evaluate_against_gold(
+      episodes_clean |> dplyr::filter(!.data$pulse_episode),
+      gold_std_ok,
+      gold_dose_col = "dose_daily_mg_equiv"
+    )
+    cat(sprintf(
+      "  Excl. pulse episodes (>100 mg/day, n=%d): MAE=%.2f  MBE=%.2f  Coverage=%.1f%%\n",
+      n_pulse,
+      ev_np$summary$MAE, ev_np$summary$MBE, ev_np$summary$coverage_pct
+    ))
+  }
+
   cat("By dose range:\n")
   print(as.data.frame(ev$stratified$by_dose_range))
   ev
