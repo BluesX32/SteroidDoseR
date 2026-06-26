@@ -195,7 +195,11 @@ cli::cli_alert_info("Notes loaded: {nrow(notes_df)} rows | {dplyr::n_distinct(no
 }
 
 # Call the local ollama /api/chat endpoint for one note.
-# Returns parsed list from JSON or NULL on failure.
+# Retries up to MAX_RETRIES times with a fixed back-off before giving up.
+# Returns the LLM text string or NULL on permanent failure.
+MAX_RETRIES  <- 3L    # attempts per note before recording no_output
+RETRY_WAIT_S <- 5L    # seconds between retries
+
 .call_ollama <- function(note_text) {
   body <- list(
     model    = OLLAMA_MODEL,
@@ -209,10 +213,16 @@ cli::cli_alert_info("Notes loaded: {nrow(notes_df)} rows | {dplyr::n_distinct(no
       httr2::req_headers("Content-Type" = "application/json") |>
       httr2::req_body_json(body) |>
       httr2::req_timeout(TIMEOUT_SEC) |>
+      httr2::req_retry(
+        max_tries = MAX_RETRIES,
+        backoff   = \(i) RETRY_WAIT_S,   # fixed wait between attempts
+        is_transient = \(r) httr2::resp_status(r) %in% c(429L, 500L, 502L, 503L, 504L)
+      ) |>
       httr2::req_error(is_error = \(r) FALSE) |>   # don't throw; handle below
       httr2::req_perform(),
     error = function(e) {
-      warning("ollama request failed: ", conditionMessage(e))
+      warning("ollama request failed after ", MAX_RETRIES, " attempts: ",
+              conditionMessage(e))
       NULL
     }
   )
@@ -221,9 +231,8 @@ cli::cli_alert_info("Notes loaded: {nrow(notes_df)} rows | {dplyr::n_distinct(no
     return(NULL)
   }
 
-  raw_json  <- httr2::resp_body_json(resp, simplifyVector = FALSE)
-  llm_text  <- raw_json[["message"]][["content"]]
-  llm_text
+  raw_json <- httr2::resp_body_json(resp, simplifyVector = FALSE)
+  raw_json[["message"]][["content"]]
 }
 
 # Parse the LLM text output into a tidy data frame.
@@ -298,11 +307,15 @@ RUN_DIR  <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
 dir.create(RUN_DIR, recursive = TRUE)
 LOG_FILE <- file.path(RUN_DIR, "extraction.log")
 
-# Timestamped logger — writes to both console and log file
+# Open one persistent file connection for the log.
+# Re-opening on every .log() call (1657+ times) exhausts R's connection pool.
+LOG_CON <- file(LOG_FILE, open = "at")
+
+# Timestamped logger — writes to console and the persistent log connection
 .log <- function(msg) {
   line <- sprintf("[%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg)
   message(line)
-  cat(line, "\n", file = LOG_FILE, append = TRUE)
+  tryCatch(writeLines(line, con = LOG_CON), error = function(e) NULL)
 }
 
 # OMOP NOTE metadata columns to carry through to the output
@@ -491,4 +504,5 @@ writeLines(c(
 ), con = file.path(RUN_DIR, "params_llm.txt"))
 
 .log(sprintf("LLM records and episodes saved → %s", RUN_DIR))
+close(LOG_CON)   # flush and release the persistent log file connection
 message("=== LLMtoRun.R complete ===")
