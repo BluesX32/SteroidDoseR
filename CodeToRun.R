@@ -371,6 +371,115 @@ nlp_episodes <- build_episodes(
 
 show_person_trajectories(nlp_episodes, "NLP")
 
+# ===========================================================================
+# 5.5  FREQUENCY NORMALIZATION AUDIT
+#      freq_per_day and mg_per_admin are emitted by parse_sig_one_advanced().
+#      daily_dose_mg = mg_per_admin * freq_per_day when both are available.
+#      This section checks (a) whether freq is detected for multi-dose SIGs,
+#      (b) whether daily_dose_mg correctly reflects the frequency multiplier,
+#      and (c) what share of the 5-15 mg episode peak is driven by missed
+#      frequency (e.g. "10 mg BID" parsed as 10 rather than 20 mg/day).
+# ===========================================================================
+message("\n=== [5.5] Frequency normalization audit ===")
+
+if (all(c("freq_per_day", "mg_per_admin", "daily_dose_mg") %in% names(nlp_df))) {
+
+  # --- 5.5-i. Overall frequency distribution --------------------------------
+  cat("\nDistribution of freq_per_day (parsed doses-per-day):\n")
+  .freq_tbl <- as.data.frame(table(
+    freq_per_day = round(nlp_df$freq_per_day, 3L),
+    useNA        = "ifany"
+  ))
+  .freq_tbl$pct <- round(100 * .freq_tbl$Freq / nrow(nlp_df), 1)
+  print(.freq_tbl[order(-.freq_tbl$Freq), ], row.names = FALSE)
+
+  # --- 5.5-ii. Expected vs actual daily dose for multi-dose records ----------
+  # For records where freq > 1 and mg_per_admin is available:
+  #   expected_daily = mg_per_admin * freq_per_day
+  #   If daily_dose_mg ≈ mg_per_admin  → frequency was NOT applied  (bug)
+  #   If daily_dose_mg ≈ expected_daily → frequency WAS applied      (correct)
+  cat("\n--- Multi-dose records (freq_per_day > 1) ---\n")
+  .multi <- nlp_df |>
+    dplyr::filter(!is.na(.data$freq_per_day), .data$freq_per_day > 1,
+                  !is.na(.data$mg_per_admin),  !is.na(.data$daily_dose_mg)) |>
+    dplyr::mutate(
+      expected_daily   = .data$mg_per_admin * .data$freq_per_day,
+      freq_applied     = abs(.data$daily_dose_mg - .data$expected_daily) < 0.5,
+      freq_not_applied = abs(.data$daily_dose_mg - .data$mg_per_admin)   < 0.5
+    )
+
+  cat(sprintf("Records with freq_per_day > 1 and mg_per_admin available: %d\n",
+              nrow(.multi)))
+  if (nrow(.multi) > 0L) {
+    cat(sprintf("  Frequency correctly applied (daily ≈ per_admin × freq):  %d (%.1f%%)\n",
+                sum(.multi$freq_applied),
+                100 * mean(.multi$freq_applied)))
+    cat(sprintf("  Frequency NOT applied (daily ≈ per_admin only):           %d (%.1f%%)\n",
+                sum(.multi$freq_not_applied),
+                100 * mean(.multi$freq_not_applied)))
+    cat(sprintf("  Neither pattern (other calculation path):                  %d (%.1f%%)\n",
+                sum(!.multi$freq_applied & !.multi$freq_not_applied),
+                100 * mean(!.multi$freq_applied & !.multi$freq_not_applied)))
+  }
+
+  # --- 5.5-iii. Missed frequency detection: SIG text has BID/TID but
+  #              freq_per_day is NA or 1 (parser returned single-dose) --------
+  cat("\n--- Frequency keyword vs parsed freq_per_day ---\n")
+  if ("sig" %in% names(nlp_df)) {
+    .sig_lc <- tolower(trimws(as.character(
+      dplyr::coalesce(nlp_df$sig, "")
+    )))
+    .kw_multi <- grepl(
+      paste0(
+        "\\bbid\\b|\\bb\\.i\\.d|twice\\s+(a\\s+)?day|twice\\s+daily|",
+        "2\\s+times\\s+(a\\s+)?day|every\\s+12\\s*h|",
+        "\\btid\\b|\\bt\\.i\\.d|three\\s+times\\s+(a\\s+)?day|",
+        "every\\s+8\\s*h|\\bqid\\b|four\\s+times\\s+(a\\s+)?day|every\\s+6\\s*h"
+      ),
+      .sig_lc, perl = TRUE
+    )
+    .parsed_single <- is.na(nlp_df$freq_per_day) | nlp_df$freq_per_day <= 1
+
+    n_kw   <- sum(.kw_multi, na.rm = TRUE)
+    n_miss <- sum(.kw_multi & .parsed_single, na.rm = TRUE)
+    cat(sprintf("Records with BID/TID/QID keyword in SIG:          %d (%.1f%%)\n",
+                n_kw, 100 * n_kw / nrow(nlp_df)))
+    cat(sprintf("  …of which freq_per_day is NA or 1 (missed):     %d (%.1f%%)\n",
+                n_miss, 100 * n_miss / max(n_kw, 1L)))
+
+    # Show sample of missed cases
+    if (n_miss > 0L) {
+      cat("\nSample missed-frequency records (sig has BID/TID but freq_per_day ≤ 1):\n")
+      .missed_sample <- nlp_df[.kw_multi & .parsed_single, ] |>
+        dplyr::select(dplyr::any_of(c(
+          "person_id", "sig", "mg_per_admin", "freq_per_day",
+          "daily_dose_mg", "parsed_status"
+        ))) |>
+        head(15L)
+      print(as.data.frame(.missed_sample), row.names = FALSE)
+    }
+  }
+
+  # --- 5.5-iv. 5-15 mg episode peak: what share is multi-dose? -------------
+  cat("\n--- 5-15 mg daily_dose_mg records: frequency breakdown ---\n")
+  .low_mid <- nlp_df |>
+    dplyr::filter(!is.na(.data$daily_dose_mg),
+                  .data$daily_dose_mg >= 5, .data$daily_dose_mg <= 15)
+  cat(sprintf("Records in 5-15 mg range: %d\n", nrow(.low_mid)))
+  if (nrow(.low_mid) > 0L) {
+    .freq_breakdown <- as.data.frame(table(
+      freq_per_day   = round(.low_mid$freq_per_day, 2),
+      parsed_status  = .low_mid$parsed_status,
+      useNA          = "ifany"
+    ))
+    .freq_breakdown <- .freq_breakdown[.freq_breakdown$Freq > 0L, ]
+    print(.freq_breakdown[order(-.freq_breakdown$Freq), ], row.names = FALSE)
+  }
+
+} else {
+  message("  freq_per_day / mg_per_admin not in nlp_df — skipping frequency audit.")
+}
+
 # Plausibility flag summary (applies to both methods)
 .flag_summary <- function(ep, label) {
   n_impl  <- sum(ep$dose_implausible, na.rm = TRUE)
