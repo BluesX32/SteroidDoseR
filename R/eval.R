@@ -123,7 +123,17 @@ evaluate_against_gold <- function(computed_df,
   }
 
   # --- rename user columns to internal names ---------------------------------
+  # Drop any column whose target internal name already exists under a *different*
+  # source column name. Without this, renaming e.g. mean_daily_dose →
+  # median_daily_dose would fail when median_daily_dose is already present.
+  .drop_if_collision <- function(df, src, tgt) {
+    if (src != tgt && tgt %in% names(df)) dplyr::select(df, -dplyr::all_of(tgt)) else df
+  }
   computed_df <- computed_df |>
+    .drop_if_collision(computed_id_col,    "person_id") |>
+    .drop_if_collision(computed_start_col, "episode_start") |>
+    .drop_if_collision(computed_end_col,   "episode_end") |>
+    .drop_if_collision(computed_dose_col,  "median_daily_dose") |>
     dplyr::rename(
       person_id         = dplyr::all_of(computed_id_col),
       episode_start     = dplyr::all_of(computed_start_col),
@@ -131,6 +141,10 @@ evaluate_against_gold <- function(computed_df,
       median_daily_dose = dplyr::all_of(computed_dose_col)
     )
   gold_df <- gold_df |>
+    .drop_if_collision(gold_id_col,    "person_id") |>
+    .drop_if_collision(gold_start_col, "episode_start") |>
+    .drop_if_collision(gold_end_col,   "episode_end") |>
+    .drop_if_collision(gold_dose_col,  "median_daily_dose") |>
     dplyr::rename(
       person_id         = dplyr::all_of(gold_id_col),
       episode_start     = dplyr::all_of(gold_start_col),
