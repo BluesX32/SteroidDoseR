@@ -1082,6 +1082,88 @@ set dose to NA immediately after status is resolved, not as a later optional ste
 
 ---
 
+## 24. Test fixtures still using `patient_id` after rename to `person_id`
+
+**Symptom**
+
+```
+Error in `assert_required_cols()`: gold_df is missing required column(s): person_id.
+Available columns: patient_id, episode_start, episode_end, median_daily_dose
+```
+
+Six tests in `tests/testthat/test-eval-episodes.R` failed after `evaluate_against_gold()`
+was updated to default `gold_id_col = "person_id"`. The test helper `make_eval_pair()`
+and one inline gold tibble still constructed gold data frames with `patient_id = 1L`.
+
+**Root cause**
+
+When renaming a column that appears in both source code and test fixtures, tests must
+be updated in the same commit. The CI failure was the first indication the tests were
+missed.
+
+**Fix**
+
+Replace all `patient_id` with `person_id` in `tests/testthat/test-eval-episodes.R`.
+Use `grep -rn "patient_id" tests/` after any column rename to catch all occurrences.
+
+**Prevention**
+
+After renaming any ID column, run:
+```bash
+grep -rn "patient_id" R/ tests/ vignettes/ inst/
+```
+and fix every occurrence before pushing.
+
+---
+
+## 25. `globalVariables` missing for `@noRd` internal using bare dplyr column names
+
+**Symptom**
+
+```
+compute_gold_anchored: no visible binding for global variable 'person_id'
+compute_gold_anchored: no visible binding for global variable 'episode_start'
+... (50+ similar lines)
+Undefined global functions or variables:
+  avg_daily_dose_mg clip_end clip_start coverage_days ...
+```
+
+R CMD check NOTE (treated as ERROR in strict CI mode) for the `@noRd` internal
+function `compute_gold_anchored()` in `R/eval.R`. The function uses bare column
+names inside `dplyr::transmute()` and `dplyr::filter()` without `.data$` prefix.
+
+**Root cause**
+
+`utils::globalVariables()` was only declared in files that had exported functions
+with bare-name dplyr usage (e.g., `baseline.R`). When `compute_gold_anchored()`
+was rewritten to use bare names (during the `patient_id` → `person_id` rename),
+no `globalVariables()` declaration was added to `eval.R`.
+
+**Fix**
+
+Add at the top of `R/eval.R`:
+
+```r
+utils::globalVariables(c(
+  "person_id", "episode_start", "episode_end", "gold_duration_days",
+  "median_daily_dose", "drug_exposure_start_date", "drug_exposure_end_date",
+  "pred_equiv_mg", "pt_id", "rec_start", "rec_end", "g_start", "g_end",
+  "gold_dur", "gold_dose", "dose", "clip_start", "clip_end", "day",
+  "day_dose", "coverage_days", "coverage_pct", "cumulative_dose_mg",
+  "avg_daily_dose_mg", "n_records"
+))
+```
+
+**Prevention**
+
+Any function (exported or `@noRd`) that uses bare column names in dplyr verbs
+needs its names declared in `globalVariables()`. The alternative is to use
+`.data$colname` throughout, which avoids the need for the declaration but is
+more verbose. Prefer `.data$` for new code; use `globalVariables()` as a
+retroactive fix.
+
+---
+
 ## Quick reference
 
 | Check level | Issue | File(s) to edit |
@@ -1111,3 +1193,5 @@ set dose to NA immediately after status is resolved, not as a later optional ste
 | Runtime | `run_pipeline` "unused argument" for method-specific param | Add `note_col` (or similar) to `run_pipeline` signature and forward it; see #21 |
 | Logic bug | Inverted `%in%`: 7 values can't all be in a 3-row result | `all(result$col %in% valid)` not `all(valid %in% result$col)`; see #22 |
 | Logic bug | Historical/negated/uncertain NLP entity leaks a dose | After computing `parsed_status`, set `daily_dose_mg <- NA_real_` for non-current statuses; see #23 |
+| ERROR | Test fixtures use `patient_id` after column renamed to `person_id` | Update ALL gold tibbles in `tests/testthat/` to `person_id`; see #24 |
+| NOTE | `globalVariables` missing for `@noRd` internal using bare dplyr names | Add `utils::globalVariables(c(...))` at top of the R file containing the function; see #25 |

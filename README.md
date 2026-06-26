@@ -203,11 +203,19 @@ gold_std <- read_csv(file.path(extdata, "synthetic_gold_standard.csv"),
 # Gold standard doses are in native drug units — convert to pred-equiv first.
 # See docs/pipeline.html#evaluation for the full drug-mapping step.
 
-ev <- evaluate_against_gold(baseline_ep, gold_std, gold_id_col = "patient_id")
+# person_id is the default gold_id_col — no override needed if using parse_steroid_gold()
+ev <- evaluate_against_gold(
+  baseline_ep, gold_std,
+  gold_dose_col       = "dose_daily_mg_equiv",  # parse_steroid_gold() output column
+  computed_dose_col   = "mean_daily_dose"        # duration-weighted; better for tapers
+)
 
 ev$summary    # coverage_pct, MAE, MBE, RMSE, MAPE, pearson_corr
 ev$comparison # one row per gold episode: gold_dose, computed_dose, agreement_category
 ev$stratified # metrics by dose range (Low / Medium / High / Very High)
+
+# NOTE: filter PRN records before building episodes to avoid inflated dose estimates:
+# baseline_ep <- baseline_ep |> dplyr::filter(sig_status != "prn")
 ```
 
 ### 6b. Binary detection evaluation (kappa, sensitivity, specificity)
@@ -478,6 +486,25 @@ disconnect_connector(con)
 
 Table references use three-part Databricks names automatically:
 `deid.omop.drug_exposure`, `deid.omop.concept`, etc.
+
+---
+
+## Known limitations
+
+The following are documented design constraints. Each is being addressed in the
+v0.5.0 roadmap (see NEWS.md).
+
+| Limitation | Impact | Workaround |
+|---|---|---|
+| **PRN records included** | "as needed" prescriptions inflate dose estimates | Filter `sig_status != "prn"` before `build_episodes()` |
+| **Median dose per episode** | Tapered courses produce a central dose, not representative of any actual day | Use `computed_dose_col = "mean_daily_dose"` in `evaluate_against_gold()` for duration-weighted comparison |
+| **30-day gap assumption** | Short burst courses (<14 days) may be incorrectly merged if separated by <30 days | Pass `gap_days = 7` for burst-course cohorts; run sensitivity analysis |
+| **Blended hierarchical branch** | Averaging Baseline and NLP when they moderately disagree has no statistical basis | Use `apply_adaptive_decision()` with `override = "nlp"` to pick NLP instead |
+| **`match_tol = 0.01`** | Effectively zero — almost no records are labelled `cross_checked` | Set `match_tol = 1` (1 mg) or `match_tol = 0.05 * dose` for a %-based threshold |
+| **Equivalency factors hardcoded** | Dexamethasone range 6–10× in literature; triamcinolone oral bioavailability varies | Supply custom `equiv_table` to `convert_pred_equiv()` for sensitivity analysis |
+| **Oral solution strength** | `drug_concept_name` "1 MG/ML" treated as per-tablet, not per-mL | Exclude oral solutions or verify manually; route filter catches injections but not solutions |
+| **Budesonide excluded** | NA equiv_factor drops budesonide from all analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` if needed |
+| **No weight-based dosing** | mg/kg SIGs parsed to NA | Not applicable for most adult myositis patients |
 
 ---
 

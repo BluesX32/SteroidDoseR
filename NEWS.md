@@ -2,6 +2,14 @@
 
 ## New features
 
+* **CI fixes** (`R/eval.R`, `tests/testthat/test-eval-episodes.R`):
+  - `utils::globalVariables()` added to `R/eval.R` for all bare column names
+    used inside `compute_gold_anchored()` (`@noRd` internal); removes ~50-line
+    NOTE block from R CMD check output.
+  - Six `evaluate_against_gold` tests in `test-eval-episodes.R` failed because
+    the helper `make_eval_pair()` and one inline gold tibble still used
+    `patient_id` after the column was renamed to `person_id`. Fixed.
+
 * **`drug_concept_name` added as route-classification source** (`R/utils-validate.R`,
   `baseline.R`, `nlp.R`, `nlp_advanced.R`, `nlp_notes.R`, `hierarchical.R`):
   The oral-route filter now checks `drug_concept_name` (OMOP RxNorm standardized

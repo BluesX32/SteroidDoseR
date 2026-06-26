@@ -84,7 +84,7 @@ make_eval_pair <- function(comp_dose = 10, gold_dose = 10,
     median_daily_dose = comp_dose
   )
   gold <- tibble::tibble(
-    patient_id        = 1L,
+    person_id         = 1L,
     episode_start     = as.Date(start),
     episode_end       = as.Date(end),
     median_daily_dose = gold_dose

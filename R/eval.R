@@ -2,6 +2,17 @@
 # Gold-standard comparison -- ported from
 # DosageCalculation/Comparisons/Comparisons_Sep28.qmd (lines 52-178).
 
+# Suppress R CMD check NOTEs for bare column names used inside dplyr verbs
+# inside compute_gold_anchored() (an @noRd internal).
+utils::globalVariables(c(
+  "person_id", "episode_start", "episode_end", "gold_duration_days",
+  "median_daily_dose", "drug_exposure_start_date", "drug_exposure_end_date",
+  "pred_equiv_mg", "pt_id", "rec_start", "rec_end", "g_start", "g_end",
+  "gold_dur", "gold_dose", "dose", "clip_start", "clip_end", "day",
+  "day_dose", "coverage_days", "coverage_pct", "cumulative_dose_mg",
+  "avg_daily_dose_mg", "n_records"
+))
+
 #' Compare computed dose episodes against a gold standard
 #'
 #' Matches computed episodes to gold-standard episodes using a date-overlap
