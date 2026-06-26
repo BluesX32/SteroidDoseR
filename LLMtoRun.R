@@ -137,7 +137,6 @@ notes_sql <- "
   WHERE n.note_type_concept_id = 32831
     AND n.note_text IS NOT NULL
     AND TRIM(n.note_text) <> ''
-  LIMIT 200
 "
 # ── [USER SECTION END] ────────────────────────────────────────────────────
 
