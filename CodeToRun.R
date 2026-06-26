@@ -229,11 +229,11 @@ print(as.data.frame(.missingness_tbl), row.names = FALSE)
 
 # SIG availability funnel
 .n_total    <- nrow(drug_df)
-.n_with_sig <- if ("sig" %in% names(drug_df))
+.n_with_sig <- if ("sig" %in% names(drug_df)) {
   sum(!is.na(drug_df$sig) &
         nchar(trimws(as.character(drug_df$sig))) > 0,
       na.rm = TRUE)
-else 0L
+} else 0L
 
 cat(sprintf(
   "\nRecords: %d total  |  %d with non-empty SIG (%.1f%%)\n",
