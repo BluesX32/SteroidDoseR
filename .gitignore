@@ -44,7 +44,7 @@ LLM/R.env
 .Renviron
 Renviron
 
-CodeToRun_jh.R
+*_jh.R
 
 test_package.R
 test_connection.R
@@ -56,3 +56,4 @@ __pycache__/
 .vscode/
 
 
+AGENTS.md
