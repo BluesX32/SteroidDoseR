@@ -534,12 +534,14 @@ if (nrow(ev_nlp$stratified$by_sig_status) > 0L) {
 
 # Full decomposition: join parsed_status onto the comparison table and call
 # stratify_errors_by_parse() for a richer breakdown including unmatched records
-if ("parsed_status" %in% names(nlp_episodes)) {
+if ("parsed_status" %in% names(nlp_episodes) &&
+    "computed_episode_start" %in% names(ev_nlp$comparison)) {
   .comp_with_parse <- ev_nlp$comparison |>
     dplyr::left_join(
       nlp_episodes |>
-        dplyr::select("person_id", "episode_start", "parsed_status"),
-      by = c("person_id", "episode_start")
+        dplyr::select("person_id", "episode_start", "parsed_status") |>
+        dplyr::rename(computed_episode_start = "episode_start"),
+      by = c("person_id", "computed_episode_start")
     )
   cat("\nNLP: full error decomposition by parsed_status (incl. unmatched):\n")
   print(as.data.frame(

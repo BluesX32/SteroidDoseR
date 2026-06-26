@@ -74,7 +74,7 @@ A named list with three elements:
 \describe{
 \item{\verb{$comparison}}{One row per gold episode, with columns:
 \code{person_id}, \code{episode_start}, \code{episode_end},
-\code{gold_dose}, \code{computed_dose},
+\code{gold_dose}, \code{computed_dose}, \code{computed_episode_start},
 \code{overlap_days}, \code{gold_duration}, \code{overlap_pct},
 \code{absolute_error}, \code{bias_error}, \code{relative_error_pct},
 \code{absolute_relative_error_pct}, \code{agreement_category}, \code{error_direction}.}

@@ -195,11 +195,12 @@ evaluate_against_gold <- function(computed_df,
     dplyr::left_join(
       merged |>
         dplyr::transmute(
-          person_id     = .data$person_id,
-          episode_start = .data$g_start,
-          episode_end   = .data$g_end,
-          computed_dose = safe_as_numeric(.data$median_daily_dose),
-          overlap_days  = .data$overlap_days
+          person_id              = .data$person_id,
+          episode_start          = .data$g_start,
+          episode_end            = .data$g_end,
+          computed_episode_start = .data$c_start,
+          computed_dose          = safe_as_numeric(.data$median_daily_dose),
+          overlap_days           = .data$overlap_days
         ),
       by = c("person_id", "episode_start", "episode_end")
     ) |>
@@ -311,12 +312,14 @@ evaluate_against_gold <- function(computed_df,
   status_col <- intersect(c("sig_status", "parsed_status"), names(computed_df))[1L]
   if (!is.na(status_col) && "episode_start" %in% names(computed_df)) {
     strat_sig_status <- comparison |>
-      dplyr::filter(!is.na(.data$computed_dose)) |>
+      dplyr::filter(!is.na(.data$computed_dose),
+                    !is.na(.data$computed_episode_start)) |>
       dplyr::left_join(
         computed_df |>
           dplyr::select("person_id", "episode_start",
-                        dplyr::all_of(status_col)),
-        by = c("person_id", "episode_start")
+                        dplyr::all_of(status_col)) |>
+          dplyr::rename(computed_episode_start = "episode_start"),
+        by = c("person_id", "computed_episode_start")
       ) |>
       dplyr::rename(sig_status = dplyr::all_of(status_col)) |>
       dplyr::group_by(.data$sig_status) |>
