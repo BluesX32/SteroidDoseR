@@ -192,6 +192,26 @@ message(sprintf(
 drug_df <- drug_df |>
   dplyr::mutate(drug_name_std = standardize_drug_name(drug_concept_name))
 
+# Exclude liquid/solution formulations — dose is expressed as concentration
+# (mg/mL) so quantity*strength/days_supply gives mg/day only for tablets.
+# "Oral Solution", "Oral Suspension", "Oral Liquid", "Syrup", "Concentrate",
+# "Drops" all carry strength in mg/mL which the imputation cascade cannot
+# handle correctly without the dispensed volume.
+if ("drug_concept_name" %in% names(drug_df)) {
+  .n_before   <- nrow(drug_df)
+  drug_df <- drug_df |>
+    dplyr::filter(!grepl(
+      "solution|suspension|liquid|syrup|concentrate|drops|/ml",
+      .data$drug_concept_name,
+      ignore.case = TRUE,
+      perl        = TRUE
+    ))
+  cat(sprintf(
+    "\nFormulation filter: removed %d solution/liquid records (%d remain)\n",
+    .n_before - nrow(drug_df), nrow(drug_df)
+  ))
+}
+
 if (!"drug_exposure_id" %in% names(drug_df)) {
   drug_df <- drug_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
 }
@@ -301,8 +321,7 @@ baseline_df <- calc_daily_dose_baseline(
   drug_df,
   m2_sig_parse      = "auto",
   max_daily_dose_mg = 2000,
-  filter_oral       = TRUE,
-  methods           = c("original", "tablets_freq")
+  filter_oral       = TRUE
 )
 
 cat("\nImputation method breakdown:\n")
