@@ -6,9 +6,10 @@
 #  baseline complete  sig complete
 #  ──────────────────────────────────────────────────────────────────────────
 #  TRUE               TRUE     → cross-check
-#                                  |diff| ≤ match_tol            → cross_checked (NLP value)
-#                                  |diff| > diff_threshold        → nlp_override  (NLP value)
-#                                  match_tol < |diff| ≤ threshold → blended       (average)
+#                                  |diff| ≤ match_tol            → cross_checked    (NLP value)
+#                                  |diff| > diff_threshold        → nlp_override     (NLP value)
+#                                  match_tol < |diff| ≤ threshold → nlp_preferred /  (controlled by
+#                                                                    baseline_preferred  moderate_disagreement_action)
 #  TRUE               FALSE    → baseline_only
 #  FALSE              TRUE & !taper → nlp_fills_baseline (NLP fills missing fields)
 #  FALSE              TRUE & taper  → nlp_taper          (NLP handles taper directly)
@@ -45,7 +46,8 @@
 #'
 #' **Cross-check resolution:**
 #' - `|diff| ≤ match_tol` → `"cross_checked"` (use NLP value; both agree)
-#' - `match_tol < |diff| ≤ diff_threshold` → `"blended"` (average of both)
+#' - `match_tol < |diff| ≤ diff_threshold` → controlled by `moderate_disagreement_action`:
+#'   `"nlp_preferred"` (default), `"baseline_preferred"`, or `"blended"` (legacy average)
 #' - `|diff| > diff_threshold` → `"nlp_override"` (use NLP; large discrepancy)
 #'
 #' ## Independence of the two sides
@@ -63,7 +65,23 @@
 #' @param diff_threshold `numeric(1)`. Absolute difference (mg/day) above which
 #'   the NLP result overrides baseline in a cross-check. Default: `5`.
 #' @param match_tol `numeric(1)`. Absolute difference (mg/day) at or below which
-#'   the two estimates are considered to "match". Default: `0.01`.
+#'   the two estimates are considered to "match". Default: `1`. A tolerance of
+#'   1 mg/day is appropriate because corticosteroids are dispensed in whole-mg
+#'   tablet strengths; two estimates within 1 mg are clinically concordant.
+#' @param moderate_disagreement_action `character(1)`. What to do when both
+#'   Baseline and NLP have a dose and `match_tol < |diff| <= diff_threshold`
+#'   (moderate disagreement). `"nlp"` (default): use the NLP value — the SIG
+#'   text is the prescriber's explicit intent. `"baseline"`: use the structured
+#'   field value — more resistant to SIG mis-parse. `"blend"`: arithmetic mean
+#'   of both (legacy behaviour; statistically unjustified but available for
+#'   backward compatibility). The method label in the output reflects the choice:
+#'   `"nlp_preferred"`, `"baseline_preferred"`, or `"blended"`.
+#' @param prn_action `character(1)`. How to handle PRN records. `"na"` (default)
+#'   sets `daily_dose_mg = NA` for PRN records — the hierarchical decision
+#'   naturally yields `baseline_only` or `missing` for PRN, but PRN records can
+#'   still receive a baseline dose via the structured fields. `"na"` prevents
+#'   this by also excluding PRN from the final result. `"keep"` passes PRN
+#'   through to `baseline_only` / `missing` without nulling out.
 #' @param expand_tapers `logical(1)`. When `TRUE`, taper SIGs handled by the
 #'   NLP branch are expanded into per-step rows via [parse_taper_schedule()].
 #'   Default: `FALSE`.
@@ -86,7 +104,8 @@
 #'   \item{`sig_duration_days`}{Prescribed duration from SIG.}
 #'   \item{`daily_dose_mg`}{Final hierarchical daily dose (mg/day).}
 #'   \item{`hierarchical_method`}{One of `"cross_checked"`, `"nlp_override"`,
-#'     `"blended"`, `"baseline_only"`, `"nlp_fills_baseline"`, `"nlp_taper"`,
+#'     `"nlp_preferred"`, `"baseline_preferred"`, `"blended"` (legacy),
+#'     `"baseline_only"`, `"nlp_fills_baseline"`, `"nlp_taper"`,
 #'     `"missing"`, `"implausible"`.}
 #' }
 #'
@@ -117,8 +136,10 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
                                          drug_name_col     = "drug_concept_name",
                                          filter_oral       = TRUE,
                                          diff_threshold    = 5,
-                                         match_tol         = 0.01,
-                                         expand_tapers     = FALSE,
+                                         match_tol                      = 1,
+                                         moderate_disagreement_action   = c("nlp", "baseline", "blend"),
+                                         prn_action                     = c("na", "keep"),
+                                         expand_tapers                  = FALSE,
                                          max_daily_dose_mg = 2000,
                                          equiv_table       = NULL,
                                          drug_name_map     = NULL,
@@ -127,6 +148,8 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
                                          start_date        = NULL,
                                          end_date          = NULL,
                                          sig_source        = "sig") {
+  moderate_disagreement_action <- match.arg(moderate_disagreement_action)
+  prn_action                   <- match.arg(prn_action)
 
   # --- 1. Resolve, standardise, filter ----------------------------------------
   drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
@@ -262,13 +285,19 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
   is_taper     <- sig_status %in% c("taper", "taper_ok")
   dose_diff    <- abs(bl_dose - sig_dose)   # NA when either is NA
 
+  moderate_label <- switch(moderate_disagreement_action,
+    nlp      = "nlp_preferred",
+    baseline = "baseline_preferred",
+    blend    = "blended"
+  )
+
   hierarchical_method <- dplyr::case_when(
     # Branch 1: both sides have a computable dose → cross-check
     bl_complete & sig_complete & !is.na(dose_diff) &
       dose_diff <= match_tol                  ~ "cross_checked",
     bl_complete & sig_complete & !is.na(dose_diff) &
       dose_diff > diff_threshold              ~ "nlp_override",
-    bl_complete & sig_complete & !is.na(dose_diff) ~ "blended",
+    bl_complete & sig_complete & !is.na(dose_diff) ~ moderate_label,
 
     # Branch 2: baseline has a dose; SIG is absent or unresolvable
     bl_complete                               ~ "baseline_only",
@@ -285,13 +314,15 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
   )
 
   daily_dose_mg <- dplyr::case_when(
-    hierarchical_method == "cross_checked"      ~ sig_dose,
-    hierarchical_method == "nlp_override"       ~ sig_dose,
-    hierarchical_method == "blended"            ~ (bl_dose + sig_dose) / 2,
-    hierarchical_method == "baseline_only"      ~ bl_dose,
-    hierarchical_method == "nlp_fills_baseline" ~ sig_dose,
-    hierarchical_method == "nlp_taper"          ~ sig_dose,
-    TRUE                                        ~ NA_real_
+    hierarchical_method == "cross_checked"       ~ sig_dose,
+    hierarchical_method == "nlp_override"        ~ sig_dose,
+    hierarchical_method == "nlp_preferred"       ~ sig_dose,
+    hierarchical_method == "baseline_preferred"  ~ bl_dose,
+    hierarchical_method == "blended"             ~ (bl_dose + sig_dose) / 2,
+    hierarchical_method == "baseline_only"       ~ bl_dose,
+    hierarchical_method == "nlp_fills_baseline"  ~ sig_dose,
+    hierarchical_method == "nlp_taper"           ~ sig_dose,
+    TRUE                                         ~ NA_real_
   )
 
   # --- 7. Assemble result -----------------------------------------------------
@@ -325,6 +356,13 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
       result$daily_dose_mg[implausible]        <- NA_real_
       result$hierarchical_method[implausible]  <- "implausible"
     }
+  }
+
+  # --- 9. PRN action ----------------------------------------------------------
+  if (prn_action == "na") {
+    prn_mask <- result$sig_status == "prn"
+    result$daily_dose_mg[prn_mask]           <- NA_real_
+    result$hierarchical_method[prn_mask]     <- "prn_excluded"
   }
 
   result
@@ -387,4 +425,135 @@ apply_adaptive_decision <- function(df, match_tol, diff_thr, override = "nlp") {
   df$daily_dose_mg       <- daily_dose
   df$hierarchical_method <- method
   df
+}
+
+# ---------------------------------------------------------------------------
+# Exported: grid-search threshold tuner
+# ---------------------------------------------------------------------------
+
+#' Grid-search match_tol and diff_threshold against a gold standard
+#'
+#' Runs `calc_daily_dose_hierarchical()` once to obtain the intermediate
+#' `bl_dose` and `sig_dose` columns, then evaluates every combination of
+#' `match_tol` × `diff_threshold` × `moderate_disagreement_action` using
+#' `apply_adaptive_decision()` — without re-running the baseline and NLP
+#' parsers. Use the returned MAE grid to select parameters for the primary
+#' analysis.
+#'
+#' @param drug_df Data frame of drug-exposure records (same input as
+#'   [calc_daily_dose_hierarchical()]).
+#' @param gold_df Data frame of manually reviewed gold-standard episodes.
+#'   Must contain `person_id`, `episode_start`, `episode_end`, and a dose
+#'   column (see `gold_dose_col`).
+#' @param match_tol_grid `numeric` vector. Values of `match_tol` to test.
+#'   Default: `c(0.5, 1, 2, 5)`.
+#' @param diff_thr_grid `numeric` vector. Values of `diff_threshold` to test.
+#'   Default: `c(3, 5, 10, 20)`.
+#' @param actions `character` vector. Which `moderate_disagreement_action`
+#'   values to test. Default: `c("nlp", "baseline")`.
+#' @param gold_dose_col `character(1)`. Dose column in `gold_df`.
+#'   Default: `"dose_daily_mg_equiv"`.
+#' @param ... Additional arguments forwarded to [calc_daily_dose_hierarchical()]
+#'   for the initial parse (e.g. `sig_col`, `filter_oral`, `equiv_table`).
+#'
+#' @return A tibble with one row per parameter combination and columns:
+#'   `match_tol`, `diff_threshold`, `moderate_disagreement_action`,
+#'   `n_matched`, `MAE`, `MBE`, `RMSE`, `coverage_pct`.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' grid <- tune_hierarchical_thresholds(drug_df, gold_df)
+#' grid[which.min(grid$MAE), ]
+#' }
+tune_hierarchical_thresholds <- function(drug_df,
+                                          gold_df,
+                                          match_tol_grid = c(0.5, 1, 2, 5),
+                                          diff_thr_grid  = c(3, 5, 10, 20),
+                                          actions        = c("nlp", "baseline"),
+                                          gold_dose_col  = "dose_daily_mg_equiv",
+                                          ...) {
+
+  # Run the parser once to get intermediates
+  parsed <- calc_daily_dose_hierarchical(
+    drug_df,
+    moderate_disagreement_action = "nlp",  # doesn't matter for intermediates
+    ...
+  )
+
+  assert_required_cols(gold_df,
+    c("person_id", "episode_start", "episode_end", gold_dose_col), "gold_df")
+
+  grid <- expand.grid(
+    match_tol                    = match_tol_grid,
+    diff_threshold               = diff_thr_grid,
+    moderate_disagreement_action = actions,
+    stringsAsFactors             = FALSE
+  )
+  # Only keep rows where match_tol < diff_threshold
+  grid <- grid[grid$match_tol < grid$diff_threshold, ]
+
+  results <- lapply(seq_len(nrow(grid)), function(i) {
+    row     <- grid[i, ]
+    action  <- row$moderate_disagreement_action
+
+    candidate <- apply_adaptive_decision(
+      parsed,
+      match_tol = row$match_tol,
+      diff_thr  = row$diff_threshold,
+      override  = action
+    )
+
+    # Convert to episodes and evaluate
+    ep <- tryCatch(
+      build_episodes(candidate,
+        dose_col  = "daily_dose_mg",
+        end_col   = if ("drug_exposure_end_date" %in% names(candidate))
+                      "drug_exposure_end_date" else NA_character_
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(ep) || nrow(ep) == 0L) {
+      return(tibble::tibble(
+        match_tol = row$match_tol, diff_threshold = row$diff_threshold,
+        moderate_disagreement_action = action,
+        n_matched = 0L, MAE = NA_real_, MBE = NA_real_,
+        RMSE = NA_real_, coverage_pct = 0
+      ))
+    }
+
+    ev <- tryCatch(
+      evaluate_against_gold(
+        convert_pred_equiv(ep, dose_col = "median_daily_dose",
+                           out_col = "pred_equiv_mg"),
+        gold_df,
+        computed_dose_col = "pred_equiv_mg",
+        gold_dose_col     = gold_dose_col
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(ev)) {
+      return(tibble::tibble(
+        match_tol = row$match_tol, diff_threshold = row$diff_threshold,
+        moderate_disagreement_action = action,
+        n_matched = 0L, MAE = NA_real_, MBE = NA_real_,
+        RMSE = NA_real_, coverage_pct = 0
+      ))
+    }
+
+    tibble::tibble(
+      match_tol                    = row$match_tol,
+      diff_threshold               = row$diff_threshold,
+      moderate_disagreement_action = action,
+      n_matched                    = ev$summary$n_matched_periods,
+      MAE                          = ev$summary$MAE,
+      MBE                          = ev$summary$MBE,
+      RMSE                         = ev$summary$RMSE,
+      coverage_pct                 = ev$summary$coverage_pct
+    )
+  })
+
+  dplyr::bind_rows(results) |>
+    dplyr::arrange(.data$MAE)
 }

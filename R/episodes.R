@@ -107,6 +107,24 @@ build_episodes <- function(connector_or_df,
 
   use_end <- !is.na(end_col) && end_col %in% names(drug_df)
 
+  # --- same-day deduplication ------------------------------------------------
+  # When a patient has two records for the same drug on the same start date
+  # (e.g. duplicate dispenses, correction entries), keep only the row with the
+  # highest dose. This prevents artificial inflation of median/mean dose and
+  # avoids spurious episode splits at the episode-building stage.
+  dose_candidate <- if (!is.null(dose_col) && dose_col %in% names(drug_df))
+    dose_col else NULL
+  if (!is.null(dose_candidate)) {
+    drug_df <- drug_df |>
+      dplyr::mutate(.sort_dose = safe_as_numeric(.data[[dose_candidate]])) |>
+      dplyr::group_by(
+        .data[[person_col]], .data[[drug_col]], .data[[start_col]]
+      ) |>
+      dplyr::slice_max(.data$.sort_dose, n = 1L, with_ties = FALSE) |>
+      dplyr::ungroup() |>
+      dplyr::select(-".sort_dose")
+  }
+
   # --- normalise to working data frame ---------------------------------------
   wd <- drug_df |>
     dplyr::transmute(
@@ -183,6 +201,73 @@ build_episodes <- function(connector_or_df,
     dplyr::arrange(.data$person_id, .data$drug_name_std, .data$episode_start)
 
   episodes
+}
+
+# ---------------------------------------------------------------------------
+# Exported: gap_sensitivity
+# ---------------------------------------------------------------------------
+
+#' Assess sensitivity of episode structure to gap_days assumption
+#'
+#' Calls [build_episodes()] repeatedly across a grid of `gap_days` values and
+#' returns summary statistics so you can choose a clinically defensible
+#' bridging window. Typical OHDSI analyses use 30 days; real-world scripts
+#' use 7–90 days.
+#'
+#' @param drug_df Data frame of dose-imputed drug-exposure records (the same
+#'   object you would pass to [build_episodes()]).
+#' @param gap_grid `integer` vector. Gap values to test. Default:
+#'   `c(0L, 7L, 14L, 30L, 60L, 90L)`.
+#' @param ... Additional arguments forwarded to [build_episodes()]
+#'   (e.g. `dose_col`, `end_col`, `person_col`, `drug_col`).
+#'
+#' @return A tibble with one row per `gap_days` value and columns:
+#' \describe{
+#'   \item{gap_days}{The gap parameter tested.}
+#'   \item{n_episodes}{Total number of episodes produced.}
+#'   \item{median_episode_days}{Median episode duration (days).}
+#'   \item{p25_episode_days}{25th percentile episode duration.}
+#'   \item{p75_episode_days}{75th percentile episode duration.}
+#'   \item{n_patients}{Number of distinct `person_id` values.}
+#'   \item{episodes_per_patient}{Mean episodes per patient.}
+#' }
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' df <- calc_daily_dose_nlp_advanced(drug_df)
+#' gap_sensitivity(df, gap_grid = c(0L, 7L, 30L, 90L))
+#' }
+gap_sensitivity <- function(drug_df,
+                             gap_grid = c(0L, 7L, 14L, 30L, 60L, 90L),
+                             ...) {
+  results <- lapply(as.integer(gap_grid), function(g) {
+    ep <- build_episodes(drug_df, gap_days = g, ...)
+    if (nrow(ep) == 0L) {
+      return(tibble::tibble(
+        gap_days              = g,
+        n_episodes            = 0L,
+        median_episode_days   = NA_real_,
+        p25_episode_days      = NA_real_,
+        p75_episode_days      = NA_real_,
+        n_patients            = 0L,
+        episodes_per_patient  = NA_real_
+      ))
+    }
+    q <- stats::quantile(ep$n_days, probs = c(0.25, 0.5, 0.75), na.rm = TRUE)
+    n_pts <- dplyr::n_distinct(ep$person_id)
+    tibble::tibble(
+      gap_days             = g,
+      n_episodes           = nrow(ep),
+      median_episode_days  = q[["50%"]],
+      p25_episode_days     = q[["25%"]],
+      p75_episode_days     = q[["75%"]],
+      n_patients           = n_pts,
+      episodes_per_patient = nrow(ep) / n_pts
+    )
+  })
+  dplyr::bind_rows(results)
 }
 
 .empty_episodes <- function() {

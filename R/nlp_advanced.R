@@ -102,8 +102,13 @@
 
   # ---- Tablets (enhanced) --------------------------------------------------
   tablets <- .extract_tablets_adv(s)
-  # Default to 1 when SIG contains no explicit tablet count.
-  tablets <- dplyr::if_else(is.na(tablets), 1, tablets)
+  # Do NOT default tablets to 1 here. When no count is explicit, tablets stays
+  # NA and mg_per_admin falls to the bare-mg arm (treats the mg as per-dose
+  # directly). Defaulting to 1 in the presence of a bare mg is a no-op
+  # (1 × mg = mg), but in the absence of mg it misleads the hierarchical
+  # fills-baseline path. The coalesce(tablets, 1) default lives only in the
+  # strength-fallback step of calc_daily_dose_nlp_advanced(), where it is
+  # needed and the context is correct.
 
   # ---- Frequency (enhanced) ------------------------------------------------
   freq <- .extract_freq(s)
@@ -535,6 +540,11 @@ parse_taper_schedule <- function(sig_text) {
 #'   with columns `taper_step`, `step_start_day`, and `step_end_day` added.
 #'   Records whose taper cannot be decomposed keep `taper_step = NA`.
 #'   Default: `FALSE`.
+#' @param prn_action `character(1)`. How to handle PRN ("as needed") records.
+#'   `"na"` (default): set `daily_dose_mg = NA` for PRN records and exclude
+#'   them from the structured-field fallback, so they do not inflate episode
+#'   dose estimates. `"keep"`: retain the parsed dose (if any) and allow the
+#'   structured fallback — equivalent to pre-v0.4.0 behaviour.
 #' @param max_daily_dose_mg `numeric(1)`. Records with `daily_dose_mg` above
 #'   this value are set to `NA` with a diagnostic warning. Pass `NULL` to
 #'   disable. Default: `2000`.
@@ -588,6 +598,7 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
                                          sig_col           = "sig",
                                          filter_oral       = TRUE,
                                          expand_tapers     = TRUE,
+                                         prn_action        = c("na", "keep"),
                                          max_daily_dose_mg = 2000,
                                          baseline_fallback = FALSE,
                                          equiv_table       = NULL,
@@ -597,6 +608,7 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
                                          start_date        = NULL,
                                          end_date          = NULL,
                                          sig_source        = "sig") {
+  prn_action <- match.arg(prn_action)
 
   drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
                                start_date, end_date, sig_source)
@@ -709,6 +721,15 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
     }
   }
 
+  # --- PRN action ------------------------------------------------------------
+  # prn_action = "na" (default): null out the dose for PRN records so they
+  # don't inflate episode-level dose estimates. The parsed_status stays "prn"
+  # so callers can identify and report them separately.
+  if (prn_action == "na") {
+    prn_mask <- result$parsed_status == "prn"
+    result$daily_dose_mg[prn_mask] <- NA_real_
+  }
+
   # --- taper expansion -------------------------------------------------------
   if (expand_tapers) {
     result <- .expand_taper_records(result, sig_col = sig_col)
@@ -726,10 +747,12 @@ calc_daily_dose_nlp_advanced <- function(connector_or_df,
   }
 
   # --- structural fallback: baseline M1/M3/M4 for records still NA ----------
-  # Covers no_parse, empty, prn, taper, free_text -- any record where SIG
-  # parsing did not yield a computable dose. Preserves the original NLP status
-  # when baseline also fails, so callers know which NLP category was unresolved.
-  still_na <- is.na(result$daily_dose_mg)
+  # Covers no_parse, empty, taper, free_text -- any record where SIG parsing
+  # did not yield a computable dose. PRN records are excluded from this fallback
+  # when prn_action = "na" because quantity/days_supply assumes all pills were
+  # taken, which is invalid for as-needed prescriptions.
+  still_na <- is.na(result$daily_dose_mg) &
+              (prn_action != "na" | result$parsed_status != "prn")
   if (any(still_na, na.rm = TRUE)) {
     orig_status <- result$parsed_status[still_na]
     bl <- calc_daily_dose_baseline(

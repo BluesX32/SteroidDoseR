@@ -301,7 +301,8 @@ nlp_df <- calc_daily_dose_nlp_advanced(
   drug_df,
   max_daily_dose_mg = 2000,
   expand_tapers     = FALSE,
-  filter_oral       = TRUE
+  filter_oral       = TRUE,
+  prn_action        = "na"   # exclude PRN from dose calculations
 )
 
 cat("\nparsed_status breakdown:\n")

@@ -228,6 +228,39 @@ calc_daily_dose_baseline <- function(connector_or_df,
   drug_df <- drug_df |>
     dplyr::mutate(strength_mg = dplyr::coalesce(av_mg, str_from_source))
 
+  # --- Oral solution / suspension detection ----------------------------------
+  # The M3/M4 formula (quantity * strength_mg / duration) assumes solid-unit
+  # dispensing (tablets, capsules) where `quantity` is the number of units.
+  # For oral solutions and suspensions, `quantity` is typically volume (mL)
+  # and `strength_mg` is concentration (mg/mL). Multiplying the two gives a
+  # total-mg dose per fill, not per day, and the resulting daily dose estimate
+  # is unreliable without knowing the prescribed volume per dose.
+  # Detect via drug_concept_name or drug_source_value and set strength_mg = NA
+  # so all M1-M4 cascade steps that rely on it produce NA (not garbage).
+  liquid_pattern <- "(?i)oral\\s+solution|oral\\s+suspension|oral\\s+syrup|(?:mg|mcg)/ml"
+  has_dc <- "drug_concept_name" %in% names(drug_df)
+  has_sv <- "drug_source_value"  %in% names(drug_df)
+  if (has_dc || has_sv) {
+    name_col <- if (has_dc) drug_df$drug_concept_name else drug_df$drug_source_value
+    is_liquid <- stringr::str_detect(
+      stringr::str_to_lower(as.character(name_col)), liquid_pattern
+    )
+    is_liquid[is.na(is_liquid)] <- FALSE
+    n_liquid <- sum(is_liquid)
+    if (n_liquid > 0L) {
+      rlang::warn(sprintf(
+        paste0(
+          "%d record(s) appear to be oral solutions / suspensions ",
+          "(matched '%s' pattern in drug name). ",
+          "strength_mg set to NA for these records -- quantity-based M3/M4 ",
+          "imputation is not valid for liquid formulations."
+        ),
+        n_liquid, liquid_pattern
+      ))
+      drug_df$strength_mg[is_liquid] <- NA_real_
+    }
+  }
+
   if (all(is.na(drug_df$strength_mg))) {
     n_av_na   <- sum(is.na(av))
     n_unit_ok <- sum(!is.na(av_unit) & as.integer(av_unit) %in% c(0L, 8576L),

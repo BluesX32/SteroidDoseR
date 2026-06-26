@@ -1164,6 +1164,145 @@ retroactive fix.
 
 ---
 
+## 26. `match_tol = 0.01` and hard-coded `"blended"` branch
+
+**Symptom**
+
+`table(hier_df$hierarchical_method)` shows almost zero `"cross_checked"` rows,
+and `"blended"` rows outnumber `"cross_checked"`. Manuscript reviewers question
+the statistical basis of averaging Baseline and NLP.
+
+**Root cause**
+
+`match_tol = 0.01` mg/day is effectively zero (smaller than floating-point
+error on whole-mg estimates), so no estimates match. The intermediate branch
+(moderate disagreement) was hard-coded to return `"blended"` — arithmetic mean
+of two estimates — which has no theoretical justification when one source
+(SIG text) is more authoritative than the other.
+
+**Fix**
+
+1. Change `match_tol` default from `0.01` to `1` (1 mg = the smallest tablet
+   strength; two estimates within 1 mg are clinically concordant).
+2. Replace hard-coded `"blended"` with `moderate_disagreement_action =
+   c("nlp", "baseline", "blend")` parameter (default `"nlp"`). New output
+   labels are `"nlp_preferred"` and `"baseline_preferred"` for transparency.
+3. Expose `tune_hierarchical_thresholds()` so users can grid-search the best
+   parameter combination against their gold standard.
+
+**Prevention**
+
+After adding any threshold parameter, always check what fraction of records
+each branch captures. A branch at < 5 % of records may indicate the threshold
+needs tuning.
+
+---
+
+## 27. PRN records receive a dose via the hierarchical `baseline_only` fallback
+
+**Symptom**
+
+Records with `parsed_status == "prn"` (as-needed prescriptions) end up with a
+non-NA `daily_dose_mg` in hierarchical output via the `baseline_only` branch.
+These doses are computed from `quantity / days_supply`, which assumes ALL pills
+are taken — not valid for as-needed use. The inflated doses distort episode
+statistics.
+
+**Root cause**
+
+The PRN check only existed at the SIG parser level (`sig_complete = FALSE` for
+PRN). The hierarchical decision tree sees `bl_complete = TRUE` and
+`sig_complete = FALSE`, routes the record to `baseline_only`, and assigns the
+structured dose without any PRN guard.
+
+**Fix**
+
+Add `prn_action = c("na", "keep")` parameter (default `"na"`). After the full
+decision tree runs, apply a post-processing mask:
+
+```r
+if (prn_action == "na") {
+  prn_mask <- result$sig_status == "prn"
+  result$daily_dose_mg[prn_mask]       <- NA_real_
+  result$hierarchical_method[prn_mask] <- "prn_excluded"
+}
+```
+
+The same pattern applies in `calc_daily_dose_nlp()` and
+`calc_daily_dose_nlp_advanced()` — add the PRN null-out after the plausibility
+cap and before returning `result`.
+
+**Prevention**
+
+Always check `table(result$sig_status)` after adding a new decision branch.
+PRN records appear in the output with a non-zero dose until explicitly excluded.
+
+---
+
+## 28. `slice_max` with a computed expression inside grouped dplyr
+
+**Symptom**
+
+```r
+# This fails or gives unexpected results when df is grouped:
+df |>
+  dplyr::group_by(a, b, c) |>
+  dplyr::slice_max(safe_as_numeric(.data$dose_col), n = 1L, with_ties = FALSE)
+```
+
+dplyr's `slice_max` evaluates the expression in the current data context, but
+wrapping it in a function call can produce unexpected behaviour depending on
+the dplyr version, especially with grouped tibbles.
+
+**Fix**
+
+Pre-compute the sort key as a named column, then slice on that column:
+
+```r
+df |>
+  dplyr::mutate(.sort_key = safe_as_numeric(.data[[dose_col]])) |>
+  dplyr::group_by(.data[[person_col]], .data[[drug_col]], .data[[start_col]]) |>
+  dplyr::slice_max(.data$.sort_key, n = 1L, with_ties = FALSE) |>
+  dplyr::ungroup() |>
+  dplyr::select(-".sort_key")
+```
+
+**Prevention**
+
+Keep `slice_max` / `slice_min` expressions as simple column references
+(`$.col`) rather than function calls.
+
+---
+
+## 29. New `@export` function has no Rd file
+
+**Symptom**
+
+```
+Warning: no documentation for 'tune_hierarchical_thresholds'
+Warning: no documentation for 'gap_sensitivity'
+```
+
+R CMD check WARNING for every new exported function that lacks a `man/*.Rd`
+file. roxygen2 normally generates these automatically, but fails in conda R
+environments (readline link issue).
+
+**Fix**
+
+Any time you add `@export` to a new function, immediately create
+`man/<fn_name>.Rd` manually. Use the standard roxygen2 format:
+- `\name{}`, `\alias{}`, `\title{}`, `\usage{}`, `\arguments{}`, `\value{}`,
+  `\description{}`, `\examples{}`.
+- Also add the export line to `NAMESPACE`: `export(<fn_name>)`.
+
+**Prevention**
+
+Add a CI lint step (or pre-commit hook) that runs `devtools::check_man()` and
+fails if any exported function lacks a documentation file. When using conda R,
+do not expect `roxygen2::roxygenize()` to work — always hand-write Rd files.
+
+---
+
 ## Quick reference
 
 | Check level | Issue | File(s) to edit |
@@ -1195,3 +1334,8 @@ retroactive fix.
 | Logic bug | Historical/negated/uncertain NLP entity leaks a dose | After computing `parsed_status`, set `daily_dose_mg <- NA_real_` for non-current statuses; see #23 |
 | ERROR | Test fixtures use `patient_id` after column renamed to `person_id` | Update ALL gold tibbles in `tests/testthat/` to `person_id`; see #24 |
 | NOTE | `globalVariables` missing for `@noRd` internal using bare dplyr names | Add `utils::globalVariables(c(...))` at top of the R file containing the function; see #25 |
+| Logic bug | `match_tol = 0.01` causes almost zero `"cross_checked"` labels | Change default to `match_tol = 1` (1 mg absolute); see #26 |
+| Logic bug | `"blended"` method has no statistical basis; misleading in manuscripts | Replace with `moderate_disagreement_action = c("nlp", "baseline", "blend")` parameter; see #26 |
+| Logic bug | PRN records in hierarchical output receive `baseline_only` dose via structured fallback | Add `prn_action = "na"` parameter; null out after all branches run; see #27 |
+| Logic bug | `slice_max` with computed expression inside grouped dplyr can fail | Pre-mutate a `.sort_col`, then `slice_max(.data$.sort_col)`; remove column after; see #28 |
+| WARNING | New `@export` function has no Rd file → R CMD check WARNING | Always create `man/<fn>.Rd` immediately after adding `@export`; do not rely on roxygen2 in conda envs; see #29 |

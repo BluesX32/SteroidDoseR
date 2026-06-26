@@ -381,6 +381,9 @@ parse_sig <- function(drug_df, sig_col = "sig") {
 #'   `drug_source_value` column is aliased to `sig` automatically.
 #' @param filter_oral `logical(1)`. If `TRUE` (default), only oral-route
 #'   records are kept. Set to `FALSE` if route filtering was done upstream.
+#' @param prn_action `character(1)`. How to handle PRN ("as needed") records.
+#'   `"na"` (default): set `daily_dose_mg = NA` and exclude from the structured
+#'   fallback. `"keep"`: retain parsed dose — pre-v0.4.0 behaviour.
 #' @param baseline_fallback `logical(1)`. If `TRUE`, the function tries to
 #'   carry through an existing `daily_dose_mg` column (e.g. from the Baseline
 #'   method) for records where NLP parsing fails. Default: `FALSE`.
@@ -416,6 +419,7 @@ calc_daily_dose_nlp <- function(connector_or_df,
                                 drug_name_col     = "drug_concept_name",
                                 sig_col           = "sig",
                                 filter_oral       = TRUE,
+                                prn_action        = c("na", "keep"),
                                 baseline_fallback  = FALSE,
                                 max_daily_dose_mg = 2000,
                                 equiv_table       = NULL,
@@ -425,6 +429,7 @@ calc_daily_dose_nlp <- function(connector_or_df,
                                 start_date        = NULL,
                                 end_date          = NULL,
                                 sig_source        = "sig") {
+  prn_action <- match.arg(prn_action)
 
   drug_df <- .resolve_drug_df(connector_or_df, drug_concept_ids, person_ids,
                                start_date, end_date, sig_source)
@@ -522,6 +527,12 @@ calc_daily_dose_nlp <- function(connector_or_df,
       dplyr::select(-"needs_mg_fb")
   }
 
+  # --- PRN action ------------------------------------------------------------
+  if (prn_action == "na") {
+    prn_mask <- result$parsed_status == "prn"
+    result$daily_dose_mg[prn_mask] <- NA_real_
+  }
+
   # --- optional baseline fallback (legacy: use pre-existing column) -------------
   if (baseline_fallback && "daily_dose_mg_orig" %in% names(drug_df)) {
     result <- result |>
@@ -532,11 +543,10 @@ calc_daily_dose_nlp <- function(connector_or_df,
   }
 
   # --- structural fallback: baseline M1/M3/M4 for records still NA -----------
-  # Guarantees NLP coverage >= baseline: any dose computable from structured
-  # OMOP fields (original daily_dose, Burkard formula, quantity/days_supply)
-  # is carried through when SIG parsing fails OR yields prn/taper/free_text
-  # with no computable dose. Baseline applies the same cascade unconditionally.
-  still_na <- is.na(result$daily_dose_mg)
+  # PRN records excluded: quantity/days_supply assumes all pills were consumed,
+  # which is invalid for as-needed prescriptions.
+  still_na <- is.na(result$daily_dose_mg) &
+              (prn_action != "na" | result$parsed_status != "prn")
   if (any(still_na, na.rm = TRUE)) {
     orig_status <- result$parsed_status[still_na]
     bl <- calc_daily_dose_baseline(

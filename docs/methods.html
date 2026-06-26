@@ -678,10 +678,13 @@ Per-row logic
 └────────────────────────────────────────────────────────────────────┘
 
 Case 1: bl_complete AND sig_complete
-  dose_diff = |bl_dose − sig_dose| / max(bl_dose, sig_dose)
-  ├─ dose_diff ≤ match_tol (0.01)          → "cross_checked"   use NLP dose
-  ├─ dose_diff > diff_threshold (5)        → "nlp_override"    use NLP dose
-  └─ match_tol &lt; dose_diff ≤ diff_threshold → "blended"        use avg(bl, nlp)
+  dose_diff = |bl_dose − sig_dose|   (absolute difference in mg/day)
+  ├─ dose_diff ≤ match_tol (1 mg)           → "cross_checked"        use NLP dose
+  ├─ dose_diff > diff_threshold (5 mg)      → "nlp_override"         use NLP dose
+  └─ match_tol &lt; dose_diff ≤ diff_threshold → "nlp_preferred"        use NLP dose (default)
+                                             → "baseline_preferred"   use Baseline dose
+                                             → "blended"              use avg(bl, nlp) (legacy)
+     ↑ controlled by moderate_disagreement_action parameter
 
 Case 2: bl_complete, sig absent or unparseable
   → "baseline_only"   use Baseline dose
@@ -700,8 +703,8 @@ Case 4: bl_incomplete AND no sig
 <div class="table-wrap">
 <table>
   <tr><th>Column</th><th>Description</th></tr>
-  <tr><td><code>daily_dose_mg</code></td><td>Final hierarchical daily dose in mg</td></tr>
-  <tr><td><code>hierarchical_method</code></td><td><code>"cross_checked"</code>, <code>"nlp_override"</code>, <code>"blended"</code>, <code>"baseline_only"</code>, <code>"nlp_fills_baseline"</code>, <code>"nlp_taper"</code>, or <code>"missing"</code></td></tr>
+  <tr><td><code>daily_dose_mg</code></td><td>Final hierarchical daily dose in mg. NA for PRN records when <code>prn_action = "na"</code>.</td></tr>
+  <tr><td><code>hierarchical_method</code></td><td><code>"cross_checked"</code>, <code>"nlp_override"</code>, <code>"nlp_preferred"</code>, <code>"baseline_preferred"</code>, <code>"blended"</code> (legacy), <code>"baseline_only"</code>, <code>"nlp_fills_baseline"</code>, <code>"nlp_taper"</code>, <code>"prn_excluded"</code>, or <code>"missing"</code></td></tr>
   <tr><td><code>bl_dose</code></td><td>Baseline M1/M3/M4 dose (NA when baseline could not complete)</td></tr>
   <tr><td><code>bl_method</code></td><td>Which Baseline method produced <code>bl_dose</code></td></tr>
   <tr><td><code>sig_dose</code></td><td>NLP Advanced SIG dose (NA when SIG absent or unparseable)</td></tr>
@@ -717,18 +720,24 @@ Case 4: bl_incomplete AND no sig
 <h3>Example</h3>
 <pre><code>hier_df <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_hierarchical</span>(
   drug_df,
-  diff_threshold <span class="op">=</span> <span class="nm">5</span>,   <span class="cm"># relative diff &gt; 5× → nlp_override</span>
-  match_tol      <span class="op">=</span> <span class="nm">0.01</span>  <span class="cm"># relative diff ≤ 1 % → cross_checked</span>
+  diff_threshold               <span class="op">=</span> <span class="nm">5</span>,         <span class="cm"># |diff| &gt; 5 mg → nlp_override</span>
+  match_tol                    <span class="op">=</span> <span class="nm">1</span>,         <span class="cm"># |diff| ≤ 1 mg → cross_checked</span>
+  moderate_disagreement_action <span class="op">=</span> <span class="st">"nlp"</span>,    <span class="cm"># 1–5 mg range → nlp_preferred</span>
+  prn_action                   <span class="op">=</span> <span class="st">"na"</span>      <span class="cm"># exclude PRN from dose calc</span>
 )
 
 <span class="fn">table</span>(hier_df<span class="op">$</span>hierarchical_method, useNA <span class="op">=</span> <span class="st">"ifany"</span>)
 
+<span class="cm"># Grid-search thresholds against a gold standard:</span>
+<span class="cm"># grid &lt;- tune_hierarchical_thresholds(drug_df, gold_df)</span>
+<span class="cm"># grid[which.min(grid$MAE), ]</span>
+
 <span class="cm"># Inspect large discrepancies routed to nlp_override:</span>
 hier_df |>
   dplyr::<span class="fn">filter</span>(hierarchical_method <span class="op">==</span> <span class="st">"nlp_override"</span>) |>
-  dplyr::<span class="fn">mutate</span>(rel_diff <span class="op">=</span> <span class="fn">abs</span>(bl_dose <span class="op">-</span> sig_dose) <span class="op">/</span> <span class="fn">pmax</span>(bl_dose, sig_dose)) |>
-  dplyr::<span class="fn">arrange</span>(<span class="fn">desc</span>(rel_diff)) |>
-  dplyr::<span class="fn">select</span>(person_id, drug_name_std, bl_dose, sig_dose, rel_diff, bl_method)
+  dplyr::<span class="fn">mutate</span>(abs_diff <span class="op">=</span> <span class="fn">abs</span>(bl_dose <span class="op">-</span> sig_dose)) |>
+  dplyr::<span class="fn">arrange</span>(<span class="fn">desc</span>(abs_diff)) |>
+  dplyr::<span class="fn">select</span>(person_id, drug_name_std, bl_dose, sig_dose, abs_diff, bl_method)
 </code></pre>
 
 <!-- ── HIERARCHICAL PARAMS ─────────────────────────────────────────── -->
@@ -736,20 +745,22 @@ hier_df |>
 
 <div class="fn-sig">calc_daily_dose_hierarchical(
   connector_or_df,
-  sig_col           = "sig",
-  drug_name_col     = "drug_concept_name",
-  filter_oral       = TRUE,
-  diff_threshold    = 5,
-  match_tol         = 0.01,
-  expand_tapers     = FALSE,
-  max_daily_dose_mg = 2000,
-  equiv_table       = NULL,
-  drug_name_map     = NULL,
-  drug_concept_ids  = NULL,
-  person_ids        = NULL,
-  start_date        = NULL,
-  end_date          = NULL,
-  sig_source        = "sig"
+  sig_col                      = "sig",
+  drug_name_col                = "drug_concept_name",
+  filter_oral                  = TRUE,
+  diff_threshold               = 5,
+  match_tol                    = 1,
+  moderate_disagreement_action = c("nlp", "baseline", "blend"),
+  prn_action                   = c("na", "keep"),
+  expand_tapers                = FALSE,
+  max_daily_dose_mg            = 2000,
+  equiv_table                  = NULL,
+  drug_name_map                = NULL,
+  drug_concept_ids             = NULL,
+  person_ids                   = NULL,
+  start_date                   = NULL,
+  end_date                     = NULL,
+  sig_source                   = "sig"
 )</div>
 
 <div class="table-wrap">
@@ -757,11 +768,13 @@ hier_df |>
   <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
   <tr><td>connector_or_df</td><td>—</td><td>Required. Connector or data frame.</td></tr>
   <tr><td>sig_col</td><td>"sig"</td><td>Column with free-text SIG instructions. Used for the NLP Advanced estimate.</td></tr>
-  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records. Checks <code>route_concept_name</code>, then <code>route_source_value</code>, then <code>drug_source_value</code> as fallback.</td></tr>
-  <tr><td>diff_threshold</td><td>5</td><td>Relative-difference threshold (ratio). When |bl − nlp| / max(bl, nlp) &gt; this value, the NLP estimate is used instead of the average. Set lower (e.g. 2) to prefer NLP more aggressively; set higher (e.g. 20) to keep the blended estimate for larger discrepancies.</td></tr>
-  <tr><td>match_tol</td><td>0.01</td><td>Relative-difference threshold below which the two estimates are considered to "match" (1 % tolerance). Records below this are labelled <code>"cross_checked"</code> and the NLP dose is used (NLP has slightly better precision for direct text extraction).</td></tr>
-  <tr><td>expand_tapers</td><td>FALSE</td><td>When <code>TRUE</code>, taper records routed to <code>"nlp_taper"</code> branch are expanded into per-step rows via <code>parse_taper_schedule()</code>. Adds <code>taper_step</code>, <code>step_start_day</code>, <code>step_end_day</code> columns.</td></tr>
-  <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap applied at the end to the final <code>daily_dose_mg</code>. Records above this are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
+  <tr><td>filter_oral</td><td>TRUE</td><td>Keep only oral-route records. Checks <code>route_concept_name</code>, <code>route_source_value</code>, <code>drug_concept_name</code>, then <code>drug_source_value</code> as fallbacks.</td></tr>
+  <tr><td>diff_threshold</td><td>5</td><td>Absolute difference (mg/day). When |bl − nlp| &gt; this value, the NLP estimate overrides (<code>"nlp_override"</code>). Set lower (e.g. 2) to prefer NLP more aggressively; set higher to reduce overrides.</td></tr>
+  <tr><td>match_tol</td><td>1</td><td><span class="badge badge-fix">v0.4.0 changed from 0.01</span> Absolute difference (mg/day) below which the two estimates are considered to match. 1 mg/day equals the smallest dispensable tablet strength. Records at or below this threshold are labelled <code>"cross_checked"</code>.</td></tr>
+  <tr><td>moderate_disagreement_action</td><td>"nlp"</td><td><span class="badge badge-new">v0.4.0</span> What to do when <code>match_tol &lt; |diff| &lt;= diff_threshold</code>: <code>"nlp"</code> (default — prescriber's written SIG is authoritative), <code>"baseline"</code> (structured OMOP fields), or <code>"blend"</code> (arithmetic mean, legacy). Method label in output: <code>"nlp_preferred"</code>, <code>"baseline_preferred"</code>, or <code>"blended"</code>.</td></tr>
+  <tr><td>prn_action</td><td>"na"</td><td><span class="badge badge-new">v0.4.0</span> How to handle PRN records. <code>"na"</code>: set <code>daily_dose_mg = NA</code> and <code>hierarchical_method = "prn_excluded"</code>. <code>"keep"</code>: allow PRN through to <code>baseline_only</code> / <code>missing</code> branches (legacy behaviour).</td></tr>
+  <tr><td>expand_tapers</td><td>FALSE</td><td>When <code>TRUE</code>, taper records in <code>"nlp_taper"</code> branch are expanded into per-step rows via <code>parse_taper_schedule()</code>.</td></tr>
+  <tr><td>max_daily_dose_mg</td><td>2000</td><td>Plausibility cap. Records above are set to NA with a warning. Pass <code>NULL</code> to disable.</td></tr>
   <tr><td>equiv_table</td><td>NULL</td><td>Custom equivalency table for the drug allow-list when <code>filter_oral = TRUE</code>.</td></tr>
   <tr><td>drug_name_map</td><td>NULL</td><td>Data frame with <code>pattern</code> (regex) and <code>canonical_name</code>. Applied after built-in mapping.</td></tr>
   <tr><td>drug_concept_ids, person_ids, start_date, end_date, sig_source</td><td>NULL / "sig"</td><td>Connector-path filters. Ignored when a data frame is supplied.</td></tr>

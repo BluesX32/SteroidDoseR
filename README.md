@@ -491,19 +491,18 @@ Table references use three-part Databricks names automatically:
 
 ## Known limitations
 
-The following are documented design constraints. Each is being addressed in the
-v0.5.0 roadmap (see NEWS.md).
+The following are documented design constraints.
 
-| Limitation | Impact | Workaround |
+| Limitation | Impact | Status / Workaround |
 |---|---|---|
-| **PRN records included** | "as needed" prescriptions inflate dose estimates | Filter `sig_status != "prn"` before `build_episodes()` |
-| **Median dose per episode** | Tapered courses produce a central dose, not representative of any actual day | Use `computed_dose_col = "mean_daily_dose"` in `evaluate_against_gold()` for duration-weighted comparison |
-| **30-day gap assumption** | Short burst courses (<14 days) may be incorrectly merged if separated by <30 days | Pass `gap_days = 7` for burst-course cohorts; run sensitivity analysis |
-| **Blended hierarchical branch** | Averaging Baseline and NLP when they moderately disagree has no statistical basis | Use `apply_adaptive_decision()` with `override = "nlp"` to pick NLP instead |
-| **`match_tol = 0.01`** | Effectively zero — almost no records are labelled `cross_checked` | Set `match_tol = 1` (1 mg) or `match_tol = 0.05 * dose` for a %-based threshold |
-| **Equivalency factors hardcoded** | Dexamethasone range 6–10× in literature; triamcinolone oral bioavailability varies | Supply custom `equiv_table` to `convert_pred_equiv()` for sensitivity analysis |
-| **Oral solution strength** | `drug_concept_name` "1 MG/ML" treated as per-tablet, not per-mL | Exclude oral solutions or verify manually; route filter catches injections but not solutions |
-| **Budesonide excluded** | NA equiv_factor drops budesonide from all analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` if needed |
+| **PRN records** | "as needed" prescriptions inflate dose estimates | **Fixed v0.4.0**: `prn_action = "na"` (default) nulls PRN dose in all NLP/hierarchical functions |
+| **Median dose per episode** | Tapered courses produce a central dose | **Fixed v0.4.0**: `evaluate_against_gold()` now defaults to `computed_dose_col = "mean_daily_dose"` (duration-weighted) |
+| **30-day gap assumption** | Short burst courses may be incorrectly merged | Use `gap_sensitivity()` to evaluate the effect across a gap grid; select `gap_days = 7` for burst-course cohorts |
+| **Blended hierarchical branch** | Averaging Baseline and NLP with no statistical basis | **Fixed v0.4.0**: `moderate_disagreement_action = "nlp"` (default) always picks NLP in moderate-disagreement cases |
+| **`match_tol = 0.01`** | Effectively zero — almost no records labelled `cross_checked` | **Fixed v0.4.0**: default changed to `match_tol = 1` (1 mg = smallest tablet strength) |
+| **Equivalency factor uncertainty** | Dexamethasone range 6.67–8× in literature | **Fixed v0.4.0**: `pred_equiv_table_conservative` and `pred_equiv_table_aggressive` exported for sensitivity analysis |
+| **Oral solution strength** | Volume (mL) treated as tablet count, inflating M3/M4 dose | **Fixed v0.4.0**: `calc_daily_dose_baseline()` detects "Oral Solution/Suspension/Syrup" and sets `strength_mg = NA` |
+| **Budesonide excluded** | `NA` equiv_factor drops budesonide from analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` to `convert_pred_equiv()` |
 | **No weight-based dosing** | mg/kg SIGs parsed to NA | Not applicable for most adult myositis patients |
 
 ---

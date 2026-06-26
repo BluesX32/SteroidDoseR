@@ -307,8 +307,8 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
   computed_id_col    = "person_id",
   computed_start_col = "episode_start",
   computed_end_col   = "episode_end",
-  computed_dose_col  = "median_daily_dose",
-  gold_id_col        = "patient_id",
+  computed_dose_col  = "mean_daily_dose",
+  gold_id_col        = "person_id",
   gold_start_col     = "episode_start",
   gold_end_col       = "episode_end",
   gold_dose_col      = "median_daily_dose",
@@ -339,7 +339,7 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
 <table class="param-table">
   <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
   <tr><td>min_overlap_days</td><td>1L</td><td>Minimum calendar-day overlap required to match a computed episode to a gold episode.</td></tr>
-  <tr><td>computed_dose_col</td><td>"median_daily_dose"</td><td>Dose column to compare against gold. Can be <code>"min_daily_dose"</code>, <code>"max_daily_dose"</code>, or <code>"mean_daily_dose"</code>.</td></tr>
+  <tr><td>computed_dose_col</td><td>"mean_daily_dose" <span class="badge badge-fix">v0.4.0</span></td><td>Dose column to compare against gold. Default changed to duration-weighted mean — more reliable than median for tapered episodes. Can also use <code>"median_daily_dose"</code>, <code>"min_daily_dose"</code>, or <code>"max_daily_dose"</code>.</td></tr>
   <tr><td>dose_breaks <span class="badge badge-new">v0.1.6</span></td><td>c(0, 10, 20, 40, Inf)</td><td>Cut-points for dose-range stratification in <code>$stratified</code>. Default bins are tuned for typical myositis maintenance doses.</td></tr>
   <tr><td>dose_labels <span class="badge badge-new">v0.1.6</span></td><td>c("Low (≤10mg)", …)</td><td>Labels for the dose ranges. Change both parameters together to customise for other diseases.</td></tr>
 </table>
@@ -350,7 +350,7 @@ episodes <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
 <ul>
   <li><strong><code>$summary</code></strong> — One-row summary: <code>n_gold_periods</code>, <code>n_matched_periods</code>, <code>coverage_pct</code>, <code>MAE</code>, <code>MBE</code>, <code>RMSE</code>, <code>median_AE</code>, <code>MAPE</code>, <code>pearson_corr</code>, <code>spearman_corr</code></li>
   <li><strong><code>$comparison</code></strong> — One row per gold episode: <code>gold_dose</code>, <code>computed_dose</code>, <code>overlap_days</code>, <code>absolute_error</code>, <code>bias_error</code>, <code>agreement_category</code>, <code>error_direction</code></li>
-  <li><strong><code>$stratified</code></strong> — Metrics broken down by dose range and taper status</li>
+  <li><strong><code>$stratified</code></strong> — Metrics broken down by: <code>by_dose_range</code> (always), <code>by_taper_status</code> (when <code>has_taper</code> column present), <code>by_sig_status</code> <span class="badge badge-new">v0.4.0</span> (when <code>sig_status</code> column present at episode level)</li>
 </ul>
 
 <h3>Agreement categories</h3>

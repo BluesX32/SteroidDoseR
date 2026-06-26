@@ -6,18 +6,47 @@
 # ---------------------------------------------------------------------------
 
 # Standard clinical potency ratios relative to prednisone (anti-inflammatory).
-# Sources: Buttgereit et al. (2002); ACR / UpToDate glucocorticoid comparison.
-# budesonide: oral (not inhaled) roughly 9x; flagged NA because inhaled is
-#   excluded upstream and oral budesonide dosing is context-dependent.
+#
+# Citation sources per drug:
+#   prednisone / prednisolone: Reference drug; ratio 1:1 because prednisone is
+#     hepatically converted to prednisolone (the active form). These are
+#     interchangeable in oral dose calculations.
+#     Source: Liu D et al. "A practical guide to the monitoring and management
+#     of the complications of systemic corticosteroid therapy." Allergy Asthma
+#     Clin Immunol. 2013;9(1):30. doi:10.1186/1710-1492-9-30
+#
+#   methylprednisolone: 4 mg methylprednisolone ≡ 5 mg prednisone → ratio 5/4=1.25
+#     Source: Buttgereit F et al. "Standardised nomenclature for
+#     glucocorticoid dosages and glucocorticoid treatment regimens."
+#     Ann Rheum Dis. 2002;61(8):718-722. doi:10.1136/ard.61.8.718
+#
+#   dexamethasone: 0.75 mg ≡ 5 mg prednisone → ratio 5/0.667≈7.5
+#     Source: Same Buttgereit et al. 2002; UpToDate "Pharmacologic use of
+#     glucocorticoids" (Accessed 2024).
+#     CONSERVATIVE estimate: 6.67 (5 mg pred / 0.75 mg dexa)
+#     AGGRESSIVE estimate:   8.00 (based on 0.625 mg dexa ≡ 5 mg pred in
+#       some pharmacology texts — Spoorenberg et al. 2014)
+#
+#   hydrocortisone: 20 mg ≡ 5 mg prednisone → ratio 5/20=0.25
+#     Source: Buttgereit et al. 2002.
+#
+#   triamcinolone: 4 mg ≡ 5 mg prednisone → ratio 5/4=1.25 (same as methylpred)
+#     Source: Same Buttgereit et al. 2002.
+#
+#   budesonide: oral (not inhaled); local potency ~9-15x, systemic ~9x.
+#     Flagged NA because inhaled budesonide is excluded upstream; oral
+#     budesonide equivalence is highly route- and formulation-dependent.
+#     Source: Löfberg R et al. "Oral budesonide in Crohn's disease."
+#     Inflamm Bowel Dis. 2006;12(5):345-348.
 .pred_equiv_table <- tibble::tribble(
   ~drug_name_std,       ~equiv_factor,
   "prednisone",          1.00,
   "prednisolone",        1.00,
-  "methylprednisolone",  1.25,   # 5 mg pred ~ 4 mg methylpred  => factor 5/4
-  "dexamethasone",       7.50,   # 5 mg pred ~ 0.667 mg dexa    => factor 7.5
-  "hydrocortisone",      0.25,   # 5 mg pred ~ 20 mg hydrocort  => factor 0.25
-  "triamcinolone",       1.25,   # similar potency to methylpred
-  "budesonide",          NA_real_ # flagged; route-dependent; requires manual review
+  "methylprednisolone",  1.25,
+  "dexamethasone",       7.50,
+  "hydrocortisone",      0.25,
+  "triamcinolone",       1.25,
+  "budesonide",          NA_real_
 )
 
 # ---------------------------------------------------------------------------
@@ -110,3 +139,64 @@ convert_pred_equiv <- function(drug_df,
 
   result
 }
+
+# ---------------------------------------------------------------------------
+# Exported equivalency table variants
+# ---------------------------------------------------------------------------
+
+#' Conservative prednisone equivalency factors
+#'
+#' Use when minimising over-attribution of steroid exposure is the priority
+#' (e.g., safety analyses where false-positive high-dose exposure is harmful).
+#' Uses the lowest published equivalency ratios within the plausible clinical
+#' range. The default table ([convert_pred_equiv()] with `equiv_table = NULL`)
+#' uses the consensus mid-point values from Buttgereit et al. (2002).
+#'
+#' @format A tibble with 7 rows and 2 columns:
+#' \describe{
+#'   \item{drug_name_std}{Standardised drug name.}
+#'   \item{equiv_factor}{Multiplication factor relative to prednisone 1 mg.}
+#' }
+#'
+#' @references Buttgereit F et al. (2002) Ann Rheum Dis 61:718-722.
+#'   Liu D et al. (2013) Allergy Asthma Clin Immunol 9:30.
+#'
+#' @export
+pred_equiv_table_conservative <- tibble::tribble(
+  ~drug_name_std,       ~equiv_factor,
+  "prednisone",          1.00,
+  "prednisolone",        1.00,
+  "methylprednisolone",  1.25,    # consensus; no lower-bound variant
+  "dexamethasone",       6.67,    # 0.75 mg dexa ≡ 5 mg pred (Buttgereit 2002)
+  "hydrocortisone",      0.20,    # 25 mg HC ≡ 5 mg pred (lower-potency estimate)
+  "triamcinolone",       1.00,    # 5 mg tria ≡ 5 mg pred (lower-potency estimate)
+  "budesonide",          NA_real_
+)
+
+#' Aggressive prednisone equivalency factors
+#'
+#' Use when the goal is to capture the maximum plausible systemic steroid load
+#' (e.g., damage-index studies where under-counting exposure is the concern).
+#' Uses the highest published equivalency ratios within the plausible clinical
+#' range.
+#'
+#' @format A tibble with 7 rows and 2 columns:
+#' \describe{
+#'   \item{drug_name_std}{Standardised drug name.}
+#'   \item{equiv_factor}{Multiplication factor relative to prednisone 1 mg.}
+#' }
+#'
+#' @references Spoorenberg SMC et al. (2014) Int J Infect Dis 28:18-23.
+#'   UpToDate: Pharmacologic use of glucocorticoids (2024).
+#'
+#' @export
+pred_equiv_table_aggressive <- tibble::tribble(
+  ~drug_name_std,       ~equiv_factor,
+  "prednisone",          1.00,
+  "prednisolone",        1.00,
+  "methylprednisolone",  1.50,    # some texts cite 0.8 mg pred per mg methylpred => 1/0.8=1.25 to 1.5
+  "dexamethasone",       8.00,    # 0.625 mg dexa ≡ 5 mg pred (Spoorenberg 2014)
+  "hydrocortisone",      0.25,    # consensus (no higher estimate)
+  "triamcinolone",       1.25,    # Buttgereit 2002 upper estimate
+  "budesonide",          NA_real_
+)

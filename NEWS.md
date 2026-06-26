@@ -2,6 +2,73 @@
 
 ## New features
 
+* **PRN exclusion** (`R/nlp_advanced.R`, `R/nlp.R`, `R/hierarchical.R`):
+  All three NLP-based daily-dose functions now accept `prn_action = c("na", "keep")`
+  (default `"na"`). Records whose parsed SIG status is `"prn"` (as-needed) receive
+  `daily_dose_mg = NA` rather than a spurious dose computed from quantity / days_supply
+  or a structured-field fallback. For hierarchical output, the method label is set to
+  `"prn_excluded"`. PRN records are also excluded from the structural baseline fallback
+  within the NLP pipeline. Set `prn_action = "keep"` to restore the previous behaviour.
+
+* **`moderate_disagreement_action` replaces hard-coded blended branch**
+  (`R/hierarchical.R`): When Baseline and NLP both have a dose and their disagreement
+  is `match_tol < |diff| <= diff_threshold`, the method is now controlled by the new
+  parameter `moderate_disagreement_action = c("nlp", "baseline", "blend")` (default
+  `"nlp"`). The "NLP" choice is methodologically defensible — the prescriber's written
+  SIG is the primary expression of intent; the "blend" option (arithmetic average) is
+  now labelled `"blended"` and retained only for backward compatibility.
+
+* **`match_tol` default changed from `0.01` to `1` mg/day** (`R/hierarchical.R`):
+  A 0.01 mg/day tolerance was effectively zero and caused nearly all records where
+  both methods agreed on the same whole-tablet dose (e.g. both report 10 mg) to be
+  labelled `"blended"` rather than `"cross_checked"` due to floating-point
+  imprecision. The new default of 1 mg/day matches the smallest dispensable tablet
+  strength and correctly labels concordant estimates as `"cross_checked"`.
+
+* **`tune_hierarchical_thresholds()` exported** (`R/hierarchical.R`):
+  New utility that grid-searches `match_tol` × `diff_threshold` × `moderate_disagreement_action`
+  against a gold standard without re-running the full Baseline + NLP parse. Returns a
+  tibble ranked by MAE so users can select the parameter combination with the best
+  empirical support before their primary analysis.
+
+* **Same-day deduplication in `build_episodes()`** (`R/episodes.R`):
+  When a patient has multiple records for the same drug on the same start date (e.g.
+  duplicate dispenses, data entry corrections), `build_episodes()` now retains only
+  the row with the highest dose before the gap-bridging step. This prevents artificial
+  inflation of `median_daily_dose`/`mean_daily_dose` and avoids spurious episode splits.
+
+* **`gap_sensitivity()` exported** (`R/episodes.R`):
+  New utility that calls `build_episodes()` across a grid of `gap_days` values (default
+  `c(0, 7, 14, 30, 60, 90)`) and returns a one-row-per-gap summary table showing episode
+  count, duration distribution, and episodes per patient. Use this to justify the
+  bridging-window assumption in a manuscript sensitivity analysis.
+
+* **`by_sig_status` stratification in `evaluate_against_gold()`** (`R/eval.R`):
+  `$stratified` now includes a `by_sig_status` table (MAE/MBE/MAPE by `sig_status`
+  level: `"ok"`, `"prn"`, `"taper"`, `"no_parse"`, etc.) when `computed_df` contains
+  a `sig_status` column at the episode level. Populated when passing NLP or hierarchical
+  record-level output directly.
+
+* **`computed_dose_col` default changed to `"mean_daily_dose"`** (`R/eval.R`):
+  The `evaluate_against_gold()` function now uses `mean_daily_dose` (duration-weighted
+  mean) as the primary comparison metric by default. The unweighted `median_daily_dose`
+  can be misleading for tapered episodes where short high-dose and long low-dose records
+  are combined into one episode and the median over-weights whichever segment has more
+  prescription rows.
+
+* **`pred_equiv_table_conservative` and `pred_equiv_table_aggressive` exported**
+  (`R/conversion.R`): Two new equivalency-factor tables bracket the uncertainty in
+  published potency ratios. Conservative uses the lowest defensible ratio per drug
+  (useful for safety analyses); aggressive uses the highest (useful for damage-index
+  studies). All factors are documented with their primary citation.
+
+* **Oral solution / suspension detection in baseline** (`R/baseline.R`):
+  The strength-extraction step now checks `drug_concept_name` (or `drug_source_value`)
+  for the patterns "Oral Solution", "Oral Suspension", "Oral Syrup", or "mg/mL". When
+  matched, `strength_mg` is set to `NA` and a warning is emitted. This prevents M3/M4
+  from treating liquid-formulation `quantity` (volume in mL) as a tablet count and
+  computing wildly incorrect doses.
+
 * **CI fixes** (`R/eval.R`, `tests/testthat/test-eval-episodes.R`):
   - `utils::globalVariables()` added to `R/eval.R` for all bare column names
     used inside `compute_gold_anchored()` (`@noRd` internal); removes ~50-line

@@ -36,7 +36,9 @@ utils::globalVariables(c(
 #' @param computed_end_col `character(1)`. Episode end column in `computed_df`.
 #'   Default: `"episode_end"`.
 #' @param computed_dose_col `character(1)`. Dose column in `computed_df`.
-#'   Default: `"median_daily_dose"`.
+#'   Default: `"mean_daily_dose"` (duration-weighted mean — more reliable than
+#'   the unweighted median for tapered regimens). Pass `"median_daily_dose"` to
+#'   reproduce legacy behaviour.
 #' @param gold_id_col `character(1)`. Patient ID column in `gold_df`.
 #'   Default: `"person_id"`.
 #' @param gold_start_col `character(1)`. Episode start column in `gold_df`.
@@ -66,9 +68,11 @@ utils::globalVariables(c(
 #'     `n_gold_periods`, `n_matched_periods`, `coverage_pct`,
 #'     `MAE`, `MBE`, `RMSE`, `median_AE`, `MAPE`, `mean_relative_bias_pct`,
 #'     `pearson_corr`, `spearman_corr`.}
-#'   \item{`$stratified`}{Stratified metrics by `dose_range` and
-#'     `sig_category` (if `parsed_status` is present in `computed_df`),
-#'     plus by taper status.}
+#'   \item{`$stratified`}{Named list of stratified metric tables:
+#'     `by_dose_range` (always), `by_taper_status` (if `has_taper` column is
+#'     present in `computed_df`), `by_sig_status` (if `sig_status` column is
+#'     present in `computed_df` at episode level — populated when passing
+#'     NLP/hierarchical output directly; each stratum shows MAE, MBE, MAPE).}
 #' }
 #'
 #' @export
@@ -90,14 +94,14 @@ utils::globalVariables(c(
 evaluate_against_gold <- function(computed_df,
                                   gold_df,
                                   min_overlap_days  = 1L,
-                                  computed_id_col   = "person_id",
+                                  computed_id_col    = "person_id",
                                   computed_start_col = "episode_start",
-                                  computed_end_col  = "episode_end",
-                                  computed_dose_col = "median_daily_dose",
-                                  gold_id_col       = "person_id",
-                                  gold_start_col    = "episode_start",
-                                  gold_end_col      = "episode_end",
-                                  gold_dose_col     = "median_daily_dose",
+                                  computed_end_col   = "episode_end",
+                                  computed_dose_col  = "mean_daily_dose",
+                                  gold_id_col        = "person_id",
+                                  gold_start_col     = "episode_start",
+                                  gold_end_col       = "episode_end",
+                                  gold_dose_col      = "median_daily_dose",
                                   dose_breaks       = c(0, 10, 20, 40, Inf),
                                   dose_labels       = c("Low (<=10mg)",
                                                         "Medium (10-20mg)",
@@ -282,12 +286,40 @@ evaluate_against_gold <- function(computed_df,
       )
   }
 
+  # by_sig_status: stratify on parser status ("ok", "prn", "taper", "no_parse")
+  # Only populated when computed_df has a sig_status column at episode level.
+  # Users building episodes from nlp/hierarchical output can pass a dominant
+  # status per episode; record-level output can be passed directly.
+  strat_sig_status <- tibble::tibble(
+    sig_status = character(0), n = integer(0),
+    MAE = numeric(0), MBE = numeric(0), MAPE = numeric(0)
+  )
+  if ("sig_status" %in% names(computed_df) &&
+      "episode_start" %in% names(computed_df)) {
+    strat_sig_status <- comparison |>
+      dplyr::filter(!is.na(.data$computed_dose)) |>
+      dplyr::left_join(
+        computed_df |>
+          dplyr::select("person_id", "episode_start", "sig_status"),
+        by = c("person_id", "episode_start")
+      ) |>
+      dplyr::group_by(.data$sig_status) |>
+      dplyr::summarise(
+        n    = dplyr::n(),
+        MAE  = mean(.data$absolute_error,              na.rm = TRUE),
+        MBE  = mean(.data$bias_error,                  na.rm = TRUE),
+        MAPE = mean(.data$absolute_relative_error_pct, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+
   list(
     comparison = comparison,
     summary    = summary_tbl,
     stratified = list(
       by_dose_range   = strat_dose,
-      by_taper_status = strat_taper
+      by_taper_status = strat_taper,
+      by_sig_status   = strat_sig_status
     )
   )
 }
