@@ -302,7 +302,7 @@ baseline_df <- calc_daily_dose_baseline(
   m2_sig_parse      = "auto",
   max_daily_dose_mg = 2000,
   filter_oral       = TRUE,
-  methods           = c("original", "tablets_freq", "supply_based")
+  methods           = c("original", "tablets_freq")
 )
 
 cat("\nImputation method breakdown:\n")
