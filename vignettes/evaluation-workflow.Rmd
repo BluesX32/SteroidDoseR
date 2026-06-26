@@ -95,7 +95,7 @@ results$stratified$by_dose_range
 
 ```{r detail}
 results$comparison |>
-  dplyr::select(patient_id, episode_start, episode_end,
+  dplyr::select(person_id, episode_start, episode_end,
                 gold_dose, computed_dose, absolute_error, agreement_category) |>
   head(10)
 ```

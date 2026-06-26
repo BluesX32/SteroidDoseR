@@ -1,4 +1,4 @@
-patient_id,episode_start,episode_end,median_daily_dose
+person_id,episode_start,episode_end,median_daily_dose
 101,2023-01-01,2023-06-30,10
 101,2023-07-01,2023-09-30,5
 102,2023-02-01,2023-04-30,24

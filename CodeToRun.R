@@ -512,7 +512,6 @@ make_scatter_df <- function(ev_result, method_label) {
     dplyr::filter(!is.na(computed_dose)) |>
     dplyr::transmute(
       person_id,
-      drug_name_std,
       gold_dose,
       method_dose = computed_dose,
       method      = method_label
