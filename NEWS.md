@@ -2,6 +2,27 @@
 
 ## New features
 
+* **`drug_concept_name` added as route-classification source** (`R/utils-validate.R`,
+  `baseline.R`, `nlp.R`, `nlp_advanced.R`, `nlp_notes.R`, `hierarchical.R`):
+  The oral-route filter now checks `drug_concept_name` (OMOP RxNorm standardized
+  name, e.g. "Prednisone 5 MG Oral Tablet") as a third fallback, between
+  `route_source_value` and `drug_source_value`. Because OMOP concept names
+  always encode the dose form (Oral Tablet, Injectable Solution, Inhalation
+  Aerosol, etc.), this reliably catches records where the route columns are
+  missing or vague while `drug_concept_name` is populated. Priority order:
+  `route_concept_name` > `route_source_value` > `drug_concept_name` >
+  `drug_source_value`.
+
+* **`patient_id` → `person_id` alignment in evaluation functions** (`R/eval.R`):
+  `evaluate_against_gold()`, `evaluate_detection()`, and `compute_gold_anchored()`
+  (internal) all used `patient_id` as the default gold-standard patient column
+  name. Changed defaults to `"person_id"` throughout, matching the OMOP CDM
+  convention used by every other function in the package. The `$comparison`
+  output from `evaluate_against_gold()` now carries a `person_id` column
+  instead of `patient_id`. Docstrings, examples, and Rd files updated. This
+  was the root cause of: `! gold_df is missing required column(s): patient_id`
+  when passing `parse_steroid_gold()` output directly to `evaluate_against_gold()`.
+
 * **DMARD-generic functions renamed/removed** (`gold_standard.R`): The package
   now exclusively handles corticosteroids.
   - `parse_dmard_gold()` → `parse_steroid_gold()`: default `drug_filter`

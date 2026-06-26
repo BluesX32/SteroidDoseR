@@ -149,12 +149,13 @@ calc_daily_dose_hierarchical <- function(connector_or_df,
   if (filter_oral) {
     rc <- if ("route_concept_name" %in% names(drug_df)) drug_df$route_concept_name else NULL
     rs <- if ("route_source_value" %in% names(drug_df)) drug_df$route_source_value else NULL
+    dc <- if ("drug_concept_name"  %in% names(drug_df)) drug_df$drug_concept_name  else NULL
     ds <- if ("drug_source_value"  %in% names(drug_df)) drug_df$drug_source_value  else NULL
 
-    if (is.null(rc) && is.null(rs) && is.null(ds)) {
+    if (is.null(rc) && is.null(rs) && is.null(dc) && is.null(ds)) {
       rlang::warn("No route column found; skipping oral-route filter.")
     } else {
-      route_class <- classify_route(rc, rs, ds)
+      route_class <- classify_route(rc, rs, dc, ds)
       drug_df     <- drug_df[route_class == "oral" | is.na(route_class), ]
     }
   }

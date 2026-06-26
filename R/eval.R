@@ -27,13 +27,14 @@
 #' @param computed_dose_col `character(1)`. Dose column in `computed_df`.
 #'   Default: `"median_daily_dose"`.
 #' @param gold_id_col `character(1)`. Patient ID column in `gold_df`.
-#'   Default: `"patient_id"`.
+#'   Default: `"person_id"`.
 #' @param gold_start_col `character(1)`. Episode start column in `gold_df`.
 #'   Default: `"episode_start"`.
 #' @param gold_end_col `character(1)`. Episode end column in `gold_df`.
 #'   Default: `"episode_end"`.
 #' @param gold_dose_col `character(1)`. Dose column in `gold_df`.
-#'   Default: `"median_daily_dose"`.
+#'   Default: `"median_daily_dose"`. When using [parse_steroid_gold()] output,
+#'   pass `gold_dose_col = "dose_daily_mg_equiv"`.
 #' @param dose_breaks Numeric vector of cut-point boundaries for dose-range
 #'   stratification in `$stratified$by_dose_range`. Default:
 #'   `c(0, 10, 20, 40, Inf)` (tuned for typical myositis maintenance doses).
@@ -45,7 +46,7 @@
 #' @return A named list with three elements:
 #' \describe{
 #'   \item{`$comparison`}{One row per gold episode, with columns:
-#'     `patient_id`, `episode_start`, `episode_end`,
+#'     `person_id`, `episode_start`, `episode_end`,
 #'     `gold_dose`, `computed_dose`,
 #'     `overlap_days`, `gold_duration`, `overlap_pct`,
 #'     `absolute_error`, `bias_error`, `relative_error_pct`,
@@ -69,7 +70,7 @@
 #'   median_daily_dose = 10
 #' )
 #' gold <- tibble::tibble(
-#'   patient_id        = 1L,
+#'   person_id         = 1L,
 #'   episode_start     = as.Date("2023-01-01"),
 #'   episode_end       = as.Date("2023-06-30"),
 #'   median_daily_dose = 10
@@ -82,7 +83,7 @@ evaluate_against_gold <- function(computed_df,
                                   computed_start_col = "episode_start",
                                   computed_end_col  = "episode_end",
                                   computed_dose_col = "median_daily_dose",
-                                  gold_id_col       = "patient_id",
+                                  gold_id_col       = "person_id",
                                   gold_start_col    = "episode_start",
                                   gold_end_col      = "episode_end",
                                   gold_dose_col     = "median_daily_dose",
@@ -116,7 +117,7 @@ evaluate_against_gold <- function(computed_df,
     )
   gold_df <- gold_df |>
     dplyr::rename(
-      patient_id        = dplyr::all_of(gold_id_col),
+      person_id         = dplyr::all_of(gold_id_col),
       episode_start     = dplyr::all_of(gold_start_col),
       episode_end       = dplyr::all_of(gold_end_col),
       median_daily_dose = dplyr::all_of(gold_dose_col)
@@ -135,7 +136,7 @@ evaluate_against_gold <- function(computed_df,
       episode_end   = safe_as_date(.data$episode_end),
       gold_dose     = safe_as_numeric(.data$median_daily_dose)
     ) |>
-    dplyr::select("patient_id", "episode_start", "episode_end", "gold_dose")
+    dplyr::select("person_id", "episode_start", "episode_end", "gold_dose")
 
   # --- overlap join (no external fuzzyjoin dependency) ----------------------
   # For each gold episode, find all computed episodes for the same patient
@@ -144,7 +145,7 @@ evaluate_against_gold <- function(computed_df,
     dplyr::rename(g_start = "episode_start", g_end = "episode_end") |>
     dplyr::left_join(
       comp |> dplyr::rename(c_start = "episode_start", c_end = "episode_end"),
-      by   = c("patient_id" = "person_id"),
+      by   = "person_id",
       relationship = "many-to-many"
     ) |>
     dplyr::mutate(
@@ -155,7 +156,7 @@ evaluate_against_gold <- function(computed_df,
     ) |>
     dplyr::filter(.data$overlap_days >= min_overlap_days) |>
     # For each gold episode: keep the computed window with the most overlap
-    dplyr::group_by(.data$patient_id, .data$g_start, .data$g_end) |>
+    dplyr::group_by(.data$person_id, .data$g_start, .data$g_end) |>
     dplyr::arrange(dplyr::desc(.data$overlap_days)) |>
     dplyr::slice(1L) |>
     dplyr::ungroup()
@@ -165,14 +166,13 @@ evaluate_against_gold <- function(computed_df,
     dplyr::left_join(
       merged |>
         dplyr::transmute(
-          patient_id    = .data$patient_id,
+          person_id     = .data$person_id,
           episode_start = .data$g_start,
           episode_end   = .data$g_end,
           computed_dose = safe_as_numeric(.data$median_daily_dose),
           overlap_days  = .data$overlap_days
         ),
-      by = c("patient_id", "episode_start" = "episode_start",
-             "episode_end"  = "episode_end")
+      by = c("person_id", "episode_start", "episode_end")
     ) |>
     dplyr::mutate(
       gold_duration = as.integer(.data$episode_end - .data$episode_start) + 1L,
@@ -258,9 +258,8 @@ evaluate_against_gold <- function(computed_df,
       dplyr::filter(!is.na(.data$computed_dose)) |>
       dplyr::left_join(
         computed_df |>
-          dplyr::select("person_id", "episode_start", "has_taper") |>
-          dplyr::rename(patient_id = "person_id"),
-        by = c("patient_id", "episode_start")
+          dplyr::select("person_id", "episode_start", "has_taper"),
+        by = c("person_id", "episode_start")
       ) |>
       dplyr::group_by(.data$has_taper) |>
       dplyr::summarise(
@@ -337,13 +336,13 @@ evaluate_against_gold <- function(computed_df,
 #' @param computed_dose_col `character(1)`. Dose column in `computed_df`.
 #'   Default `"median_daily_dose"`.
 #' @param gold_pos_id_col `character(1)`. Patient ID column in
-#'   `gold_positive_df`. Default `"patient_id"`.
+#'   `gold_positive_df`. Default `"person_id"`.
 #' @param gold_pos_start_col `character(1)`. Episode start column in
 #'   `gold_positive_df`. Default `"episode_start"`.
 #' @param gold_pos_end_col `character(1)`. Episode end column in
 #'   `gold_positive_df`. Default `"episode_end"`.
 #' @param gold_neg_id_col `character(1)`. Patient ID column in
-#'   `gold_negative_df`. Default `"patient_id"`.
+#'   `gold_negative_df`. Default `"person_id"`.
 #' @param gold_neg_start_col `character(1)`. Observation start column in
 #'   `gold_negative_df`. Used only when `obs_window_source = "explicit"`.
 #'   Default `"obs_start"`.
@@ -374,11 +373,11 @@ evaluate_against_gold <- function(computed_df,
 #'   median_daily_dose = c(20, 5)
 #' )
 #' gold_pos <- tibble::tibble(
-#'   patient_id    = 1L,
+#'   person_id     = 1L,
 #'   episode_start = as.Date("2023-01-01"),
 #'   episode_end   = as.Date("2023-06-30")
 #' )
-#' gold_neg <- tibble::tibble(patient_id = c(3L, 4L))
+#' gold_neg <- tibble::tibble(person_id = c(3L, 4L))
 #' evaluate_detection(computed, gold_pos, gold_neg)
 evaluate_detection <- function(
   computed_df,
@@ -392,10 +391,10 @@ evaluate_detection <- function(
   computed_start_col  = "episode_start",
   computed_end_col    = "episode_end",
   computed_dose_col   = "median_daily_dose",
-  gold_pos_id_col     = "patient_id",
+  gold_pos_id_col     = "person_id",
   gold_pos_start_col  = "episode_start",
   gold_pos_end_col    = "episode_end",
-  gold_neg_id_col     = "patient_id",
+  gold_neg_id_col     = "person_id",
   gold_neg_start_col  = "obs_start",
   gold_neg_end_col    = "obs_end"
 ) {
@@ -442,7 +441,7 @@ evaluate_detection <- function(
   # --- GOLD POSITIVES: TP / FN ------------------------------------------
   gpos <- gold_positive_df |>
     dplyr::rename(
-      patient_id    = dplyr::all_of(gold_pos_id_col),
+      person_id     = dplyr::all_of(gold_pos_id_col),
       episode_start = dplyr::all_of(gold_pos_start_col),
       episode_end   = dplyr::all_of(gold_pos_end_col)
     ) |>
@@ -456,7 +455,7 @@ evaluate_detection <- function(
     dplyr::left_join(
       comp_above |>
         dplyr::rename(c_start = "episode_start", c_end = "episode_end"),
-      by = c("patient_id" = "person_id"),
+      by = "person_id",
       relationship = "many-to-many"
     ) |>
     dplyr::mutate(
@@ -468,7 +467,7 @@ evaluate_detection <- function(
         is.na(.data$overlap) | .data$overlap < 1L, 0L, .data$overlap
       )
     ) |>
-    dplyr::group_by(.data$patient_id, .data$g_start, .data$g_end) |>
+    dplyr::group_by(.data$person_id, .data$g_start, .data$g_end) |>
     dplyr::summarise(
       detected = any(.data$overlap >= 1L, na.rm = TRUE),
       .groups  = "drop"
@@ -477,7 +476,7 @@ evaluate_detection <- function(
   detail_positive <- gpos |>
     dplyr::left_join(
       pos_detected,
-      by = c("patient_id",
+      by = c("person_id",
              "episode_start" = "g_start",
              "episode_end"   = "g_end")
     ) |>
@@ -488,16 +487,15 @@ evaluate_detection <- function(
 
   # --- GOLD NEGATIVES: FP / TN ------------------------------------------
   gneg <- gold_negative_df |>
-    dplyr::rename(patient_id = dplyr::all_of(gold_neg_id_col))
+    dplyr::rename(person_id = dplyr::all_of(gold_neg_id_col))
 
   if (obs_window_source == "computed") {
     detected_ids <- comp_above |>
       dplyr::distinct(.data$person_id) |>
-      dplyr::rename(patient_id = "person_id") |>
       dplyr::mutate(detected = TRUE)
 
     detail_negative <- gneg |>
-      dplyr::left_join(detected_ids, by = "patient_id") |>
+      dplyr::left_join(detected_ids, by = "person_id") |>
       dplyr::mutate(
         detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
         classification = dplyr::if_else(.data$detected, "FP", "TN")
@@ -518,7 +516,7 @@ evaluate_detection <- function(
       dplyr::left_join(
         comp_above |>
           dplyr::rename(c_start = "episode_start", c_end = "episode_end"),
-        by = c("patient_id" = "person_id"),
+        by = "person_id",
         relationship = "many-to-many"
       ) |>
       dplyr::mutate(
@@ -530,14 +528,14 @@ evaluate_detection <- function(
           is.na(.data$overlap) | .data$overlap < 1L, 0L, .data$overlap
         )
       ) |>
-      dplyr::group_by(.data$patient_id) |>
+      dplyr::group_by(.data$person_id) |>
       dplyr::summarise(
         detected = any(.data$overlap >= 1L, na.rm = TRUE),
         .groups  = "drop"
       )
 
     detail_negative <- gneg |>
-      dplyr::left_join(neg_detected, by = "patient_id") |>
+      dplyr::left_join(neg_detected, by = "person_id") |>
       dplyr::mutate(
         detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
         classification = dplyr::if_else(.data$detected, "FP", "TN")
@@ -551,11 +549,10 @@ evaluate_detection <- function(
         .data$episode_end   >= study_start
       ) |>
       dplyr::distinct(.data$person_id) |>
-      dplyr::rename(patient_id = "person_id") |>
       dplyr::mutate(detected = TRUE)
 
     detail_negative <- gneg |>
-      dplyr::left_join(detected_ids, by = "patient_id") |>
+      dplyr::left_join(detected_ids, by = "person_id") |>
       dplyr::mutate(
         detected       = dplyr::if_else(is.na(.data$detected), FALSE, .data$detected),
         classification = dplyr::if_else(.data$detected, "FP", "TN")
@@ -682,9 +679,9 @@ classify_sig_type <- function(sig_text, sig_status, sig_taper_flag,
 #' @param records_df Data frame with columns `person_id`,
 #'   `drug_exposure_start_date`, `drug_exposure_end_date`, `pred_equiv_mg`.
 #'   Typically the output of `convert_pred_equiv()` on record-level doses.
-#' @param gold_df Data frame with columns `patient_id`, `episode_start`,
+#' @param gold_df Data frame with columns `person_id`, `episode_start`,
 #'   `episode_end`, `median_daily_dose`, `gold_duration_days`.
-#' @return One row per gold episode with columns: `patient_id`, `episode_start`,
+#' @return One row per gold episode with columns: `person_id`, `episode_start`,
 #'   `episode_end`, `gold_duration_days`, `gold_dose`, `n_records`,
 #'   `coverage_days`, `coverage_pct`, `cumulative_dose_mg`, `avg_daily_dose_mg`.
 #' @noRd
@@ -699,7 +696,7 @@ compute_gold_anchored <- function(records_df, gold_df) {
     dplyr::inner_join(
       gold_df |>
         dplyr::transmute(
-          pt_id     = as.integer(patient_id),
+          pt_id     = as.integer(person_id),
           g_start   = episode_start,
           g_end     = episode_end,
           gold_dur  = gold_duration_days,
@@ -711,7 +708,7 @@ compute_gold_anchored <- function(records_df, gold_df) {
 
   empty_result <- gold_df |>
     dplyr::transmute(
-      patient_id         = as.integer(patient_id),
+      person_id          = as.integer(person_id),
       episode_start, episode_end,
       gold_duration_days,
       gold_dose          = median_daily_dose,
@@ -768,7 +765,7 @@ compute_gold_anchored <- function(records_df, gold_df) {
 
   gold_df |>
     dplyr::transmute(
-      patient_id         = as.integer(patient_id),
+      person_id          = as.integer(person_id),
       episode_start, episode_end,
       gold_duration_days,
       gold_dose          = median_daily_dose
@@ -776,13 +773,13 @@ compute_gold_anchored <- function(records_df, gold_df) {
     dplyr::left_join(
       episode_summary |>
         dplyr::transmute(
-          patient_id         = pt_id,
+          person_id          = pt_id,
           episode_start      = g_start,
           episode_end        = g_end,
           n_records, coverage_days, coverage_pct,
           cumulative_dose_mg, avg_daily_dose_mg
         ),
-      by = c("patient_id", "episode_start", "episode_end")
+      by = c("person_id", "episode_start", "episode_end")
     ) |>
     dplyr::mutate(
       n_records     = dplyr::coalesce(n_records, 0L),

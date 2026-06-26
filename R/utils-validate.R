@@ -128,28 +128,33 @@ standardize_drug_name <- function(x, drug_name_map = NULL) {
 #' @param route_concept Character vector. OMOP `route_concept_name` field.
 #' @param route_source  Character vector. `route_source_value` field
 #'   (free text). Used as first fallback when `route_concept` is NA.
+#' @param drug_concept  Character vector. OMOP `drug_concept_name` field
+#'   (e.g. "Prednisone 5 MG Oral Tablet"). Used as second fallback; reliable
+#'   because OMOP RxNorm concept names embed the dose form.
 #' @param drug_source   Character vector. `drug_source_value` field
-#'   (free text). Used as second fallback when both route columns are NA.
+#'   (free text). Last fallback when all other columns are NA.
 #'   Many EHR systems encode route in the drug name string (e.g.
 #'   "METHYLPREDNISOLONE 125MG/2ML IV SOL", "PREDNISONE 5MG ORAL TAB").
 #' @return Character vector: one of `"oral"`, `"inhaled"`, `"topical"`,
 #'   `"injection"`, `"ophthalmic"`, or `"other"`.
 #' @noRd
 classify_route <- function(route_concept = NULL, route_source = NULL,
-                            drug_source = NULL) {
-  # Build a combined string: prefer route_concept_name, then route_source_value,
-  # then drug_source_value.  Lowercased for regex matching.
+                            drug_concept = NULL, drug_source = NULL) {
+  # Priority: route_concept_name > route_source_value > drug_concept_name
+  # > drug_source_value.  Lowercased for regex matching.
   n <- max(
     if (!is.null(route_concept)) length(route_concept) else 0L,
     if (!is.null(route_source))  length(route_source)  else 0L,
+    if (!is.null(drug_concept))  length(drug_concept)  else 0L,
     if (!is.null(drug_source))   length(drug_source)   else 0L
   )
 
   rc <- if (!is.null(route_concept)) stringr::str_to_lower(as.character(route_concept)) else rep(NA_character_, n)
   rs <- if (!is.null(route_source))  stringr::str_to_lower(as.character(route_source))  else rep(NA_character_, n)
+  dc <- if (!is.null(drug_concept))  stringr::str_to_lower(as.character(drug_concept))  else rep(NA_character_, n)
   ds <- if (!is.null(drug_source))   stringr::str_to_lower(as.character(drug_source))   else rep(NA_character_, n)
 
-  combined <- dplyr::coalesce(rc, rs, ds)
+  combined <- dplyr::coalesce(rc, rs, dc, ds)
   combined[is.na(combined)] <- ""
 
   dplyr::case_when(

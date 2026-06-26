@@ -145,9 +145,12 @@ vignettes/
 
 1. **Always include a route column in fixtures.** Because `filter_oral = TRUE`
    is the default, every test fixture — including the `make_row()` helper and all
-   inline tibbles — must have a `route_concept_name` (or `route_source_value`)
-   column. Without it, every imputation call emits a "No route column found"
-   warning regardless of what the test is checking. See CICD-experiences.md #11.
+   inline tibbles — must have at least one of `route_concept_name`,
+   `route_source_value`, `drug_concept_name`, or `drug_source_value`. Without
+   any of these, every imputation call emits a "No route column found" warning
+   regardless of what the test is checking. Prefer `drug_concept_name` (e.g.
+   `"Prednisone 5 MG Oral Tablet"`) when the fixture does not otherwise need
+   a route column, as it matches the OMOP standard. See CICD-experiences.md #11.
 
 2. **Pin the exact `methods` vector when testing a specific imputation step.**
    Do not rely on the default cascade order. If you are testing `supply_based`

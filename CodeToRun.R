@@ -483,8 +483,6 @@ if (!is.null(GOLD_NEG_PATH) && file.exists(GOLD_NEG_PATH)) {
       gold_negative_df    = gold_neg,
       detection_threshold = 0,
       obs_window_source   = "computed",
-      computed_id_col     = "person_id",
-      gold_pos_id_col     = "person_id",
       gold_neg_id_col     = GOLD_NEG_ID_COL
     )
     m <- det$metrics

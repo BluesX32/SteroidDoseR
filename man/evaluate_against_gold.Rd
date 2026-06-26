@@ -12,7 +12,7 @@ evaluate_against_gold(
   computed_start_col = "episode_start",
   computed_end_col = "episode_end",
   computed_dose_col = "median_daily_dose",
-  gold_id_col = "patient_id",
+  gold_id_col = "person_id",
   gold_start_col = "episode_start",
   gold_end_col = "episode_end",
   gold_dose_col = "median_daily_dose",
@@ -47,7 +47,7 @@ Default: \code{"episode_end"}.}
 Default: \code{"median_daily_dose"}.}
 
 \item{gold_id_col}{\code{character(1)}. Patient ID column in \code{gold_df}.
-Default: \code{"patient_id"}.}
+Default: \code{"person_id"}.}
 
 \item{gold_start_col}{\code{character(1)}. Episode start column in \code{gold_df}.
 Default: \code{"episode_start"}.}
@@ -71,7 +71,7 @@ by \code{dose_breaks}. Default:
 A named list with three elements:
 \describe{
 \item{\verb{$comparison}}{One row per gold episode, with columns:
-\code{patient_id}, \code{episode_start}, \code{episode_end},
+\code{person_id}, \code{episode_start}, \code{episode_end},
 \code{gold_dose}, \code{computed_dose},
 \code{overlap_days}, \code{gold_duration}, \code{overlap_pct},
 \code{absolute_error}, \code{bias_error}, \code{relative_error_pct},
@@ -99,7 +99,7 @@ computed <- tibble::tibble(
   median_daily_dose = 10
 )
 gold <- tibble::tibble(
-  patient_id        = 1L,
+  person_id         = 1L,
   episode_start     = as.Date("2023-01-01"),
   episode_end       = as.Date("2023-06-30"),
   median_daily_dose = 10

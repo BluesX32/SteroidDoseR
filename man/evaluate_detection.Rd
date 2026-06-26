@@ -16,10 +16,10 @@ evaluate_detection(
   computed_start_col = "episode_start",
   computed_end_col = "episode_end",
   computed_dose_col = "median_daily_dose",
-  gold_pos_id_col = "patient_id",
+  gold_pos_id_col = "person_id",
   gold_pos_start_col = "episode_start",
   gold_pos_end_col = "episode_end",
-  gold_neg_id_col = "patient_id",
+  gold_neg_id_col = "person_id",
   gold_neg_start_col = "obs_start",
   gold_neg_end_col = "obs_end"
 )
@@ -63,7 +63,7 @@ Default \code{"episode_end"}.}
 Default \code{"median_daily_dose"}.}
 
 \item{gold_pos_id_col}{\code{character(1)}. Patient ID column in
-\code{gold_positive_df}. Default \code{"patient_id"}.}
+\code{gold_positive_df}. Default \code{"person_id"}.}
 
 \item{gold_pos_start_col}{\code{character(1)}. Episode start column in
 \code{gold_positive_df}. Default \code{"episode_start"}.}
@@ -72,7 +72,7 @@ Default \code{"median_daily_dose"}.}
 \code{gold_positive_df}. Default \code{"episode_end"}.}
 
 \item{gold_neg_id_col}{\code{character(1)}. Patient ID column in
-\code{gold_negative_df}. Default \code{"patient_id"}.}
+\code{gold_negative_df}. Default \code{"person_id"}.}
 
 \item{gold_neg_start_col}{\code{character(1)}. Observation start column in
 \code{gold_negative_df}. Used only when \code{obs_window_source = "explicit"}.
@@ -130,10 +130,10 @@ computed <- tibble::tibble(
   median_daily_dose = c(20, 5)
 )
 gold_pos <- tibble::tibble(
-  patient_id    = 1L,
+  person_id     = 1L,
   episode_start = as.Date("2023-01-01"),
   episode_end   = as.Date("2023-06-30")
 )
-gold_neg <- tibble::tibble(patient_id = c(3L, 4L))
+gold_neg <- tibble::tibble(person_id = c(3L, 4L))
 evaluate_detection(computed, gold_pos, gold_neg)
 }
