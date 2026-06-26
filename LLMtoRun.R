@@ -381,9 +381,8 @@ for (batch in batch_indices) {
   batch_out <- future.apply::future_lapply(
     seq_len(nrow(batch_rows)),
     function(j) .process_note(batch_rows[j, ], NOTE_META_COLS),
-    future.seed = NULL,
-    future.globals = c(".call_ollama", ".make_prompt", ".parse_llm_output",
-                       "OLLAMA_URL", "OLLAMA_MODEL", "MAX_TOKENS", "TIMEOUT_SEC")
+    future.seed    = NULL,
+    future.globals = TRUE
   )
 
   # Log and store results sequentially after each batch
