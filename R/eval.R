@@ -167,10 +167,18 @@ evaluate_against_gold <- function(computed_df,
     ) |>
     dplyr::select("person_id", "episode_start", "episode_end", "gold_dose")
 
+  # --- restrict to common patients (apple-to-apple dose accuracy) -----------
+  # Patients absent from computed_df are detection failures, not dose errors.
+  # Report them separately via detection_coverage_pct; exclude from MAE/MBE.
+  n_gold_patients   <- dplyr::n_distinct(gold$person_id)
+  common_ids        <- intersect(unique(gold$person_id), unique(comp$person_id))
+  n_common_patients <- length(common_ids)
+  gold_common       <- gold |> dplyr::filter(.data$person_id %in% common_ids)
+
   # --- overlap join (no external fuzzyjoin dependency) ----------------------
   # For each gold episode, find all computed episodes for the same patient
   # that overlap by at least min_overlap_days.
-  merged <- gold |>
+  merged <- gold_common |>
     dplyr::rename(g_start = "episode_start", g_end = "episode_end") |>
     dplyr::left_join(
       comp |> dplyr::rename(c_start = "episode_start", c_end = "episode_end"),
@@ -190,8 +198,8 @@ evaluate_against_gold <- function(computed_df,
     dplyr::slice(1L) |>
     dplyr::ungroup()
 
-  # Build comparison table (one row per gold episode, even if unmatched)
-  comparison <- gold |>
+  # Build comparison table (one row per common-patient gold episode)
+  comparison <- gold_common |>
     dplyr::left_join(
       merged |>
         dplyr::transmute(
@@ -229,7 +237,7 @@ evaluate_against_gold <- function(computed_df,
       )
     )
 
-  n_gold     <- nrow(gold)
+  n_gold     <- nrow(gold_common)
   n_matched  <- sum(!is.na(comparison$computed_dose))
 
   # --- overall summary -------------------------------------------------------
@@ -246,9 +254,12 @@ evaluate_against_gold <- function(computed_df,
   else NA_real_
 
   summary_tbl <- tibble::tibble(
-    n_gold_periods        = n_gold,
-    n_matched_periods     = n_matched,
-    coverage_pct          = 100 * n_matched / n_gold,
+    n_gold_patients        = n_gold_patients,
+    n_common_patients      = n_common_patients,
+    detection_coverage_pct = 100 * n_common_patients / n_gold_patients,
+    n_gold_periods         = n_gold,
+    n_matched_periods      = n_matched,
+    coverage_pct           = 100 * n_matched / n_gold,
     MAE                   = mean(matched$absolute_error,              na.rm = TRUE),
     MBE                   = mean(matched$bias_error,                  na.rm = TRUE),
     RMSE                  = sqrt(mean(matched$bias_error^2,           na.rm = TRUE)),

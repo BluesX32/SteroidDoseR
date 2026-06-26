@@ -2,6 +2,15 @@
 
 ## New features
 
+* **`evaluate_against_gold()` now restricts dose-accuracy metrics to common
+  patients** (`R/eval.R`): Before the overlap join, gold episodes are filtered
+  to patients who also appear in `computed_df`. Patients entirely absent from
+  the computed output are detection failures, not dose errors; mixing them into
+  the MAE/coverage denominator conflates the two claims. The summary tibble now
+  includes `n_gold_patients`, `n_common_patients`, and `detection_coverage_pct`
+  (= common / all gold patients) alongside the existing episode-level
+  `coverage_pct` (which now applies to the common-patient subset only).
+
 * **`dose_implausible` and `pulse_episode` flags in `build_episodes()`**
   (`R/episodes.R`): Every episode tibble now includes two logical flag columns.
   `dose_implausible = TRUE` when `mean_daily_dose < 1` mg/day (sub-tablet-strength

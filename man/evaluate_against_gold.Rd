@@ -79,9 +79,16 @@ A named list with three elements:
 \code{absolute_error}, \code{bias_error}, \code{relative_error_pct},
 \code{absolute_relative_error_pct}, \code{agreement_category}, \code{error_direction}.}
 \item{\verb{$summary}}{One-row summary tibble:
-\code{n_gold_periods}, \code{n_matched_periods}, \code{coverage_pct},
+\code{n_gold_patients} (all patients in gold),
+\code{n_common_patients} (patients present in both computed and gold),
+\code{detection_coverage_pct} (= 100 * n_common / n_gold_patients — how many gold patients the algorithm detected at all),
+\code{n_gold_periods} (gold episodes from common patients only),
+\code{n_matched_periods}, \code{coverage_pct} (episode-level match rate within common patients),
 \code{MAE}, \code{MBE}, \code{RMSE}, \code{median_AE}, \code{MAPE}, \code{mean_relative_bias_pct},
-\code{pearson_corr}, \code{spearman_corr}.}
+\code{pearson_corr}, \code{spearman_corr}.
+Dose-accuracy metrics (MAE, MBE, coverage_pct) are computed on the common-patient
+subset only: patients absent from \code{computed_df} are detection failures, not
+dose errors, and including them would conflate the two.}
 \item{\verb{$stratified}}{Stratified metrics by \code{dose_range} and
 \code{sig_category} (if \code{parsed_status} is present in \code{computed_df}),
 plus by taper status.}

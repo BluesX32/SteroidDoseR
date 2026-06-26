@@ -534,13 +534,12 @@ cat(sprintf(
     gold_std_ok,
     gold_dose_col = "dose_daily_mg_equiv"
   )
-  ev$n_common_patients <- length(intersect(
-    unique(episodes_clean$person_id), unique(gold_std_ok$person_id)
-  ))
   cat(sprintf(
-    "\n%s: %d common patients | %d/%d gold records matched (%.1f%% coverage)\n",
+    "\n%s: %d/%d gold patients detected (%.1f%% detection) | %d/%d common-patient episodes matched (%.1f%% episode coverage)\n",
     label,
-    ev$n_common_patients,
+    ev$summary$n_common_patients,
+    ev$summary$n_gold_patients,
+    ev$summary$detection_coverage_pct,
     ev$summary$n_matched_periods,
     ev$summary$n_gold_periods,
     ev$summary$coverage_pct
