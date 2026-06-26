@@ -659,64 +659,6 @@ equiv_sens_result <- dplyr::bind_rows(
 cat("\nMean daily dose (mg pred-equiv/day) by equivalency table (NLP episodes):\n")
 print(as.data.frame(equiv_sens_result), row.names = FALSE)
 
-# ---- 8c-iii. Hierarchical threshold tuning with validation split -----------
-# CRITICAL: tune thresholds on the TRAIN split only.  Evaluating on the full
-# gold set after tuning inflates accuracy — this split prevents that leakage.
-message("\n=== [8c-iii] Hierarchical threshold tuning (train/validate split) ===")
-
-gold_split <- make_validation_split(gold_std_ok, train_frac = 0.7, seed = 42L)
-cat(sprintf(
-  "Gold split: %d patients train (%d episodes), %d patients validate (%d episodes)\n",
-  length(gold_split$train_ids),   nrow(gold_split$train),
-  length(gold_split$validate_ids), nrow(gold_split$validate)
-))
-
-if (nrow(gold_split$train) >= 3L) {
-  message("  Tuning hierarchical thresholds on train split ...")
-  thresh_results <- tune_hierarchical_thresholds(
-    connector_or_df = drug_df,
-    gold_df         = gold_split$train,
-    gold_dose_col   = "dose_daily_mg_equiv",
-    gap_days        = GAP_DAYS
-  )
-  cat("\nTop 5 threshold combinations (by MAE, train split):\n")
-  print(as.data.frame(head(thresh_results, 5L)), row.names = FALSE)
-
-  # Evaluate best parameters on the HELD-OUT validate split
-  best_params <- thresh_results[1L, ]
-  cat(sprintf(
-    "\nBest params: match_tol=%.2f  diff_threshold=%.0f\n",
-    best_params$match_tol, best_params$diff_threshold
-  ))
-
-  hier_df_best <- calc_daily_dose_hierarchical(
-    drug_df,
-    match_tol   = best_params$match_tol,
-    diff_threshold = best_params$diff_threshold,
-    gap_days    = GAP_DAYS
-  )
-  hier_ep_best <- build_episodes(
-    hier_df_best,
-    end_col    = "drug_exposure_end_date",
-    dose_col   = "daily_dose_mg",
-    gap_days   = GAP_DAYS,
-    extra_cols = "hierarchical_method"
-  )
-  ev_hier_validate <- evaluate_against_gold(
-    hier_ep_best,
-    gold_split$validate,
-    gold_dose_col = "dose_daily_mg_equiv"
-  )
-  cat(sprintf(
-    "\nHierarchical (best params) on VALIDATE split: MAE=%.2f  MBE=%.2f  Coverage=%.1f%%\n",
-    ev_hier_validate$summary$MAE,
-    ev_hier_validate$summary$MBE,
-    ev_hier_validate$summary$coverage_pct
-  ))
-} else {
-  message("  Skipping threshold tuning — train split has fewer than 3 gold records.")
-  thresh_results <- NULL
-}
 
 # ===========================================================================
 # 9. Comparison scatter plots (method dose vs gold dose)
@@ -1047,8 +989,6 @@ readr::write_csv(metrics_tbl,       file.path(RUN_DIR, "metrics_table.csv"))
 # ── Sensitivity analyses ──────────────────────────────────────────────────────
 readr::write_csv(gap_sens_result,   file.path(RUN_DIR, "sensitivity_gap.csv"))
 readr::write_csv(equiv_sens_result, file.path(RUN_DIR, "sensitivity_equiv.csv"))
-if (!is.null(thresh_results))
-  readr::write_csv(thresh_results,  file.path(RUN_DIR, "sensitivity_thresholds.csv"))
 
 # ── Plot data ─────────────────────────────────────────────────────────────────
 readr::write_csv(dist_df_all, file.path(RUN_DIR, "plot_data_dose_distribution.csv"))
