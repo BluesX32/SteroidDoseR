@@ -1,69 +1,44 @@
 # CodeToRun.R
-# SteroidDoseR — Main Study Analysis Script
+# SteroidDoseR — Baseline + NLP Method Script
 #
-# Primary execution script for the corticosteroid dose study.
-# Computes prednisone-equivalent daily doses using two methods
-# (Baseline, NLP) and evaluates against a gold standard.
+# Runs the Baseline (M1-M4) and Advanced NLP dose-extraction methods against
+# the OMOP CDM drug_exposure table and saves record- and episode-level CSVs.
 #
-# Analysis workflow
-# -----------------
-# STEP 1 — Extraction       : pull steroid drug_exposure from OMOP CDM.
-#                              Optionally restrict to COHORT_PERSON_IDS.
-# STEP 2 — Medication filter : restrict to steroid concept IDs (SQL) and oral
-#                              route + known steroids (filter_oral = TRUE in R).
-# STEP 3 — Dose calculation  : Baseline (M1-M4), NLP (Advanced).
-# STEP 4 — Evaluation        : compare to gold standard per overlapping window.
+# Run standalone OR source from RunAll.R (which sets shared params and handles
+# the database connection and disconnect).
 #
-# Usage
-# -----
-#   Source this file interactively in RStudio, or run:
-#     Rscript CodeToRun.R
+# Workflow
+# --------
+# STEP 1 — Connection  : OMOP CDM database (skip when USE_SYNTHETIC = TRUE)
+# STEP 2 — Data load   : drug_exposure extraction + quality checks
+# STEP 3 — Baseline    : M1-M4 cascading imputation
+# STEP 4 — NLP         : Advanced SIG parser + frequency audit
+# STEP 5 — Save        : records_*.csv + episodes_*.csv written to RUN_DIR
 #
-# Supplementary analyses (run after this script, in the same R session):
-#   source("extras/ErrorAnalysis.R")       # deep-dive into high-error episodes
-#   source("extras/EligibilityAnalysis.R") # patient/episode funnel
-#
-# Connection modes  (set USE_SYNTHETIC below)
-# --------------------------------------------
-#   Mode A — Synthetic data (no database required):
-#     USE_SYNTHETIC = TRUE
-#
-#   Mode B / C — Live OMOP CDM  (USE_SYNTHETIC = FALSE):
-#     Fill in ONE connection block in Section 1a; Sections 1b–1c run unchanged.
-#
-#     Option B  DatabaseConnector (OHDSI standard) — SQL Server, PostgreSQL,
-#               Redshift, Snowflake, BigQuery, Databricks/Spark, and more.
-#               Required packages: DatabaseConnector, SqlRender
-#
-#     Option C  DBI / odbc — Databricks (Simba Spark ODBC driver) or any
-#               other ODBC-compatible source.
-#               Required packages: DBI, odbc, SqlRender
-#               Driver: https://www.databricks.com/spark/odbc-drivers-download
+# Comparison against the gold standard is handled in CompareToRun.R.
 
-devtools::install_local(getwd())
-# This script is designed for interactive use in RStudio.
-if (!interactive()) quit(status = 0L, save = "no")
-
-
-library(SteroidDoseR)
-library(dplyr)
-library(ggplot2)
+# When sourced from RunAll.R these are already set; skip re-installation.
+if (!exists(".RUNALL_ACTIVE")) {
+  devtools::install_local(getwd())
+  if (!interactive()) quit(status = 0L, save = "no")
+  library(SteroidDoseR)
+  library(dplyr)
+  library(ggplot2)
+}
 
 # ---------------------------------------------------------------------------
-# 0. Configuration
+# 0. Configuration  —  values set by RunAll.R take precedence
 # ---------------------------------------------------------------------------
-USE_SYNTHETIC  <- FALSE   # set TRUE to use bundled data; no DB required
-START_DATE     <- "2015-01-01"
-END_DATE       <- "2025-12-31"
-GAP_DAYS       <- 30L
-
-GOLD_STD_PATH  <- "/your/path/to/gold-standard"
-GOLD_NEG_PATH  <- "/your/path/to/gold-negative"   # CSV with confirmed non-users; must have a patient ID column
-OUTPUT_DIR     <- file.path(getwd(), "output")   # folder for saved CSVs and plots
-
-# Optional patient filter — set to an integer vector of person_ids to restrict
-# extraction to a specific cohort, or leave NULL to include all patients in DB.
-COHORT_PERSON_IDS <- NULL
+if (!exists("USE_SYNTHETIC"))     USE_SYNTHETIC     <- FALSE
+if (!exists("START_DATE"))        START_DATE        <- "2015-01-01"
+if (!exists("END_DATE"))          END_DATE          <- "2025-12-31"
+if (!exists("GAP_DAYS"))          GAP_DAYS          <- 30L
+if (!exists("COHORT_PERSON_IDS")) COHORT_PERSON_IDS <- NULL
+if (!exists("OUTPUT_DIR"))        OUTPUT_DIR        <- file.path(getwd(), "output")
+if (!exists("RUN_DIR")) {
+  RUN_DIR <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
+  dir.create(RUN_DIR, recursive = TRUE)
+}
 
 # Steroid drug_concept_id allow-list (matches Version2 Baseline extraction).
 # Loaded from the bundled CSV; each row is one integer concept ID.
@@ -73,49 +48,27 @@ STEROID_CONCEPT_IDS <- as.integer(readr::read_csv(
 )[[1L]])
 
 # ---------------------------------------------------------------------------
-# 1a. Connection  —  fill in ONE option below (live DB only; skip for synthetic)
+# 1a. Connection  —  set in RunAll.R; guard here for standalone use
 # ---------------------------------------------------------------------------
 if (!USE_SYNTHETIC) {
-
-  # ── Option B: DatabaseConnector (SQL Server, PostgreSQL, Redshift, Snowflake,
-  #              BigQuery, Databricks/Spark, and more — OHDSI standard)
-  # Required packages: DatabaseConnector, SqlRender
-  # cdm_schema   <- "database.dbo"   # SQL Server format; "schema" for PostgreSQL
-  # vocab_schema <- "database.dbo"
-  # connectionDetails <- DatabaseConnector::createConnectionDetails(
-  #   dbms             = "sql server",   # "postgresql", "redshift", "spark", ...
-  #   connectionString = "",
-  #   pathToDriver     = ""
-  # )
-  # conn <- DatabaseConnector::connect(connectionDetails)
-
-  # ── Option C: DBI / odbc  (Databricks Simba Spark driver or any ODBC source)
-  # Required packages: DBI, odbc, SqlRender
-  # Driver download: https://www.databricks.com/spark/odbc-drivers-download
-  # Databricks Unity Catalog requires three-part names (catalog.schema.table).
-  # Set cdm_schema as "catalog.schema" so the rendered SQL becomes
-  # catalog.schema.table — using only "schema" produces a two-part name that
-  # Unity Catalog cannot resolve.
-  # library(DBI); library(odbc)
-  # DB_DIALECT   <- "spark"              # SqlRender targetDialect
-  # cdm_schema   <- "catalog.schema"     # e.g. "hive_metastore.my_omop_cdm"
-  # vocab_schema <- "catalog.schema"     # often the same as cdm_schema
-  # host         <- ""                   # workspace URL hostname
-  # http_path    <- ""                   # Settings > SQL Warehouse > Connection details
-  # token        <- ""                   # Personal Access Token
-  # conn <- DBI::dbConnect(
-  #   odbc::odbc(),
-  #   Driver          = "Simba Spark ODBC Driver",
-  #   Host            = host,
-  #   Port            = 443,
-  #   HTTPPath        = http_path,
-  #   AuthMech        = 3,
-  #   UID             = "token",
-  #   PWD             = token,
-  #   SSL             = 1,
-  #   ThriftTransport = 2
-  # )
-
+  if (!exists("conn")) {
+    stop(
+      "No database connection found (`conn` is not set).\n",
+      "  - To run the full analysis: source('RunAll.R')\n",
+      "  - To run standalone:        create `conn` in RunAll.R, then source this file."
+    )
+  }
+  is_valid <- tryCatch(
+    if (inherits(conn, "DatabaseConnectorConnection")) DatabaseConnector::dbIsValid(conn)
+    else DBI::dbIsValid(conn),
+    error = function(e) FALSE
+  )
+  if (!is_valid) {
+    stop(
+      "Database connection is stale.\n",
+      "Re-run the connection block in RunAll.R to create a fresh `conn`."
+    )
+  }
 }
 
 # Locate a bundled SQL file: checks the installed package first, then falls
@@ -515,710 +468,42 @@ if (all(c("freq_per_day", "mg_per_admin", "daily_dose_mg") %in% names(nlp_df))) 
 .flag_summary(nlp_episodes,      "NLP")
 
 # ===========================================================================
-# 6. DOSE DISTRIBUTIONS
+# 6. SAVE — records and episodes
+#    Gold-standard comparison and plots are handled in CompareToRun.R
 # ===========================================================================
-message("\n=== Dose distributions ===")
-
-make_dist_df <- function(episodes_df, method_label) {
-  episodes_df |>
-    dplyr::filter(!is.na(median_daily_dose), median_daily_dose > 0) |>
-    dplyr::select(person_id, drug_name_std, median_daily_dose) |>
-    dplyr::mutate(method = method_label)
-}
-
-dist_df <- dplyr::bind_rows(
-  make_dist_df(baseline_episodes, "Baseline"),
-  make_dist_df(nlp_episodes,      "NLP")
-)
-# NOTE: Distribution plot printed after Section 7 once gold standard is loaded.
-
-# Parsed-status × dose breakdown — verifies PRN removal and shows which
-# categories drive the low-dose (<1 mg) and high-dose (>100 mg) tails.
-if ("parsed_status" %in% names(nlp_episodes)) {
-  cat("\nNLP episodes: dose distribution by parsed_status:\n")
-  nlp_episodes |>
-    dplyr::filter(!is.na(mean_daily_dose)) |>
-    dplyr::group_by(parsed_status) |>
-    dplyr::summarise(
-      n               = dplyr::n(),
-      pct_implausible = round(100 * mean(dose_implausible, na.rm = TRUE), 1),
-      pct_pulse       = round(100 * mean(pulse_episode,    na.rm = TRUE), 1),
-      q25             = round(stats::quantile(mean_daily_dose, 0.25, na.rm = TRUE), 1),
-      median          = round(stats::median(mean_daily_dose, na.rm = TRUE), 1),
-      q75             = round(stats::quantile(mean_daily_dose, 0.75, na.rm = TRUE), 1),
-      .groups = "drop"
-    ) |>
-    dplyr::arrange(dplyr::desc(n)) |>
-    as.data.frame() |>
-    print(row.names = FALSE)
-}
-
-cat("\nDose distribution summary by method (mg prednisone-equivalent):\n")
-dist_df |>
-  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP"))) |>
-  dplyr::group_by(method) |>
-  dplyr::summarise(
-    n_episodes = dplyr::n(),
-    n_patients = dplyr::n_distinct(person_id),
-    min    = min(median_daily_dose),
-    q25    = stats::quantile(median_daily_dose, 0.25),
-    median = stats::median(median_daily_dose),
-    mean   = mean(median_daily_dose),
-    q75    = stats::quantile(median_daily_dose, 0.75),
-    max    = max(median_daily_dose),
-    .groups = "drop"
-  ) |>
-  print()
-
-# ===========================================================================
-# 7. Load gold standard
-# ===========================================================================
-message("\n=== Loading gold standard ===")
-
-gold_std_raw <- readr::read_csv(GOLD_STD_PATH, show_col_types = FALSE)
-gold_std     <- parse_steroid_gold(gold_std_raw)
-
-cat(sprintf(
-  "Gold standard: %d records from %d patients\n",
-  nrow(gold_std), dplyr::n_distinct(gold_std$person_id)
-))
-
-cat("\nParse status breakdown:\n")
-print(table(gold_std$parse_status, useNA = "ifany"))
-
-cat("\nGold standard preview:\n")
-print(head(gold_std[, c("person_id", "drug_name_std", "episode_start",
-                        "episode_end", "dose_raw", "dose_daily_mg_equiv",
-                        "parse_status")]))
-
-cat("\nDaily mg equivalent distribution (parseable records):\n")
-print(summary(gold_std$dose_daily_mg_equiv[gold_std$parse_status == "ok"]))
-
-# --- Distribution plot including gold standard (3 panels) -------------------
-gold_dist_df <- gold_std |>
-  dplyr::filter(!is.na(dose_daily_mg_equiv), dose_daily_mg_equiv > 0) |>
-  dplyr::transmute(
-    person_id         = as.integer(person_id),
-    drug_name_std     = dplyr::coalesce(drug_name_std, "unknown"),
-    median_daily_dose = dose_daily_mg_equiv,
-    method            = "Gold"
-  )
-
-dist_method_colors <- c(
-  "Baseline" = "#2271B3",
-  "NLP"      = "#009E73",
-  "Gold"     = "#333333"
-)
-
-dist_df_all <- dplyr::bind_rows(dist_df, gold_dist_df) |>
-  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "Gold")))
-
-p_dist <- ggplot2::ggplot(
-  dist_df_all,
-  ggplot2::aes(x = median_daily_dose, fill = method, colour = method)
-) +
-  ggplot2::geom_density(alpha = 0.35, linewidth = 0.7) +
-  ggplot2::scale_x_log10(
-    breaks = c(1, 2, 5, 10, 20, 40, 80, 160, 320, 640),
-    labels = scales::label_number()
-  ) +
-  ggplot2::scale_fill_manual(values   = dist_method_colors) +
-  ggplot2::scale_colour_manual(values = dist_method_colors) +
-  ggplot2::facet_wrap(~ method, ncol = 1, scales = "free_y") +
-  ggplot2::labs(
-    title    = "Distribution of median daily prednisone-equivalent dose by method",
-    subtitle = "One data point per patient-drug episode; x-axis on log10 scale",
-    x        = "Median daily dose (mg prednisone-equivalent)",
-    y        = "Density"
-  ) +
-  ggplot2::theme_bw() +
-  ggplot2::theme(legend.position = "none")
-
-print(p_dist)
-
-# ===========================================================================
-# 8. Episode-level comparison (each method vs gold standard)
-# ===========================================================================
-message("\n=== Episode-level comparisons vs gold standard ===")
-
-gold_std_ok <- gold_std |> dplyr::filter(parse_status == "ok")
-cat(sprintf(
-  "Gold records with parseable dose: %d / %d\n",
-  nrow(gold_std_ok), nrow(gold_std)
-))
-
-.run_comparison <- function(episodes_df, label) {
-  n_impl  <- sum(episodes_df$dose_implausible, na.rm = TRUE)
-  n_pulse <- sum(episodes_df$pulse_episode,    na.rm = TRUE)
-  if (n_impl > 0L)
-    cat(sprintf("  [%s] Excluding %d dose_implausible episodes (<1 mg/day) from primary evaluation\n",
-                label, n_impl))
-
-  # Primary evaluation: exclude artefactual sub-1 mg episodes
-  episodes_clean <- episodes_df |> dplyr::filter(!.data$dose_implausible)
-
-  ev <- evaluate_against_gold(
-    episodes_clean,
-    gold_std_ok,
-    gold_dose_col = "dose_daily_mg_equiv"
-  )
-  cat(sprintf(
-    "\n%s: %d/%d gold patients detected (%.1f%% detection) | %d/%d common-patient episodes matched (%.1f%% episode coverage)\n",
-    label,
-    ev$summary$n_common_patients,
-    ev$summary$n_gold_patients,
-    ev$summary$detection_coverage_pct,
-    ev$summary$n_matched_periods,
-    ev$summary$n_gold_periods,
-    ev$summary$coverage_pct
-  ))
-  cat(sprintf("  MAE=%.2f  MBE=%.2f  RMSE=%.2f  MAPE=%.1f%%  r=%.3f\n",
-    ev$summary$MAE, ev$summary$MBE, ev$summary$RMSE,
-    ev$summary$MAPE, ev$summary$pearson_corr))
-
-  # Pulse sensitivity: show metrics with and without >100 mg episodes
-  if (n_pulse > 0L) {
-    ev_np <- evaluate_against_gold(
-      episodes_clean |> dplyr::filter(!.data$pulse_episode),
-      gold_std_ok,
-      gold_dose_col = "dose_daily_mg_equiv"
-    )
-    cat(sprintf(
-      "  Excl. pulse episodes (>100 mg/day, n=%d): MAE=%.2f  MBE=%.2f  Coverage=%.1f%%\n",
-      n_pulse,
-      ev_np$summary$MAE, ev_np$summary$MBE, ev_np$summary$coverage_pct
-    ))
-  }
-
-  cat("By dose range:\n")
-  print(as.data.frame(ev$stratified$by_dose_range))
-  ev
-}
-
-message("\n  Baseline vs gold standard ...")
-ev_baseline <- .run_comparison(baseline_episodes, "Baseline")
-
-message("\n  NLP vs gold standard ...")
-ev_nlp <- .run_comparison(nlp_episodes, "NLP")
-
-# ===========================================================================
-# 8a.5. Error decomposition by parse category
-#        Reveals whether errors concentrate in clinically interpretable SIG
-#        categories (taper, PRN, free-text, no_parse) vs well-parsed records.
-# ===========================================================================
-message("\n=== Error decomposition by parse category ===")
-
-# NLP: by parsed_status (carried into nlp_episodes via extra_cols above)
-if (nrow(ev_nlp$stratified$by_sig_status) > 0L) {
-  cat("\nNLP: error metrics by parsed_status (episode-level mode):\n")
-  print(as.data.frame(
-    ev_nlp$stratified$by_sig_status |>
-      dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 2)))
-  ), row.names = FALSE)
-} else {
-  cat("\nNLP stratified by parsed_status: not available (parsed_status not in nlp_episodes).\n")
-}
-
-# Full decomposition: join parsed_status onto the comparison table and call
-# stratify_errors_by_parse() for a richer breakdown including unmatched records
-if ("parsed_status" %in% names(nlp_episodes) &&
-    "computed_episode_start" %in% names(ev_nlp$comparison)) {
-  .comp_with_parse <- ev_nlp$comparison |>
-    dplyr::left_join(
-      nlp_episodes |>
-        dplyr::select("person_id", "episode_start", "parsed_status") |>
-        dplyr::rename(computed_episode_start = "episode_start"),
-      by = c("person_id", "computed_episode_start")
-    )
-  cat("\nNLP: full error decomposition by parsed_status (incl. unmatched):\n")
-  print(as.data.frame(
-    stratify_errors_by_parse(.comp_with_parse, "parsed_status")
-  ), row.names = FALSE)
-}
-
-# ===========================================================================
-# 8b. Binary detection evaluation (kappa, sensitivity, specificity)
-#     Requires GOLD_NEG_PATH — a CSV whose rows are confirmed non-steroid users.
-#     Set GOLD_NEG_ID_COL to whichever column holds the patient ID.
-# ===========================================================================
-GOLD_NEG_ID_COL <- "person_id"   # adjust to match your CSV column name
-
-if (!is.null(GOLD_NEG_PATH) && file.exists(GOLD_NEG_PATH)) {
-  message("\n=== Binary detection evaluation (gold positive vs gold negative) ===")
-
-  gold_neg <- readr::read_csv(GOLD_NEG_PATH, show_col_types = FALSE)
-  cat(sprintf("Gold negative: %d confirmed non-users\n", nrow(gold_neg)))
-
-  .run_detection <- function(episodes_df, label) {
-    det <- evaluate_detection(
-      computed_df         = episodes_df,
-      gold_positive_df    = gold_std_ok,
-      gold_negative_df    = gold_neg,
-      detection_threshold = 0,
-      obs_window_source   = "computed",
-      gold_neg_id_col     = GOLD_NEG_ID_COL
-    )
-    m <- det$metrics
-    cat(sprintf(
-      "\n%s:\n  TP=%d  FN=%d  FP=%d  TN=%d\n  Sensitivity=%.3f  Specificity=%.3f  PPV=%.3f  NPV=%.3f\n  Accuracy=%.3f  F1=%.3f  Kappa=%.3f\n",
-      label, m$TP, m$FN, m$FP, m$TN,
-      m$sensitivity, m$specificity, m$PPV, m$NPV,
-      m$accuracy, m$F1, m$kappa
-    ))
-    det
-  }
-
-  det_baseline <- .run_detection(baseline_episodes, "Baseline")
-  det_nlp      <- .run_detection(nlp_episodes,      "NLP")
-} else {
-  message("\nSkipping binary detection evaluation — GOLD_NEG_PATH not set or file not found.")
-  det_baseline <- det_nlp <- NULL
-}
-
-# ===========================================================================
-# 8c. Sensitivity analyses
-#      Three pre-registered sensitivity checks that reviewers expect to see
-#      in a paper describing an automated dose-extraction pipeline.
-# ===========================================================================
-message("\n\n")
-cat(strrep("=", 70), "\n")
-cat("SENSITIVITY ANALYSES\n")
-cat(strrep("=", 70), "\n")
-
-# ---- 8c-i. Gap window sensitivity -----------------------------------------
-# Shows how the choice of gap_days (the bridging tolerance used by
-# build_episodes) affects episode count and duration.  OHDSI uses 30 days;
-# exploratory analyses sometimes use 0 or 7.  Reviewers want to see that
-# the main result is stable across a reasonable grid.
-message("\n=== [8c-i] Gap window sensitivity (NLP method) ===")
-gap_grid_values <- c(0L, 7L, 14L, 30L, 60L, 90L)
-gap_sens_result <- gap_sensitivity(
-  nlp_df,
-  gap_grid = gap_grid_values,
-  end_col  = "drug_exposure_end_date",
-  dose_col = "daily_dose_mg"
-)
-cat("\nEpisode structure across gap_days values:\n")
-print(as.data.frame(
-  gap_sens_result |>
-    dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 1)))
-), row.names = FALSE)
-cat(sprintf(
-  "\nReference (current analysis): gap_days = %d\n", GAP_DAYS
-))
-
-# ---- 8c-ii. Prednisone-equivalence table sensitivity ----------------------
-# Shows the distribution of mean daily dose under three equivalency tables.
-# Even a 20% swing in dexamethasone/methylprednisolone ratios shifts the
-# dose estimate for non-prednisone patients.
-message("\n=== [8c-ii] Prednisone-equivalence table sensitivity ===")
-
-.equiv_sensitivity <- function(records_df, label,
-                                equiv_tbl  = NULL,
-                                end_col    = "drug_exposure_end_date",
-                                dose_col   = "daily_dose_mg",
-                                gap        = GAP_DAYS) {
-  converted <- convert_pred_equiv(
-    records_df,
-    dose_col  = dose_col,
-    drug_col  = "drug_name_std",
-    equiv_table = equiv_tbl
-  )
-  ep <- build_episodes(
-    converted,
-    end_col  = end_col,
-    dose_col = "pred_equiv_mg",
-    gap_days = gap
-  )
-  tibble::tibble(
-    equiv_table   = label,
-    n_episodes    = nrow(ep),
-    median_mg     = round(stats::median(ep$mean_daily_dose, na.rm = TRUE), 1),
-    mean_mg       = round(mean(ep$mean_daily_dose, na.rm = TRUE), 1),
-    p25_mg        = round(stats::quantile(ep$mean_daily_dose, 0.25, na.rm = TRUE), 1),
-    p75_mg        = round(stats::quantile(ep$mean_daily_dose, 0.75, na.rm = TRUE), 1)
-  )
-}
-
-equiv_sens_result <- dplyr::bind_rows(
-  .equiv_sensitivity(nlp_df, "Conservative", pred_equiv_table_conservative),
-  .equiv_sensitivity(nlp_df, "Default",      NULL),
-  .equiv_sensitivity(nlp_df, "Aggressive",   pred_equiv_table_aggressive)
-)
-cat("\nMean daily dose (mg pred-equiv/day) by equivalency table (NLP episodes):\n")
-print(as.data.frame(equiv_sens_result), row.names = FALSE)
-
-
-# ===========================================================================
-# 9. Comparison scatter plots (method dose vs gold dose)
-# ===========================================================================
-message("\n=== Comparison scatter plots ===")
-
-make_scatter_df <- function(ev_result, method_label) {
-  ev_result$comparison |>
-    dplyr::filter(!is.na(computed_dose)) |>
-    dplyr::transmute(
-      person_id,
-      gold_dose,
-      method_dose = computed_dose,
-      method      = method_label
-    )
-}
-
-scatter_df <- dplyr::bind_rows(
-  make_scatter_df(ev_baseline, "Baseline"),
-  make_scatter_df(ev_nlp,      "NLP")
-) |>
-  dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP")))
-
-p_scatter <- ggplot2::ggplot(
-  scatter_df,
-  ggplot2::aes(x = gold_dose, y = method_dose)
-) +
-  ggplot2::geom_abline(slope = 1, intercept = 0,
-                       linetype = "dashed", colour = "grey50") +
-  ggplot2::geom_point(alpha = 0.5, size = 1.8, colour = "#2166ac") +
-  ggplot2::geom_smooth(method = "lm", se = TRUE,
-                       colour = "#d6604d", linewidth = 0.8) +
-  ggplot2::facet_wrap(~ method) +
-  ggplot2::labs(
-    title    = "Method dose vs gold standard (overlapping time window)",
-    subtitle = "Dashed line = perfect agreement; blue points = matched episodes",
-    x        = "Gold standard median daily dose (mg pred-equiv)",
-    y        = "Method median daily dose (mg pred-equiv)"
-  ) +
-  ggplot2::theme_bw()
-
-print(p_scatter)
-
-# ===========================================================================
-# 9.5 Bland-Altman plots (method dose vs gold standard)
-# ===========================================================================
-message("\n=== Bland-Altman plots ===")
-
-ba_df <- scatter_df |>
-  dplyr::filter(!is.na(gold_dose), !is.na(method_dose)) |>
-  dplyr::mutate(
-    mean_dose = (method_dose + gold_dose) / 2,
-    diff      = method_dose - gold_dose
-  )
-
-ba_limits <- ba_df |>
-  dplyr::group_by(method) |>
-  dplyr::summarise(
-    n       = dplyr::n(),
-    bias    = mean(diff),
-    sd_diff = stats::sd(diff),
-    loa_lo  = bias - 1.96 * sd_diff,
-    loa_hi  = bias + 1.96 * sd_diff,
-    .groups = "drop"
-  )
-
-cat("\nBland-Altman limits of agreement by method:\n")
-print(as.data.frame(ba_limits |>
-                      dplyr::mutate(dplyr::across(where(is.numeric), ~ round(., 2)))))
-
-p_ba <- ggplot2::ggplot(ba_df, ggplot2::aes(x = mean_dose, y = diff)) +
-  ggplot2::geom_hline(yintercept = 0,
-                      linetype = "solid", colour = "grey70", linewidth = 0.5) +
-  ggplot2::geom_hline(
-    data     = ba_limits,
-    ggplot2::aes(yintercept = bias),
-    linetype = "dashed", colour = "#d6604d", linewidth = 0.8
-  ) +
-  ggplot2::geom_hline(
-    data     = ba_limits,
-    ggplot2::aes(yintercept = loa_lo),
-    linetype = "dotted", colour = "#4393c3", linewidth = 0.7
-  ) +
-  ggplot2::geom_hline(
-    data     = ba_limits,
-    ggplot2::aes(yintercept = loa_hi),
-    linetype = "dotted", colour = "#4393c3", linewidth = 0.7
-  ) +
-  ggplot2::geom_point(alpha = 0.45, size = 1.8, colour = "#2166ac") +
-  ggplot2::geom_text(
-    data = ba_limits,
-    ggplot2::aes(
-      x     = Inf,
-      y     = bias,
-      label = sprintf("Bias: %.1f mg", bias)
-    ),
-    hjust = 1.1, vjust = -0.5, colour = "#d6604d", size = 3.2
-  ) +
-  ggplot2::geom_text(
-    data = ba_limits,
-    ggplot2::aes(
-      x     = Inf,
-      y     = loa_hi,
-      label = sprintf("+1.96 SD: %.1f mg", loa_hi)
-    ),
-    hjust = 1.1, vjust = -0.5, colour = "#4393c3", size = 3.2
-  ) +
-  ggplot2::geom_text(
-    data = ba_limits,
-    ggplot2::aes(
-      x     = Inf,
-      y     = loa_lo,
-      label = sprintf("-1.96 SD: %.1f mg", loa_lo)
-    ),
-    hjust = 1.1, vjust = 1.5, colour = "#4393c3", size = 3.2
-  ) +
-  ggplot2::facet_wrap(~ method) +
-  ggplot2::labs(
-    title    = "Bland-Altman: method dose minus gold standard",
-    subtitle = paste0(
-      "Red dashed = mean bias; blue dotted = 95% limits of agreement (±1.96 SD);\n",
-      "zero line = perfect agreement"
-    ),
-    x = "Mean of method and gold standard (mg pred-equiv)",
-    y = "Method − Gold standard (mg pred-equiv)"
-  ) +
-  ggplot2::theme_bw() +
-  ggplot2::theme(strip.text = ggplot2::element_text(face = "bold"))
-
-print(p_ba)
-
-# ===========================================================================
-# 10. REPORT
-# ===========================================================================
-message("\n\n")
-cat(strrep("=", 70), "\n")
-cat("ANALYSIS REPORT — SteroidDoseR Method Comparison\n")
-cat(strrep("=", 70), "\n\n")
-
-cat("DATA OVERVIEW\n")
-cat(strrep("-", 40), "\n")
-cat(sprintf("  Drug-exposure records:  %d\n", nrow(drug_df)))
-cat(sprintf("  Unique patients:        %d\n", dplyr::n_distinct(drug_df$person_id)))
-cat(sprintf("  Study window:           %s to %s\n", START_DATE, END_DATE))
-cat(sprintf("  Episode gap tolerance:  %d days\n\n", GAP_DAYS))
-
-cat("PATIENT OVERLAP\n")
-cat(strrep("-", 40), "\n")
-db_patients_rpt      <- unique(as.integer(drug_df$person_id))
-gold_patients_rpt    <- unique(as.integer(gold_std$person_id))
-overlap_patients_rpt <- intersect(db_patients_rpt, gold_patients_rpt)
-cat(sprintf("  Database (drug_exposure): %d unique patients\n",  length(db_patients_rpt)))
-cat(sprintf("  Gold standard:            %d unique patients\n",  length(gold_patients_rpt)))
-cat(sprintf("  Overlapping patients:     %d\n\n",               length(overlap_patients_rpt)))
-
-cat("EPISODE COUNTS BY SOURCE\n")
-cat(strrep("-", 40), "\n")
-episode_counts <- tibble::tibble(
-  Source               = c("Baseline", "NLP", "Gold Standard"),
-  Patients             = c(dplyr::n_distinct(baseline_episodes$person_id),
-                           dplyr::n_distinct(nlp_episodes$person_id),
-                           dplyr::n_distinct(gold_std$person_id)),
-  Records_pre_collapse = c(
-    sum(baseline_episodes$n_records, na.rm = TRUE),
-    sum(nlp_episodes$n_records,      na.rm = TRUE),
-    NA_integer_
-  ),
-  Episodes             = c(nrow(baseline_episodes),
-                           nrow(nlp_episodes),
-                           nrow(gold_std)),
-  Gold_total           = c(rep(ev_baseline$summary$n_gold_periods, 2L), NA_integer_),
-  Matched_to_Gold      = c(ev_baseline$summary$n_matched_periods,
-                           ev_nlp$summary$n_matched_periods,
-                           NA_integer_),
-  Coverage_pct         = c(round(ev_baseline$summary$coverage_pct, 1),
-                           round(ev_nlp$summary$coverage_pct,      1),
-                           NA_real_),
-  Median_mg            = c(stats::median(baseline_episodes$median_daily_dose, na.rm = TRUE),
-                           stats::median(nlp_episodes$median_daily_dose,       na.rm = TRUE),
-                           stats::median(gold_std$dose_daily_mg_equiv,         na.rm = TRUE))
-)
-print(as.data.frame(episode_counts), row.names = FALSE)
-cat("\n")
-
-cat("GOLD STANDARD COMPARISON (episode-level, median dose)\n")
-cat(strrep("-", 40), "\n")
-metrics_tbl <- tibble::tibble(
-  Method          = c("Baseline", "NLP"),
-  Common_Patients = c(ev_baseline$n_common_patients,
-                      ev_nlp$n_common_patients),
-  Coverage_pct    = round(c(ev_baseline$summary$coverage_pct,
-                            ev_nlp$summary$coverage_pct), 1),
-  MAE_mg          = round(c(ev_baseline$summary$MAE,
-                            ev_nlp$summary$MAE), 2),
-  MBE_mg          = round(c(ev_baseline$summary$MBE,
-                            ev_nlp$summary$MBE), 2),
-  RMSE_mg         = round(c(ev_baseline$summary$RMSE,
-                            ev_nlp$summary$RMSE), 2),
-  MAPE_pct        = round(c(ev_baseline$summary$MAPE,
-                            ev_nlp$summary$MAPE), 1),
-  Pearson_r       = round(c(ev_baseline$summary$pearson_corr,
-                            ev_nlp$summary$pearson_corr), 3),
-  Spearman_rho    = round(c(ev_baseline$summary$spearman_corr,
-                            ev_nlp$summary$spearman_corr), 3)
-)
-print(as.data.frame(metrics_tbl), row.names = FALSE)
-
-cat("\nINTERPRETATION\n")
-cat(strrep("-", 40), "\n")
-
-best_cov_idx  <- which.max(metrics_tbl$Coverage_pct)
-best_cov_name <- metrics_tbl$Method[best_cov_idx]
-cat(sprintf(
-  paste0(
-    "Coverage: %s achieves the highest coverage (%.1f%%) of gold-standard\n",
-    "  episodes. Coverage reflects how many gold-standard medication periods\n",
-    "  have at least one overlapping method record with a usable dose.\n\n"
-  ),
-  best_cov_name, metrics_tbl$Coverage_pct[best_cov_idx]
-))
-
-best_mae_idx  <- which.min(metrics_tbl$MAE_mg)
-best_mae_name <- metrics_tbl$Method[best_mae_idx]
-cat(sprintf(
-  paste0(
-    "Accuracy (MAE): %s has the lowest MAE (%.2f mg), indicating its\n",
-    "  dose estimates are closest to manually reviewed values on average.\n",
-    "  MAE is expressed in prednisone-equivalent mg/day.\n\n"
-  ),
-  best_mae_name, metrics_tbl$MAE_mg[best_mae_idx]
-))
-
-for (i in seq_len(nrow(metrics_tbl))) {
-  mbe <- metrics_tbl$MBE_mg[i]
-  if (is.na(mbe)) {
-    cat(sprintf("  %s: MBE not available (no matched episodes).\n",
-                metrics_tbl$Method[i]))
-  } else {
-    direction <- if (mbe > 0) "over-estimates" else "under-estimates"
-    cat(sprintf(
-      "  %s %s by %.2f mg on average (MBE = %.2f mg).\n",
-      metrics_tbl$Method[i], direction, abs(mbe), mbe
-    ))
-  }
-}
-cat("\n")
-
-best_cor_idx  <- which.max(metrics_tbl$Pearson_r)
-best_cor_name <- metrics_tbl$Method[best_cor_idx]
-cat(sprintf(
-  paste0(
-    "Correlation: %s shows the strongest linear association with the gold\n",
-    "  standard (Pearson r = %.3f, Spearman ρ = %.3f). High Spearman\n",
-    "  correlation with lower Pearson r suggests rank ordering is preserved\n",
-    "  but the relationship is non-linear (common in dose distributions).\n\n"
-  ),
-  best_cor_name,
-  metrics_tbl$Pearson_r[best_cor_idx],
-  metrics_tbl$Spearman_rho[best_cor_idx]
-))
-
-cat(paste0(
-  "RECOMMENDATION: Select the method based on the primary use case:\n",
-  "  - Baseline is robust and achieves maximum coverage by leveraging\n",
-  "    structured OMOP fields (quantity, days_supply, dose_unit), making\n",
-  "    it suitable when SIG text quality is low.\n",
-  "  - NLP is preferable when SIG text is consistently populated and\n",
-  "    accurately recorded, yielding more precise dose estimates and\n",
-  "    handling taper schedules via advanced SIG parsing.\n"
-))
-
-cat(strrep("=", 70), "\n")
-
-# ===========================================================================
-# 11. Save results to a timestamped run folder
-# ===========================================================================
-message("\n=== Saving results ===")
-
-RUN_DIR <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
-dir.create(RUN_DIR, recursive = TRUE)
+message("\n=== Saving CodeToRun.R results ===")
 
 writeLines(c(
-  "SteroidDoseR — Run Parameters",
+  "SteroidDoseR — CodeToRun.R Parameters",
   strrep("=", 40),
-  sprintf("Script:              CodeToRun.R"),
   sprintf("Run time:            %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
-  "",
-  "Data",
-  strrep("-", 40),
   sprintf("USE_SYNTHETIC:       %s", USE_SYNTHETIC),
   sprintf("START_DATE:          %s", START_DATE),
   sprintf("END_DATE:            %s", END_DATE),
+  sprintf("GAP_DAYS:            %d", GAP_DAYS),
   sprintf("STEROID_CONCEPT_IDS: %d concept IDs", length(STEROID_CONCEPT_IDS)),
   sprintf("COHORT_PERSON_IDS:   %s",
           if (is.null(COHORT_PERSON_IDS)) "NULL (all patients)"
           else sprintf("%d person IDs", length(COHORT_PERSON_IDS))),
   sprintf("Drug-exposure rows:  %d", nrow(drug_df)),
-  sprintf("Unique patients:     %d", dplyr::n_distinct(drug_df$person_id)),
-  "",
-  "Episode building",
-  strrep("-", 40),
-  sprintf("GAP_DAYS:            %d", GAP_DAYS),
-  "",
-  "Evaluation",
-  strrep("-", 40),
-  sprintf("GOLD_STD_PATH:       %s", GOLD_STD_PATH)
-), con = file.path(RUN_DIR, "params.txt"))
+  sprintf("Unique patients:     %d", dplyr::n_distinct(drug_df$person_id))
+), con = file.path(RUN_DIR, "params_code.txt"))
 
-# ── Record-level dose data ────────────────────────────────────────────────────
-readr::write_csv(baseline_df,  file.path(RUN_DIR, "records_baseline.csv"))
-readr::write_csv(nlp_df,       file.path(RUN_DIR, "records_nlp.csv"))
-
-# ── Episode-level summaries ───────────────────────────────────────────────────
+readr::write_csv(baseline_df,       file.path(RUN_DIR, "records_baseline.csv"))
+readr::write_csv(nlp_df,            file.path(RUN_DIR, "records_nlp.csv"))
 readr::write_csv(baseline_episodes, file.path(RUN_DIR, "episodes_baseline.csv"))
 readr::write_csv(nlp_episodes,      file.path(RUN_DIR, "episodes_nlp.csv"))
 
-# ── Gold standard ─────────────────────────────────────────────────────────────
-readr::write_csv(gold_std, file.path(RUN_DIR, "gold_standard.csv"))
+message(sprintf("Records and episodes saved → %s", RUN_DIR))
+message("Run CompareToRun.R (or source RunAll.R) to compare against the gold standard.")
 
-# ── Evaluation comparison tables ──────────────────────────────────────────────
-readr::write_csv(ev_baseline$comparison, file.path(RUN_DIR, "comparison_baseline.csv"))
-readr::write_csv(ev_nlp$comparison,      file.path(RUN_DIR, "comparison_nlp.csv"))
-
-# ── Summary tables ────────────────────────────────────────────────────────────
-readr::write_csv(episode_counts,    file.path(RUN_DIR, "episode_counts.csv"))
-readr::write_csv(metrics_tbl,       file.path(RUN_DIR, "metrics_table.csv"))
-
-# ── Sensitivity analyses ──────────────────────────────────────────────────────
-readr::write_csv(gap_sens_result,   file.path(RUN_DIR, "sensitivity_gap.csv"))
-readr::write_csv(equiv_sens_result, file.path(RUN_DIR, "sensitivity_equiv.csv"))
-
-# ── Plot data ─────────────────────────────────────────────────────────────────
-readr::write_csv(dist_df_all, file.path(RUN_DIR, "plot_data_dose_distribution.csv"))
-readr::write_csv(scatter_df,  file.path(RUN_DIR, "plot_data_scatter.csv"))
-readr::write_csv(ba_df,       file.path(RUN_DIR, "plot_data_bland_altman.csv"))
-readr::write_csv(ba_limits,   file.path(RUN_DIR, "bland_altman_limits.csv"))
-
-# ── Figures ───────────────────────────────────────────────────────────────────
-ggplot2::ggsave(file.path(RUN_DIR, "plot_dose_distribution.png"), p_dist,    width = 8,  height = 8,  dpi = 150)
-ggplot2::ggsave(file.path(RUN_DIR, "plot_scatter.png"),           p_scatter, width = 10, height = 5,  dpi = 150)
-ggplot2::ggsave(file.path(RUN_DIR, "plot_bland_altman.png"),      p_ba,      width = 10, height = 5,  dpi = 150)
-
-message(sprintf("Results saved to: %s", RUN_DIR))
-
-# ===========================================================================
-# 12. Interactive dose review dashboard
-# ===========================================================================
-message("\n=== Launching interactive dose review dashboard ===")
-message("(Close the browser tab or press Escape in R to stop.)")
-
-launch_dose_dashboard(
-  episode_list = list(
-    "Baseline" = baseline_episodes,
-    "NLP"      = nlp_episodes
-  ),
-  raw_list = list(
-    "Baseline" = baseline_df,
-    "NLP"      = nlp_df
-  ),
-  gold_std = gold_std
-)
-
-# ===========================================================================
-# 13. Disconnect (live DB only)
-# ===========================================================================
-if (!USE_SYNTHETIC) {
-  if (inherits(conn, "DatabaseConnectorConnection")) {
-    DatabaseConnector::disconnect(conn)
-  } else {
-    DBI::dbDisconnect(conn)
-  }
+# Disconnect only when run standalone — RunAll.R owns the connection lifecycle.
+if (!exists(".RUNALL_ACTIVE") && !USE_SYNTHETIC && exists("conn")) {
+  tryCatch(
+    if (inherits(conn, "DatabaseConnectorConnection")) DatabaseConnector::disconnect(conn)
+    else DBI::dbDisconnect(conn),
+    error = function(e) NULL
+  )
 }
 
-message("\n=== Analysis complete ===")
+message("=== CodeToRun.R complete ===")

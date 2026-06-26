@@ -1,46 +1,51 @@
-# LLM_to_Run.R
-# SteroidDoseR — LLM Dosage Extraction from Clinical Progress Notes
+# LLMtoRun.R
+# SteroidDoseR — LLM Dosage Extraction from Progress Notes
 #
-# Extracts medication dosage information from free-text progress notes using
-# a locally-running ollama model. No cloud API key required.
+# Reads OMOP CDM NOTE (note_type_concept_id = 32831, progress notes), sends
+# each note_text to a local ollama model, parses structured JSON dosage output,
+# then builds treatment episodes comparable to CodeToRun.R output.
+#
+# Run standalone OR source from RunAll.R (which sets shared params and handles
+# the database connection and disconnect).
 #
 # Workflow
 # --------
-# STEP 1 — Connection  : connect to your OMOP CDM database (Option B or C)
-# STEP 2 — SQL [USER]  : write your own SQL to pull progress notes
-# STEP 3 — LLM extract : send each note to ollama; parse structured JSON output
-# STEP 4 — Save        : write results to a timestamped CSV
+# STEP 1 — Connection  : reuses `conn` from RunAll.R; guard for standalone use
+# STEP 2 — SQL         : pull NOTE rows (edit WHERE clause as needed)
+# STEP 3 — LLM extract : parallel ollama calls with timestamped logging
+# STEP 4 — Episodes    : convert extractions to episode format
+# STEP 5 — Save        : records_llm.csv + episodes_llm.csv to RUN_DIR
 #
-# Prerequisites
-# -------------
-#   ollama running locally:   https://ollama.com
-#   Pull a model first:       ollama pull llama3.2   (or any model you prefer)
-#   R packages:               httr2, jsonlite, dplyr, readr, cli
-#
-# Usage
-# -----
-#   source("LLMtoRun.R")        # interactive (RStudio)
-#   Rscript LLMtoRun.R          # batch
+# Prerequisites (ollama)
+# ----------------------
+#   ollama running locally:  https://ollama.com
+#   Pull a model first:      ollama pull llama3.2
 
-if (!interactive()) quit(status = 0L, save = "no")
+if (!exists(".RUNALL_ACTIVE")) {
+  if (!interactive()) quit(status = 0L, save = "no")
+  devtools::install_local(getwd())
+  library(SteroidDoseR)
+  library(dplyr)
+}
 
 # ---------------------------------------------------------------------------
-# 0. Configuration
+# 0. Configuration  —  values set by RunAll.R take precedence
 # ---------------------------------------------------------------------------
 
-OLLAMA_URL   <- "http://localhost:11434"   # ollama REST endpoint
-OLLAMA_MODEL <- "llama3.2"                 # change to any model you have pulled
-                                            # e.g. "mistral", "phi3", "gemma2"
+OLLAMA_URL        <- "http://localhost:11434"
+OLLAMA_MODEL      <- "llama3.2"
+MAX_TOKENS        <- 256L
+TIMEOUT_SEC       <- 60L
+N_WORKERS         <- 4L
+CHECKPOINT_EVERY  <- 25L
 
-MAX_TOKENS        <- 256L                  # max tokens in the LLM response (no reasoning → shorter)
-TIMEOUT_SEC       <- 60L                   # per-request timeout in seconds
-N_WORKERS         <- 4L                    # parallel ollama workers (set to 1 to disable)
-CHECKPOINT_EVERY  <- 25L                   # flush intermediate CSV to disk every N notes
-
-OUTPUT_DIR   <- file.path(getwd(), "output", "llm_notes")
-
-# Optional: restrict to a cohort of person_ids (integer vector or NULL = all)
-COHORT_PERSON_IDS <- NULL
+if (!exists("COHORT_PERSON_IDS")) COHORT_PERSON_IDS <- NULL
+if (!exists("GAP_DAYS"))          GAP_DAYS          <- 30L
+if (!exists("OUTPUT_DIR"))        OUTPUT_DIR        <- file.path(getwd(), "output")
+if (!exists("RUN_DIR")) {
+  RUN_DIR <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
+  dir.create(RUN_DIR, recursive = TRUE)
+}
 
 # ---------------------------------------------------------------------------
 # Column mapping — OMOP CDM NOTE table standard column names.
@@ -64,62 +69,28 @@ if (length(to_install)) install.packages(to_install)
 invisible(lapply(needed, library, character.only = TRUE))
 
 # ---------------------------------------------------------------------------
-# 2. Database connection
+# 2. Database connection  —  set in RunAll.R; guard here for standalone use
 # ---------------------------------------------------------------------------
-# Uncomment ONE option below.  Both options produce a `conn` object and a
-# `query_db()` helper used in Step 3. Leave commented if you load notes from
-# a local CSV instead (see STEP 3 alternative below).
+# When sourced from RunAll.R, `conn` is already established.
+# When run standalone, create `conn` in RunAll.R first, then source this file.
 
-# ── Option A: DBI / odbc  (Databricks, SQL Server, PostgreSQL, etc.) ──────
-# library(DBI); library(odbc)
-# DB_DIALECT   <- "spark"                    # SqlRender targetDialect
-# cdm_schema   <- "catalog.schema"           # e.g. "hive_metastore.my_omop_cdm"
-# conn <- DBI::dbConnect(
-#   odbc::odbc(),
-#   Driver          = "Simba Spark ODBC Driver",
-#   Host            = "",                    # Databricks workspace hostname
-#   Port            = 443,
-#   HTTPPath        = "",                    # SQL Warehouse HTTP path
-#   AuthMech        = 3,
-#   UID             = "token",
-#   PWD             = "",                    # Personal Access Token
-#   SSL             = 1,
-#   ThriftTransport = 2
-# )
-
-# ── Option B: DatabaseConnector (OHDSI standard) ──────────────────────────
-# library(DatabaseConnector); library(SqlRender)
-# DB_DIALECT   <- "sql server"              # "postgresql", "redshift", ...
-# cdm_schema   <- "database.dbo"
-# connectionDetails <- DatabaseConnector::createConnectionDetails(
-#   dbms             = DB_DIALECT,
-#   connectionString = "",
-#   pathToDriver     = ""
-# )
-# conn <- DatabaseConnector::connect(connectionDetails)
-
-# Query helper — normalises DBI and DatabaseConnector into one function.
-# Supports SqlRender template parameters via `...` (same signature as CodeToRun.R).
-# query_db(sql, param = value, ...) → data.frame
 query_db <- function(sql, ...) {
   if (!exists("conn")) {
-    stop("No database connection found. Run the connection block in Section 2 first.")
+    stop(
+      "No database connection (`conn` not set).\n",
+      "  - Full analysis: source('RunAll.R')\n",
+      "  - Standalone:    create `conn` in RunAll.R, then source this file."
+    )
   }
-
-  # Catch the "external pointer is not valid" error that occurs when conn is a
-  # leftover object from a previous R session that has since been restarted.
   is_valid <- tryCatch(
-    if (inherits(conn, "DatabaseConnectorConnection")) {
-      DatabaseConnector::dbIsValid(conn)
-    } else {
-      DBI::dbIsValid(conn)
-    },
+    if (inherits(conn, "DatabaseConnectorConnection")) DatabaseConnector::dbIsValid(conn)
+    else DBI::dbIsValid(conn),
     error = function(e) FALSE
   )
   if (!is_valid) {
     stop(
-      "Database connection is no longer valid (stale external pointer).\n",
-      "Re-run the connection block in Section 2 to open a fresh `conn`, then retry."
+      "Database connection is stale.\n",
+      "Re-run the connection block in RunAll.R to create a fresh `conn`."
     )
   }
 
@@ -427,14 +398,77 @@ if (nrow(ok_df) > 0) {
 }
 
 # ---------------------------------------------------------------------------
-# STEP 4 — Save final results
+# STEP 4 — Build treatment episodes from LLM extractions
+# ---------------------------------------------------------------------------
+# Each note is a point observation (start = end = note_date).
+# build_episodes() bridges nearby observations into continuous episodes.
+
+.freq_to_per_day <- function(freq) {
+  f <- tolower(trimws(as.character(freq)))
+  dplyr::case_when(
+    grepl("\\bqid\\b|four.*day|every\\s*6\\s*h",  f, perl = TRUE) ~ 4,
+    grepl("\\btid\\b|three.*day|every\\s*8\\s*h",  f, perl = TRUE) ~ 3,
+    grepl("\\bbid\\b|twice.*day|every\\s*12\\s*h", f, perl = TRUE) ~ 2,
+    grepl("\\bweekly\\b|once.*week",               f, perl = TRUE) ~ 1 / 7,
+    grepl("\\bmonthly\\b",                         f, perl = TRUE) ~ 1 / 30,
+    TRUE ~ 1   # daily / once daily / unknown → 1
+  )
+}
+
+.unit_to_mg <- function(unit) {
+  u <- tolower(trimws(as.character(unit)))
+  dplyr::case_when(
+    u == "g"   ~ 1000,
+    u == "mcg" ~ 0.001,
+    u == "mg"  ~ 1,
+    TRUE       ~ NA_real_
+  )
+}
+
+if (!"note_date" %in% names(results_df)) {
+  warning("note_date not in results — LLM episode building skipped.")
+  llm_df       <- data.frame()
+  llm_episodes <- data.frame()
+} else {
+  llm_df <- results_df |>
+    dplyr::filter(parse_status == "ok", !is.na(dose_value)) |>
+    dplyr::mutate(
+      drug_name_std            = standardize_drug_name(drug_name),
+      freq_per_day             = .freq_to_per_day(frequency),
+      unit_factor              = .unit_to_mg(dose_unit),
+      daily_dose_mg            = dose_value * unit_factor * freq_per_day,
+      drug_exposure_start_date = as.Date(note_date),
+      drug_exposure_end_date   = as.Date(note_date)
+    ) |>
+    dplyr::filter(
+      !is.na(daily_dose_mg), daily_dose_mg > 0,
+      # Keep oral / unspecified; exclude IV, IM, topical
+      is.na(route) | grepl("oral|po|by\\s*mouth", tolower(route), perl = TRUE)
+    )
+
+  .log(sprintf("LLM episodes: %d dose records → build_episodes (gap = %d days)",
+               nrow(llm_df), GAP_DAYS))
+
+  llm_episodes <- build_episodes(
+    llm_df,
+    end_col  = "drug_exposure_end_date",
+    dose_col = "daily_dose_mg",
+    gap_days = GAP_DAYS
+  )
+
+  .log(sprintf("LLM episodes: %d episodes from %d patients",
+               nrow(llm_episodes), dplyr::n_distinct(llm_episodes$person_id)))
+}
+
+# ---------------------------------------------------------------------------
+# STEP 5 — Save
 # ---------------------------------------------------------------------------
 
-readr::write_csv(results_df, file.path(RUN_DIR, "llm_dose_extractions.csv"))
-readr::write_csv(ok_df,      file.path(RUN_DIR, "llm_dose_extractions_ok.csv"))
+readr::write_csv(results_df,  file.path(RUN_DIR, "records_llm.csv"))
+readr::write_csv(llm_episodes, file.path(RUN_DIR, "episodes_llm.csv"))
 
 writeLines(c(
-  "LLM_to_Run.R — Run Parameters",
+  "LLMtoRun.R — Run Parameters",
   strrep("=", 40),
   sprintf("Run time:            %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
   sprintf("OLLAMA_MODEL:        %s", OLLAMA_MODEL),
@@ -443,32 +477,19 @@ writeLines(c(
   sprintf("TIMEOUT_SEC:         %d", TIMEOUT_SEC),
   sprintf("N_WORKERS:           %d", N_WORKERS),
   sprintf("CHECKPOINT_EVERY:    %d", CHECKPOINT_EVERY),
-  sprintf("Source table:        OMOP CDM NOTE (note_text, type=32831)"),
+  sprintf("GAP_DAYS:            %d", GAP_DAYS),
+  sprintf("Source table:        OMOP CDM NOTE (type=32831)"),
   sprintf("Note meta columns:   %s",
           if (length(NOTE_META_COLS) == 0) "none"
           else paste(NOTE_META_COLS, collapse = ", ")),
   sprintf("Total notes:         %d", n_notes),
-  sprintf("Total result rows:   %d", nrow(results_df)),
-  sprintf("Rows with dose (ok): %d", nrow(ok_df)),
+  sprintf("LLM result rows:     %d", nrow(results_df)),
+  sprintf("Episode-ready rows:  %d", nrow(llm_df)),
+  sprintf("Episodes built:      %d", nrow(llm_episodes)),
   sprintf("COHORT_PERSON_IDS:   %s",
           if (is.null(COHORT_PERSON_IDS)) "NULL (all patients)"
           else sprintf("%d person IDs", length(COHORT_PERSON_IDS)))
-), con = file.path(RUN_DIR, "params.txt"))
+), con = file.path(RUN_DIR, "params_llm.txt"))
 
-.log(sprintf("Results saved to: %s", RUN_DIR))
-
-# ---------------------------------------------------------------------------
-# Disconnect (live DB only)
-# ---------------------------------------------------------------------------
-if (exists("conn")) {
-  tryCatch(
-    if (inherits(conn, "DatabaseConnectorConnection")) {
-      DatabaseConnector::disconnect(conn)
-    } else {
-      DBI::dbDisconnect(conn)
-    },
-    error = function(e) NULL
-  )
-}
-
-cli::cli_alert_success("Done.")
+.log(sprintf("LLM records and episodes saved → %s", RUN_DIR))
+message("=== LLMtoRun.R complete ===")
