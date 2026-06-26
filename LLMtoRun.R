@@ -179,17 +179,68 @@ if (!is.null(COHORT_PERSON_IDS)) {
 cli::cli_alert_info("Notes loaded: {nrow(notes_df)} rows | {dplyr::n_distinct(notes_df$person_id)} unique patients")
 
 # ---------------------------------------------------------------------------
+# STEP 2b — Keyword pre-filter
+# Only send notes that mention a steroid drug name or synonym to the LLM.
+# This cuts runtime dramatically and prevents the model from being confused
+# by notes with no steroid content.
+# ---------------------------------------------------------------------------
+STEROID_PATTERN <- paste0(
+  "(?i)\\b(",
+  paste(c(
+    "prednisone", "prednisolone", "methylprednisolone",
+    "medrol", "solu.?medrol", "depo.?medrol",
+    "dexamethasone", "decadron",
+    "hydrocortisone", "solu.?cortef", "cortef",
+    "cortisone",
+    "triamcinolone", "kenalog",
+    "budesonide", "entocort",
+    "fludrocortisone", "florinef",
+    "corticosteroid", "glucocorticoid",
+    "steroid"
+  ), collapse = "|"),
+  ")\\b"
+)
+
+notes_for_llm <- notes_df |>
+  dplyr::filter(grepl(STEROID_PATTERN, note_text, perl = TRUE))
+
+cli::cli_alert_info(
+  "Keyword filter: {nrow(notes_for_llm)} / {nrow(notes_df)} notes contain steroid terms"
+)
+
+# ---------------------------------------------------------------------------
 # STEP 3 — LLM extraction helpers
 # ---------------------------------------------------------------------------
 
-# Extraction prompt — direct, no-reasoning instruction for fastest response.
+# Prompt with explicit drug names + two-shot examples so the model knows
+# exactly what format to produce and what counts as a hit.
 .make_prompt <- function(note_text) {
   paste0(
-    "Task: extract every corticosteroid dosage from the clinical note.\n",
-    "Output ONLY a JSON array. No prose. No reasoning. No markdown fences.\n",
-    "Each object must have exactly these keys (use null when unknown):\n",
-    "  drug_name, dose_value (number|null), dose_unit, frequency, route, dose_text\n",
-    "If none found, output: []\n\n",
+    "Extract steroid dosages from the clinical note.\n\n",
+    "Target drugs (match any name or brand name):\n",
+    "  prednisone, prednisolone, methylprednisolone (Medrol, Solu-Medrol, Depo-Medrol),\n",
+    "  dexamethasone (Decadron), hydrocortisone (Solu-Cortef, Cortef),\n",
+    "  cortisone, triamcinolone (Kenalog), budesonide (Entocort),\n",
+    "  fludrocortisone (Florinef)\n\n",
+    "Rules:\n",
+    "- Extract EVERY target drug mention, even if no dose is recorded\n",
+    "- Output ONLY a JSON array — no prose, no markdown fences\n",
+    "- Each object must have exactly: drug_name, dose_value (number or null),\n",
+    "  dose_unit (string or null), frequency (string or null),\n",
+    "  route (string or null), dose_text (verbatim phrase from the note)\n",
+    "- If no target drug is present: output []\n\n",
+    "Example 1\n",
+    "Note: \"Continue prednisone 10 mg daily.\"\n",
+    "Output: [{\"drug_name\":\"prednisone\",\"dose_value\":10,\"dose_unit\":\"mg\",",
+    "\"frequency\":\"daily\",\"route\":\"oral\",\"dose_text\":\"prednisone 10 mg daily\"}]\n\n",
+    "Example 2\n",
+    "Note: \"Taper methylprednisolone 8 mg BID x1 week then 4 mg daily.\"\n",
+    "Output: [{\"drug_name\":\"methylprednisolone\",\"dose_value\":8,\"dose_unit\":\"mg\",",
+    "\"frequency\":\"BID\",\"route\":\"oral\",",
+    "\"dose_text\":\"methylprednisolone 8 mg BID x1 week then 4 mg daily\"}]\n\n",
+    "Example 3\n",
+    "Note: \"Patient reports fatigue. No steroid use.\"\n",
+    "Output: []\n\n",
     "NOTE:\n", note_text
   )
 }
@@ -345,10 +396,10 @@ NOTE_META_COLS <- intersect(
 # STEP 3c — Parallel extraction with timestamped logging + checkpoints
 # ---------------------------------------------------------------------------
 
-n_notes <- nrow(notes_df)
+n_notes <- nrow(notes_for_llm)
 cli::cli_h1("LLM dosage extraction  ({OLLAMA_MODEL})")
-.log(sprintf("Notes: %d | Workers: %d | Model: %s | URL: %s",
-             n_notes, N_WORKERS, OLLAMA_MODEL, OLLAMA_URL))
+.log(sprintf("Notes to process: %d (of %d total, after keyword filter) | Workers: %d | Model: %s",
+             n_notes, nrow(notes_df), N_WORKERS, OLLAMA_MODEL))
 
 future::plan(future::multisession, workers = N_WORKERS)
 on.exit(future::plan(future::sequential), add = TRUE)
@@ -358,7 +409,7 @@ batch_indices <- split(seq_len(n_notes),
                        ceiling(seq_len(n_notes) / CHECKPOINT_EVERY))
 
 for (batch in batch_indices) {
-  batch_rows <- notes_df[batch, ]
+  batch_rows <- notes_for_llm[batch, ]
 
   # Run this batch in parallel — each worker calls ollama independently
   batch_out <- future.apply::future_lapply(
@@ -376,7 +427,7 @@ for (batch in batch_indices) {
 
     .log(sprintf("[%d/%d] note_id=%-10s person_id=%-8s | %-11s | drugs=%-2d | %.1fs",
                  i, n_notes,
-                 notes_df$note_id[[i]], notes_df$person_id[[i]],
+                 notes_for_llm$note_id[[i]], notes_for_llm$person_id[[i]],
                  out$status, out$n_drugs, out$elapsed))
   }
 
@@ -494,7 +545,8 @@ writeLines(c(
   sprintf("Note meta columns:   %s",
           if (length(NOTE_META_COLS) == 0) "none"
           else paste(NOTE_META_COLS, collapse = ", ")),
-  sprintf("Total notes:         %d", n_notes),
+  sprintf("Total notes (raw):   %d", nrow(notes_df)),
+  sprintf("After keyword filter:%d", n_notes),
   sprintf("LLM result rows:     %d", nrow(results_df)),
   sprintf("Episode-ready rows:  %d", nrow(llm_df)),
   sprintf("Episodes built:      %d", nrow(llm_episodes)),
