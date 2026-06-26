@@ -12,6 +12,7 @@ build_episodes(
   end_col = NA_character_,
   dose_col = NULL,
   gap_days = 30L,
+  extra_cols = character(0),
   drug_concept_ids = NULL,
   person_ids = NULL,
   start_date = NULL,
@@ -44,6 +45,14 @@ whichever is present in the data.}
 \item{gap_days}{\code{integer(1)}. Maximum gap (in days) between consecutive
 records that are still bridged into the same episode. Default: \code{30L}.}
 
+\item{extra_cols}{\code{character}. Optional vector of column names present in
+\code{connector_or_df} to propagate into the episode summary by statistical
+mode (most common value across the records that form each episode).
+Typical use: \code{extra_cols = "parsed_status"} or \code{extra_cols = "sig_status"}
+to carry NLP parse categories into episode-level output for stratified
+evaluation via \code{\link[=evaluate_against_gold]{evaluate_against_gold()}}. Default: \code{character(0)} (no
+extra columns). Columns absent from the data are silently ignored.}
+
 \item{drug_concept_ids, person_ids, start_date, end_date}{Connector-path filtering arguments. Ignored when \code{connector_or_df} is a
 data frame. See \code{\link[=calc_daily_dose_baseline]{calc_daily_dose_baseline()}} for full descriptions.}
 }
@@ -65,6 +74,9 @@ A data frame with one row per patient-drug episode:
 episode. Use this (via \code{computed_dose_col = "mean_daily_dose"} in
 \code{\link[=evaluate_against_gold]{evaluate_against_gold()}}) to weight longer prescriptions more heavily
 than short ones.}
+\item{\emph{extra_cols} columns}{Any columns listed in \code{extra_cols} that were
+present in the input are appended as their statistical mode per episode
+(most common value across all records merged into the episode).}
 }
 }
 \description{

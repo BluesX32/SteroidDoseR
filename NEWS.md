@@ -37,6 +37,47 @@
   the row with the highest dose before the gap-bridging step. This prevents artificial
   inflation of `median_daily_dose`/`mean_daily_dose` and avoids spurious episode splits.
 
+* **`stratify_errors_by_parse()` exported** (`R/eval.R`):
+  New utility that groups any `evaluate_against_gold()$comparison` data frame
+  by a categorical parse/method column (`"parsed_status"`, `"sig_status"`, or
+  `"hierarchical_method"`) and returns per-category MAE/MBE/MAPE/coverage.
+  Reveals whether errors concentrate in clinically interpretable categories
+  (taper, PRN, free-text) vs well-parsed records — a required table for
+  manuscript reviewers.
+
+* **`make_validation_split()` exported** (`R/eval.R`):
+  Splits a gold-standard data frame into train and validate folds by patient
+  (never by episode), preventing gold-standard leakage during threshold tuning.
+  Use the `$train` split with `tune_hierarchical_thresholds()` and the
+  `$validate` split for the final unbiased evaluation.
+
+* **`build_episodes()` `extra_cols` parameter** (`R/episodes.R`):
+  New optional parameter `extra_cols = character(0)`. Any column listed here
+  that is present in the input data is propagated into the episode summary by
+  statistical mode (most common value across the records that form each episode).
+  Primary use: `extra_cols = "parsed_status"` when building NLP episodes so
+  that `evaluate_against_gold()$stratified$by_sig_status` is automatically
+  populated without a manual join.
+
+* **`evaluate_against_gold()` `by_sig_status` auto-detects `parsed_status`**
+  (`R/eval.R`): Previously only triggered when `computed_df` had a `sig_status`
+  column (hierarchical output column name). Now also triggers for `parsed_status`
+  (NLP advanced output column name), so NLP episodes built with
+  `extra_cols = "parsed_status"` produce a populated `$stratified$by_sig_status`
+  automatically.
+
+* **`CodeToRun.R` sensitivity analyses and reporting** (`CodeToRun.R`):
+  Three new sections added to the primary analysis script:
+  - **§3.5 Data quality funnel**: field-level missingness table + SIG availability
+    count, printed before dose imputation begins.
+  - **§8a.5 Error decomposition by parse category**: calls `stratify_errors_by_parse()`
+    on NLP comparison data and prints per-`parsed_status` MAE/MBE/MAPE.
+  - **§8c Sensitivity analyses**: (i) gap-window sensitivity across `c(0,7,14,30,60,90)`
+    days; (ii) equivalency-table sensitivity comparing conservative/default/aggressive
+    pred-equiv conversion tables; (iii) hierarchical threshold tuning with 70/30
+    patient-level train/validate split to prevent gold-standard leakage. All three
+    outputs are written to the timestamped run folder.
+
 * **`gap_sensitivity()` exported** (`R/episodes.R`):
   New utility that calls `build_episodes()` across a grid of `gap_days` values (default
   `c(0, 7, 14, 30, 60, 90)`) and returns a one-row-per-gap summary table showing episode

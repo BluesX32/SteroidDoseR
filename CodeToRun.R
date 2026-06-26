@@ -197,6 +197,50 @@ if (!"drug_exposure_id" %in% names(drug_df)) {
 }
 
 # ===========================================================================
+# 3.5. DATA QUALITY: cohort funnel and field-level missingness
+# ===========================================================================
+message("\n=== Data quality: cohort funnel + missingness ===")
+
+# Key imputation inputs — each feeds a specific method/cascade step
+.funnel_fields <- c(
+  "drug_exposure_start_date",  # required by all methods
+  "drug_exposure_end_date",    # required for days-supply fall-back (M4)
+  "quantity",                  # M4: qty × strength / days_supply
+  "days_supply",               # M3 + M4
+  "amount_value",              # M3: direct mg dose from formulary
+  "sig",                       # NLP methods
+  "route_concept_name"         # oral filter
+)
+.present_fields <- intersect(.funnel_fields, names(drug_df))
+
+.missingness_tbl <- tibble::tibble(
+  Field     = .present_fields,
+  N_nonNA   = vapply(.present_fields,
+                     function(col) sum(!is.na(drug_df[[col]])), integer(1L)),
+  Pct_nonNA = vapply(.present_fields,
+                     function(col)
+                       round(100 * mean(!is.na(drug_df[[col]])), 1),
+                     numeric(1L))
+) |>
+  dplyr::arrange(.data$Pct_nonNA)
+
+cat("\nField-level completeness (key imputation inputs):\n")
+print(as.data.frame(.missingness_tbl), row.names = FALSE)
+
+# SIG availability funnel
+.n_total    <- nrow(drug_df)
+.n_with_sig <- if ("sig" %in% names(drug_df))
+  sum(!is.na(drug_df$sig) &
+        nchar(trimws(as.character(drug_df$sig))) > 0,
+      na.rm = TRUE)
+else 0L
+
+cat(sprintf(
+  "\nRecords: %d total  |  %d with non-empty SIG (%.1f%%)\n",
+  .n_total, .n_with_sig, 100 * .n_with_sig / max(.n_total, 1L)
+))
+
+# ===========================================================================
 # Helper: print agreement summary as a compact single line
 # ===========================================================================
 print_agreement <- function(comparison_df, label) {
@@ -305,18 +349,24 @@ nlp_df <- calc_daily_dose_nlp_advanced(
   prn_action        = "na"   # exclude PRN from dose calculations
 )
 
-cat("\nparsed_status breakdown:\n")
-print(table(nlp_df$parsed_status, useNA = "ifany"))
+cat("\nParsed-status breakdown (record level):\n")
+.parse_tbl <- as.data.frame(table(nlp_df$parsed_status, useNA = "ifany"))
+names(.parse_tbl) <- c("parsed_status", "n_records")
+.parse_tbl$pct <- round(100 * .parse_tbl$n_records / nrow(nlp_df), 1)
+print(.parse_tbl[order(-.parse_tbl$n_records), ], row.names = FALSE)
 
 cat("\nDose summary (parsed_status == 'ok' or 'taper_ok'):\n")
 ok_mask <- nlp_df$parsed_status %in% c("ok", "taper_ok")
 print(summary(nlp_df$daily_dose_mg[ok_mask]))
 
+# Pass parsed_status as an extra column so it appears at episode level and
+# enables stratified evaluation via evaluate_against_gold()$stratified$by_sig_status
 nlp_episodes <- build_episodes(
   nlp_df,
-  end_col  = "drug_exposure_end_date",
-  dose_col = "daily_dose_mg",
-  gap_days = GAP_DAYS
+  end_col    = "drug_exposure_end_date",
+  dose_col   = "daily_dose_mg",
+  gap_days   = GAP_DAYS,
+  extra_cols = "parsed_status"
 )
 
 show_person_trajectories(nlp_episodes, "NLP")
@@ -465,6 +515,39 @@ message("\n  NLP vs gold standard ...")
 ev_nlp <- .run_comparison(nlp_episodes, "NLP")
 
 # ===========================================================================
+# 8a.5. Error decomposition by parse category
+#        Reveals whether errors concentrate in clinically interpretable SIG
+#        categories (taper, PRN, free-text, no_parse) vs well-parsed records.
+# ===========================================================================
+message("\n=== Error decomposition by parse category ===")
+
+# NLP: by parsed_status (carried into nlp_episodes via extra_cols above)
+if (nrow(ev_nlp$stratified$by_sig_status) > 0L) {
+  cat("\nNLP: error metrics by parsed_status (episode-level mode):\n")
+  print(as.data.frame(
+    ev_nlp$stratified$by_sig_status |>
+      dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 2)))
+  ), row.names = FALSE)
+} else {
+  cat("\nNLP stratified by parsed_status: not available (parsed_status not in nlp_episodes).\n")
+}
+
+# Full decomposition: join parsed_status onto the comparison table and call
+# stratify_errors_by_parse() for a richer breakdown including unmatched records
+if ("parsed_status" %in% names(nlp_episodes)) {
+  .comp_with_parse <- ev_nlp$comparison |>
+    dplyr::left_join(
+      nlp_episodes |>
+        dplyr::select("person_id", "episode_start", "parsed_status"),
+      by = c("person_id", "episode_start")
+    )
+  cat("\nNLP: full error decomposition by parsed_status (incl. unmatched):\n")
+  print(as.data.frame(
+    stratify_errors_by_parse(.comp_with_parse, "parsed_status")
+  ), row.names = FALSE)
+}
+
+# ===========================================================================
 # 8b. Binary detection evaluation (kappa, sensitivity, specificity)
 #     Requires GOLD_NEG_PATH — a CSV whose rows are confirmed non-steroid users.
 #     Set GOLD_NEG_ID_COL to whichever column holds the patient ID.
@@ -501,6 +584,138 @@ if (!is.null(GOLD_NEG_PATH) && file.exists(GOLD_NEG_PATH)) {
 } else {
   message("\nSkipping binary detection evaluation — GOLD_NEG_PATH not set or file not found.")
   det_baseline <- det_nlp <- NULL
+}
+
+# ===========================================================================
+# 8c. Sensitivity analyses
+#      Three pre-registered sensitivity checks that reviewers expect to see
+#      in a paper describing an automated dose-extraction pipeline.
+# ===========================================================================
+message("\n\n")
+cat(strrep("=", 70), "\n")
+cat("SENSITIVITY ANALYSES\n")
+cat(strrep("=", 70), "\n")
+
+# ---- 8c-i. Gap window sensitivity -----------------------------------------
+# Shows how the choice of gap_days (the bridging tolerance used by
+# build_episodes) affects episode count and duration.  OHDSI uses 30 days;
+# exploratory analyses sometimes use 0 or 7.  Reviewers want to see that
+# the main result is stable across a reasonable grid.
+message("\n=== [8c-i] Gap window sensitivity (NLP method) ===")
+gap_grid_values <- c(0L, 7L, 14L, 30L, 60L, 90L)
+gap_sens_result <- gap_sensitivity(
+  nlp_df,
+  gap_grid = gap_grid_values,
+  end_col  = "drug_exposure_end_date",
+  dose_col = "daily_dose_mg"
+)
+cat("\nEpisode structure across gap_days values:\n")
+print(as.data.frame(
+  gap_sens_result |>
+    dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 1)))
+), row.names = FALSE)
+cat(sprintf(
+  "\nReference (current analysis): gap_days = %d\n", GAP_DAYS
+))
+
+# ---- 8c-ii. Prednisone-equivalence table sensitivity ----------------------
+# Shows the distribution of mean daily dose under three equivalency tables.
+# Even a 20% swing in dexamethasone/methylprednisolone ratios shifts the
+# dose estimate for non-prednisone patients.
+message("\n=== [8c-ii] Prednisone-equivalence table sensitivity ===")
+
+.equiv_sensitivity <- function(records_df, label,
+                                equiv_tbl  = NULL,
+                                end_col    = "drug_exposure_end_date",
+                                dose_col   = "daily_dose_mg",
+                                gap        = GAP_DAYS) {
+  converted <- convert_pred_equiv(
+    records_df,
+    dose_col  = dose_col,
+    drug_col  = "drug_name_std",
+    equiv_table = equiv_tbl
+  )
+  ep <- build_episodes(
+    converted,
+    end_col  = end_col,
+    dose_col = "pred_equiv_mg",
+    gap_days = gap
+  )
+  tibble::tibble(
+    equiv_table   = label,
+    n_episodes    = nrow(ep),
+    median_mg     = round(stats::median(ep$mean_daily_dose, na.rm = TRUE), 1),
+    mean_mg       = round(mean(ep$mean_daily_dose, na.rm = TRUE), 1),
+    p25_mg        = round(stats::quantile(ep$mean_daily_dose, 0.25, na.rm = TRUE), 1),
+    p75_mg        = round(stats::quantile(ep$mean_daily_dose, 0.75, na.rm = TRUE), 1)
+  )
+}
+
+equiv_sens_result <- dplyr::bind_rows(
+  .equiv_sensitivity(nlp_df, "Conservative", pred_equiv_table_conservative),
+  .equiv_sensitivity(nlp_df, "Default",      NULL),
+  .equiv_sensitivity(nlp_df, "Aggressive",   pred_equiv_table_aggressive)
+)
+cat("\nMean daily dose (mg pred-equiv/day) by equivalency table (NLP episodes):\n")
+print(as.data.frame(equiv_sens_result), row.names = FALSE)
+
+# ---- 8c-iii. Hierarchical threshold tuning with validation split -----------
+# CRITICAL: tune thresholds on the TRAIN split only.  Evaluating on the full
+# gold set after tuning inflates accuracy — this split prevents that leakage.
+message("\n=== [8c-iii] Hierarchical threshold tuning (train/validate split) ===")
+
+gold_split <- make_validation_split(gold_std_ok, train_frac = 0.7, seed = 42L)
+cat(sprintf(
+  "Gold split: %d patients train (%d episodes), %d patients validate (%d episodes)\n",
+  length(gold_split$train_ids),   nrow(gold_split$train),
+  length(gold_split$validate_ids), nrow(gold_split$validate)
+))
+
+if (nrow(gold_split$train) >= 3L) {
+  message("  Tuning hierarchical thresholds on train split ...")
+  thresh_results <- tune_hierarchical_thresholds(
+    connector_or_df = drug_df,
+    gold_df         = gold_split$train,
+    gold_dose_col   = "dose_daily_mg_equiv",
+    gap_days        = GAP_DAYS
+  )
+  cat("\nTop 5 threshold combinations (by MAE, train split):\n")
+  print(as.data.frame(head(thresh_results, 5L)), row.names = FALSE)
+
+  # Evaluate best parameters on the HELD-OUT validate split
+  best_params <- thresh_results[1L, ]
+  cat(sprintf(
+    "\nBest params: match_tol=%.2f  diff_threshold=%.0f\n",
+    best_params$match_tol, best_params$diff_threshold
+  ))
+
+  hier_df_best <- calc_daily_dose_hierarchical(
+    drug_df,
+    match_tol   = best_params$match_tol,
+    diff_threshold = best_params$diff_threshold,
+    gap_days    = GAP_DAYS
+  )
+  hier_ep_best <- build_episodes(
+    hier_df_best,
+    end_col    = "drug_exposure_end_date",
+    dose_col   = "daily_dose_mg",
+    gap_days   = GAP_DAYS,
+    extra_cols = "hierarchical_method"
+  )
+  ev_hier_validate <- evaluate_against_gold(
+    hier_ep_best,
+    gold_split$validate,
+    gold_dose_col = "dose_daily_mg_equiv"
+  )
+  cat(sprintf(
+    "\nHierarchical (best params) on VALIDATE split: MAE=%.2f  MBE=%.2f  Coverage=%.1f%%\n",
+    ev_hier_validate$summary$MAE,
+    ev_hier_validate$summary$MBE,
+    ev_hier_validate$summary$coverage_pct
+  ))
+} else {
+  message("  Skipping threshold tuning — train split has fewer than 3 gold records.")
+  thresh_results <- NULL
 }
 
 # ===========================================================================
@@ -826,8 +1041,14 @@ readr::write_csv(ev_baseline$comparison, file.path(RUN_DIR, "comparison_baseline
 readr::write_csv(ev_nlp$comparison,      file.path(RUN_DIR, "comparison_nlp.csv"))
 
 # ── Summary tables ────────────────────────────────────────────────────────────
-readr::write_csv(episode_counts, file.path(RUN_DIR, "episode_counts.csv"))
-readr::write_csv(metrics_tbl,    file.path(RUN_DIR, "metrics_table.csv"))
+readr::write_csv(episode_counts,    file.path(RUN_DIR, "episode_counts.csv"))
+readr::write_csv(metrics_tbl,       file.path(RUN_DIR, "metrics_table.csv"))
+
+# ── Sensitivity analyses ──────────────────────────────────────────────────────
+readr::write_csv(gap_sens_result,   file.path(RUN_DIR, "sensitivity_gap.csv"))
+readr::write_csv(equiv_sens_result, file.path(RUN_DIR, "sensitivity_equiv.csv"))
+if (!is.null(thresh_results))
+  readr::write_csv(thresh_results,  file.path(RUN_DIR, "sensitivity_thresholds.csv"))
 
 # ── Plot data ─────────────────────────────────────────────────────────────────
 readr::write_csv(dist_df_all, file.path(RUN_DIR, "plot_data_dose_distribution.csv"))

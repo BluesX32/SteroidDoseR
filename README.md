@@ -502,6 +502,8 @@ The following are documented design constraints.
 | **`match_tol = 0.01`** | Effectively zero — almost no records labelled `cross_checked` | **Fixed v0.4.0**: default changed to `match_tol = 1` (1 mg = smallest tablet strength) |
 | **Equivalency factor uncertainty** | Dexamethasone range 6.67–8× in literature | **Fixed v0.4.0**: `pred_equiv_table_conservative` and `pred_equiv_table_aggressive` exported for sensitivity analysis |
 | **Oral solution strength** | Volume (mL) treated as tablet count, inflating M3/M4 dose | **Fixed v0.4.0**: `calc_daily_dose_baseline()` detects "Oral Solution/Suspension/Syrup" and sets `strength_mg = NA` |
+| **Gold-standard leakage in threshold tuning** | Tuning and evaluating on the same gold set inflates accuracy | **Fixed v0.4.0**: use `make_validation_split()` to hold out a patient-level validate set before calling `tune_hierarchical_thresholds()` |
+| **Error-category reporting** | Aggregate MAE/MBE hides which SIG categories drive errors | **Fixed v0.4.0**: `stratify_errors_by_parse()` produces per-category error table; `build_episodes(extra_cols = "parsed_status")` propagates parse status to episode level |
 | **Budesonide excluded** | `NA` equiv_factor drops budesonide from analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` to `convert_pred_equiv()` |
 | **No weight-based dosing** | mg/kg SIGs parsed to NA | Not applicable for most adult myositis patients |
 

@@ -32,6 +32,13 @@
 #'   whichever is present in the data.
 #' @param gap_days `integer(1)`. Maximum gap (in days) between consecutive
 #'   records that are still bridged into the same episode. Default: `30L`.
+#' @param extra_cols `character`. Optional vector of column names present in
+#'   `connector_or_df` to propagate into the episode summary by statistical
+#'   mode (most common value across the records that form each episode).
+#'   Typical use: `extra_cols = "parsed_status"` or `extra_cols = "sig_status"`
+#'   to carry NLP parse categories into episode-level output for stratified
+#'   evaluation via [evaluate_against_gold()]. Default: `character(0)` (no
+#'   extra columns). Columns absent from the data are silently ignored.
 #' @param drug_concept_ids,person_ids,start_date,end_date
 #'   Connector-path filtering arguments. Ignored when `connector_or_df` is a
 #'   data frame. See [calc_daily_dose_baseline()] for full descriptions.
@@ -75,6 +82,7 @@ build_episodes <- function(connector_or_df,
                            end_col          = NA_character_,
                            dose_col         = NULL,
                            gap_days         = 30L,
+                           extra_cols       = character(0),
                            drug_concept_ids = NULL,
                            person_ids       = NULL,
                            start_date       = NULL,
@@ -125,6 +133,20 @@ build_episodes <- function(connector_or_df,
       dplyr::select(-".sort_dose")
   }
 
+  # --- extra_cols: save lookup before transmute strips the data frame --------
+  extra_present <- intersect(extra_cols, names(drug_df))
+  extra_lookup  <- if (length(extra_present) > 0L) {
+    drug_df |>
+      dplyr::mutate(
+        .__person = .data[[person_col]],
+        .__drug   = .data[[drug_col]],
+        .__start  = safe_as_date(.data[[start_col]])
+      ) |>
+      dplyr::select(".__person", ".__drug", ".__start",
+                    dplyr::all_of(extra_present)) |>
+      dplyr::distinct()
+  } else NULL
+
   # --- normalise to working data frame ---------------------------------------
   wd <- drug_df |>
     dplyr::transmute(
@@ -146,6 +168,18 @@ build_episodes <- function(connector_or_df,
 
   if (nrow(wd) == 0L) {
     return(.empty_episodes())
+  }
+
+  if (!is.null(extra_lookup)) {
+    wd <- wd |>
+      dplyr::left_join(
+        extra_lookup |>
+          dplyr::rename(.person = ".__person",
+                        .drug   = ".__drug",
+                        .start  = ".__start"),
+        by = c(".person", ".drug", ".start"),
+        relationship = "many-to-many"
+      )
   }
 
   # --- gap-bridging algorithm (vectorised) -----------------------------------
@@ -199,6 +233,30 @@ build_episodes <- function(connector_or_df,
       "median_daily_dose", "min_daily_dose", "max_daily_dose", "mean_daily_dose"
     ) |>
     dplyr::arrange(.data$person_id, .data$drug_name_std, .data$episode_start)
+
+  # --- propagate extra_cols by statistical mode per episode ------------------
+  if (!is.null(extra_lookup) && length(extra_present) > 0L) {
+    .str_mode <- function(x) {
+      x <- x[!is.na(x)]
+      if (length(x) == 0L) return(NA_character_)
+      tbl <- table(x)
+      names(tbl)[which.max(tbl)]
+    }
+    extra_ep <- wd |>
+      dplyr::group_by(.data$.person, .data$.drug, .data$.episode_id) |>
+      dplyr::summarise(
+        dplyr::across(dplyr::all_of(extra_present), .str_mode),
+        .groups = "drop"
+      ) |>
+      dplyr::rename(
+        person_id     = ".person",
+        drug_name_std = ".drug",
+        episode_id    = ".episode_id"
+      )
+    episodes <- episodes |>
+      dplyr::left_join(extra_ep,
+                       by = c("person_id", "drug_name_std", "episode_id"))
+  }
 
   episodes
 }

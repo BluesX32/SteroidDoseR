@@ -301,22 +301,24 @@ evaluate_against_gold <- function(computed_df,
   }
 
   # by_sig_status: stratify on parser status ("ok", "prn", "taper", "no_parse")
-  # Only populated when computed_df has a sig_status column at episode level.
-  # Users building episodes from nlp/hierarchical output can pass a dominant
-  # status per episode; record-level output can be passed directly.
+  # Accepts sig_status (hierarchical output) or parsed_status (NLP advanced
+  # output) — whichever is present. Populated when computed_df has at least one
+  # of these columns at episode level (set via build_episodes(extra_cols = ...)).
   strat_sig_status <- tibble::tibble(
     sig_status = character(0), n = integer(0),
     MAE = numeric(0), MBE = numeric(0), MAPE = numeric(0)
   )
-  if ("sig_status" %in% names(computed_df) &&
-      "episode_start" %in% names(computed_df)) {
+  status_col <- intersect(c("sig_status", "parsed_status"), names(computed_df))[1L]
+  if (!is.na(status_col) && "episode_start" %in% names(computed_df)) {
     strat_sig_status <- comparison |>
       dplyr::filter(!is.na(.data$computed_dose)) |>
       dplyr::left_join(
         computed_df |>
-          dplyr::select("person_id", "episode_start", "sig_status"),
+          dplyr::select("person_id", "episode_start",
+                        dplyr::all_of(status_col)),
         by = c("person_id", "episode_start")
       ) |>
+      dplyr::rename(sig_status = dplyr::all_of(status_col)) |>
       dplyr::group_by(.data$sig_status) |>
       dplyr::summarise(
         n    = dplyr::n(),
@@ -843,4 +845,164 @@ compute_gold_anchored <- function(records_df, gold_df) {
       coverage_days = dplyr::coalesce(coverage_days, 0L),
       coverage_pct  = dplyr::coalesce(coverage_pct, 0)
     )
+}
+
+# ---------------------------------------------------------------------------
+# Exported: stratify_errors_by_parse
+# ---------------------------------------------------------------------------
+
+#' Decompose evaluation errors by parse or method category
+#'
+#' Groups a comparison data frame (from [evaluate_against_gold()]`$comparison`)
+#' by a categorical column — typically `"parsed_status"`, `"sig_status"`, or
+#' `"hierarchical_method"` — and returns per-category error metrics. This
+#' reveals whether errors are concentrated in clinically interpretable
+#' categories (e.g., taper, PRN, free-text), which is required for reviewers to
+#' assess the paper's validity claims.
+#'
+#' @param comparison_df Data frame. Must contain the columns produced by
+#'   [evaluate_against_gold()]`$comparison`: `computed_dose`, `gold_dose`,
+#'   `absolute_error`, `bias_error`, `absolute_relative_error_pct`. Must also
+#'   contain the column named by `parse_col`.
+#' @param parse_col `character(1)`. Name of the categorical parse/method column
+#'   to group by. Typical values: `"parsed_status"` (NLP advanced output),
+#'   `"sig_status"` (hierarchical output), `"hierarchical_method"`.
+#'
+#' @return A tibble with one row per category, sorted by descending `n`:
+#' \describe{
+#'   \item{category}{The parse or method label.}
+#'   \item{n}{Total episodes in this category (matched or not).}
+#'   \item{n_matched}{Episodes with a non-`NA` computed dose.}
+#'   \item{coverage_pct}{`100 * n_matched / n`.}
+#'   \item{MAE}{Mean absolute error (mg prednisone-equivalent/day).}
+#'   \item{MBE}{Mean bias error (positive = over-estimation).}
+#'   \item{MAPE}{Mean absolute percentage error.}
+#'   \item{median_AE}{Median absolute error.}
+#' }
+#'
+#' @seealso [evaluate_against_gold()] — source of `comparison_df`.
+#'   [build_episodes()] `extra_cols` argument — how to carry parse status into
+#'   episode-level output so it can be joined here.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' nlp_episodes <- build_episodes(
+#'   nlp_df,
+#'   end_col    = "drug_exposure_end_date",
+#'   dose_col   = "daily_dose_mg",
+#'   extra_cols = "parsed_status"
+#' )
+#' ev <- evaluate_against_gold(nlp_episodes, gold_df,
+#'                              gold_dose_col = "dose_daily_mg_equiv")
+#' comp_with_status <- ev$comparison |>
+#'   dplyr::left_join(
+#'     nlp_episodes |>
+#'       dplyr::select(person_id, episode_start, parsed_status),
+#'     by = c("person_id", "episode_start")
+#'   )
+#' stratify_errors_by_parse(comp_with_status, "parsed_status")
+#' }
+stratify_errors_by_parse <- function(comparison_df, parse_col) {
+  if (!parse_col %in% names(comparison_df))
+    rlang::abort(sprintf(
+      "Column '%s' not found in comparison_df. Join parse status from the episode data frame first.",
+      parse_col
+    ))
+  required <- c("computed_dose", "gold_dose",
+                "absolute_error", "bias_error", "absolute_relative_error_pct")
+  missing_r <- setdiff(required, names(comparison_df))
+  if (length(missing_r) > 0L)
+    rlang::abort(paste0(
+      "comparison_df is missing required columns: ",
+      paste(missing_r, collapse = ", "),
+      ". Pass the `$comparison` element from evaluate_against_gold()."
+    ))
+
+  comparison_df |>
+    dplyr::mutate(category = .data[[parse_col]]) |>
+    dplyr::group_by(.data$category) |>
+    dplyr::summarise(
+      n            = dplyr::n(),
+      n_matched    = sum(!is.na(.data$computed_dose)),
+      coverage_pct = round(100 * mean(!is.na(.data$computed_dose)), 1),
+      MAE          = round(mean(.data$absolute_error,              na.rm = TRUE), 2),
+      MBE          = round(mean(.data$bias_error,                  na.rm = TRUE), 2),
+      MAPE         = round(mean(.data$absolute_relative_error_pct, na.rm = TRUE), 1),
+      median_AE    = round(stats::median(.data$absolute_error,     na.rm = TRUE), 2),
+      .groups      = "drop"
+    ) |>
+    dplyr::arrange(dplyr::desc(.data$n))
+}
+
+# ---------------------------------------------------------------------------
+# Exported: make_validation_split
+# ---------------------------------------------------------------------------
+
+#' Split a gold-standard data frame into train and validate folds by patient
+#'
+#' Randomly assigns each unique patient to either the training set or the
+#' validation set, returning two non-overlapping subsets of `gold_df`. Always
+#' splits by patient (not by episode) so the same patient never appears in both
+#' folds.
+#'
+#' **Why this matters for threshold tuning:** If you tune hierarchical
+#' thresholds (`match_tol`, `diff_threshold`) using [tune_hierarchical_thresholds()]
+#' and then evaluate those same thresholds on the *full* gold set, the
+#' performance estimate is optimistic (gold-standard leakage). Use the `$train`
+#' split for tuning and the `$validate` split for unbiased evaluation.
+#'
+#' @param gold_df Data frame of gold-standard episodes. Must contain `id_col`.
+#' @param id_col `character(1)`. Patient ID column. Default: `"person_id"`.
+#' @param train_frac `numeric(1)`. Fraction of patients to place in the
+#'   training fold. Default: `0.7` (70 % train / 30 % validate).
+#' @param seed `integer(1)`. Random seed for reproducibility. Default: `42L`.
+#'
+#' @return A named list:
+#' \describe{
+#'   \item{`$train`}{Gold episodes for training patients (use for tuning).}
+#'   \item{`$validate`}{Gold episodes for validation patients (use for evaluation).}
+#'   \item{`$train_ids`}{Integer vector of patient IDs in the training fold.}
+#'   \item{`$validate_ids`}{Integer vector of patient IDs in the validation fold.}
+#' }
+#'
+#' @seealso [tune_hierarchical_thresholds()] — pass `gold_df = split$train`.
+#'
+#' @export
+#'
+#' @examples
+#' gold <- tibble::tibble(
+#'   person_id         = c(1L, 1L, 2L, 3L, 4L),
+#'   episode_start     = as.Date(c("2023-01-01","2023-06-01",
+#'                                 "2023-01-01","2023-03-01","2023-02-01")),
+#'   episode_end       = as.Date(c("2023-05-31","2023-12-31",
+#'                                 "2023-06-30","2023-09-30","2023-08-31")),
+#'   median_daily_dose = c(20, 10, 40, 5, 20)
+#' )
+#' split <- make_validation_split(gold, train_frac = 0.75, seed = 1L)
+#' length(split$train_ids)
+#' nrow(split$validate)
+make_validation_split <- function(gold_df,
+                                   id_col     = "person_id",
+                                   train_frac = 0.7,
+                                   seed       = 42L) {
+  if (!id_col %in% names(gold_df))
+    rlang::abort(sprintf("Column '%s' not found in gold_df.", id_col))
+  if (!is.numeric(train_frac) || length(train_frac) != 1L ||
+      train_frac <= 0 || train_frac >= 1)
+    rlang::abort("train_frac must be a single number strictly between 0 and 1.")
+
+  set.seed(seed)
+  ids       <- unique(gold_df[[id_col]])
+  n_train   <- max(1L, round(length(ids) * train_frac))
+  train_ids <- sort(sample(ids, n_train))
+  val_ids   <- sort(setdiff(ids, train_ids))
+
+  list(
+    train        = gold_df[gold_df[[id_col]] %in% train_ids, ],
+    validate     = gold_df[gold_df[[id_col]] %in% val_ids,   ],
+    train_ids    = train_ids,
+    validate_ids = val_ids
+  )
 }

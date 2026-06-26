@@ -168,6 +168,7 @@
 <table class="param-table">
   <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
   <tr><td>gap_days</td><td>30L</td><td>Maximum gap in days between consecutive records still merged into the same episode (OHDSI standard).</td></tr>
+  <tr><td>extra_cols <span class="badge badge-new">v0.4.0</span></td><td>character(0)</td><td>Optional character vector of column names to carry from the input records into the episode summary by statistical mode (most common value per episode). Example: <code>extra_cols = "parsed_status"</code> propagates NLP parse status so that <code>evaluate_against_gold()$stratified$by_sig_status</code> is automatically populated for error decomposition.</td></tr>
   <tr><td>concurrent_agg <span class="badge badge-new">v0.2.0</span></td><td>"per_drug"</td><td>
     How to handle concurrent prescriptions of <em>different</em> steroids:<br>
     <code>"per_drug"</code> — each drug tracked independently (one episode track per patient–drug pair).<br>
@@ -424,6 +425,51 @@ eval_result <span class="op">&lt;-</span> <span class="fn">evaluate_against_gold
 s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 <span class="fn">sprintf</span>(<span class="st">"Coverage: %.1f%%  MAE: %.2f  MBE: %.2f  RMSE: %.2f"</span>,
         s<span class="op">$</span>coverage_pct, s<span class="op">$</span>MAE, s<span class="op">$</span>MBE, s<span class="op">$</span>RMSE)
+</code></pre>
+
+<!-- ── ERROR DECOMPOSITION ────────────────────────────────────────── -->
+<h2 id="error-decomposition">Error decomposition by parse category <span class="badge badge-new">v0.4.0</span></h2>
+
+<p>
+  After running <code>evaluate_against_gold()</code>, use
+  <code>stratify_errors_by_parse()</code> to see whether errors concentrate in
+  clinically interpretable SIG categories (taper, PRN, free-text, no_parse)
+  versus well-parsed records — a table manuscript reviewers commonly request.
+</p>
+
+<pre><code><span class="co"># Build NLP episodes with parse status propagated</span>
+nlp_ep <span class="op">&lt;-</span> <span class="fn">build_episodes</span>(
+  nlp_df,
+  end_col    <span class="op">=</span> <span class="st">"drug_exposure_end_date"</span>,
+  dose_col   <span class="op">=</span> <span class="st">"daily_dose_mg"</span>,
+  extra_cols <span class="op">=</span> <span class="st">"parsed_status"</span>   <span class="co"># propagate by mode per episode</span>
+)
+ev <span class="op">&lt;-</span> <span class="fn">evaluate_against_gold</span>(nlp_ep, gold_std,
+                            gold_dose_col <span class="op">=</span> <span class="st">"dose_daily_mg_equiv"</span>)
+
+<span class="co"># Join parse status back onto the comparison table</span>
+comp <span class="op">&lt;-</span> ev<span class="op">$</span>comparison <span class="op">|&gt;</span>
+  dplyr::<span class="fn">left_join</span>(
+    nlp_ep <span class="op">|&gt;</span> dplyr::<span class="fn">select</span>(person_id, episode_start, parsed_status),
+    by <span class="op">=</span> <span class="fn">c</span>(<span class="st">"person_id"</span>, <span class="st">"episode_start"</span>)
+  )
+
+<span class="fn">stratify_errors_by_parse</span>(comp, <span class="st">"parsed_status"</span>)
+<span class="co"># Returns: category | n | n_matched | coverage_pct | MAE | MBE | MAPE | median_AE</span>
+</code></pre>
+
+<p>
+  <strong>Preventing gold-standard leakage during threshold tuning:</strong> if
+  you use <code>tune_hierarchical_thresholds()</code> to select
+  <code>match_tol</code> and <code>diff_threshold</code>, always tune on a held-out
+  patient subset and evaluate on the remainder.
+  <code>make_validation_split()</code> does this split at the patient level
+  (never by episode, so no patient appears in both folds):
+</p>
+
+<pre><code>gold_split <span class="op">&lt;-</span> <span class="fn">make_validation_split</span>(gold_std_ok, train_frac <span class="op">=</span> <span class="num">0.7</span>)
+thresh_res  <span class="op">&lt;-</span> <span class="fn">tune_hierarchical_thresholds</span>(drug_df, gold_df <span class="op">=</span> gold_split<span class="op">$</span>train)
+<span class="co"># Then evaluate best params on gold_split$validate — unbiased estimate</span>
 </code></pre>
 
 <!-- ── DETECTION EVALUATION ──────────────────────────────────────── -->
