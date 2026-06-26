@@ -32,12 +32,12 @@ if (!exists(".RUNALL_ACTIVE")) {
 # 0. Configuration  —  values set by RunAll.R take precedence
 # ---------------------------------------------------------------------------
 
-OLLAMA_URL        <- "http://localhost:11434"
-OLLAMA_MODEL      <- "llama3.2"
-MAX_TOKENS        <- 256L
-TIMEOUT_SEC       <- 60L
-N_WORKERS         <- 4L
-CHECKPOINT_EVERY  <- 25L
+if (!exists("OLLAMA_URL"))       OLLAMA_URL       <- "http://localhost:11434"
+if (!exists("OLLAMA_MODEL"))     OLLAMA_MODEL     <- "qwen2.5:7b"
+if (!exists("MAX_TOKENS"))       MAX_TOKENS       <- 256L
+if (!exists("TIMEOUT_SEC"))      TIMEOUT_SEC      <- 60L
+if (!exists("N_WORKERS"))        N_WORKERS        <- 4L
+if (!exists("CHECKPOINT_EVERY")) CHECKPOINT_EVERY <- 25L
 
 if (!exists("COHORT_PERSON_IDS")) COHORT_PERSON_IDS <- NULL
 if (!exists("GAP_DAYS"))          GAP_DAYS          <- 30L

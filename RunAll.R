@@ -36,6 +36,21 @@ RUN_DIR    <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
 dir.create(RUN_DIR, recursive = TRUE)
 
 # ===========================================================================
+# LLM PARAMETERS  —  controls LLMtoRun.R
+# ===========================================================================
+OLLAMA_MODEL     <- "qwen2.5:7b"           # model to use; recommended options:
+                                            #   "qwen2.5:7b"   — best JSON extraction (default)
+                                            #   "llama3.1:8b"  — strong general extraction
+                                            #   "mistral:7b"   — reliable instruction following
+                                            #   "gemma2:9b"    — good structured output
+                                            #   "llama3.1:70b" — highest local quality (~40 GB VRAM)
+OLLAMA_URL       <- "http://localhost:11434"
+MAX_TOKENS       <- 256L
+TIMEOUT_SEC      <- 60L
+N_WORKERS        <- 4L
+CHECKPOINT_EVERY <- 25L
+
+# ===========================================================================
 # DATABASE CONNECTION  —  fill in ONE option (skip when USE_SYNTHETIC = TRUE)
 # Both CodeToRun.R and LLMtoRun.R will reuse the `conn` created here.
 # ===========================================================================
