@@ -19,8 +19,8 @@
 #
 # Usage
 # -----
-#   source("LLM_to_Run.R")        # interactive (RStudio)
-#   Rscript LLM_to_Run.R          # batch
+#   source("LLMtoRun.R")        # interactive (RStudio)
+#   Rscript LLMtoRun.R          # batch
 
 if (!interactive()) quit(status = 0L, save = "no")
 
@@ -102,6 +102,27 @@ invisible(lapply(needed, library, character.only = TRUE))
 # Supports SqlRender template parameters via `...` (same signature as CodeToRun.R).
 # query_db(sql, param = value, ...) → data.frame
 query_db <- function(sql, ...) {
+  if (!exists("conn")) {
+    stop("No database connection found. Run the connection block in Section 2 first.")
+  }
+
+  # Catch the "external pointer is not valid" error that occurs when conn is a
+  # leftover object from a previous R session that has since been restarted.
+  is_valid <- tryCatch(
+    if (inherits(conn, "DatabaseConnectorConnection")) {
+      DatabaseConnector::dbIsValid(conn)
+    } else {
+      DBI::dbIsValid(conn)
+    },
+    error = function(e) FALSE
+  )
+  if (!is_valid) {
+    stop(
+      "Database connection is no longer valid (stale external pointer).\n",
+      "Re-run the connection block in Section 2 to open a fresh `conn`, then retry."
+    )
+  }
+
   if (inherits(conn, "DatabaseConnectorConnection")) {
     DatabaseConnector::renderTranslateQuerySql(
       conn, sql, ..., snakeCaseToCamelCase = FALSE
