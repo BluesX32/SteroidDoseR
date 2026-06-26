@@ -11,7 +11,7 @@ evaluate_against_gold(
   computed_id_col = "person_id",
   computed_start_col = "episode_start",
   computed_end_col = "episode_end",
-  computed_dose_col = "median_daily_dose",
+  computed_dose_col = "mean_daily_dose",
   gold_id_col = "person_id",
   gold_start_col = "episode_start",
   gold_end_col = "episode_end",
@@ -44,7 +44,9 @@ Default: \code{"person_id"}.}
 Default: \code{"episode_end"}.}
 
 \item{computed_dose_col}{\code{character(1)}. Dose column in \code{computed_df}.
-Default: \code{"median_daily_dose"}.}
+Default: \code{"mean_daily_dose"} (duration-weighted mean; more reliable than the
+unweighted median for tapered regimens). Pass \code{"median_daily_dose"} to
+reproduce legacy behaviour.}
 
 \item{gold_id_col}{\code{character(1)}. Patient ID column in \code{gold_df}.
 Default: \code{"person_id"}.}
@@ -93,10 +95,10 @@ coverage (# usable / computable episodes), MAE, and MBE.
 }
 \examples{
 computed <- tibble::tibble(
-  person_id         = 1L,
-  episode_start     = as.Date("2023-01-01"),
-  episode_end       = as.Date("2023-06-30"),
-  median_daily_dose = 10
+  person_id       = 1L,
+  episode_start   = as.Date("2023-01-01"),
+  episode_end     = as.Date("2023-06-30"),
+  mean_daily_dose = 10
 )
 gold <- tibble::tibble(
   person_id         = 1L,

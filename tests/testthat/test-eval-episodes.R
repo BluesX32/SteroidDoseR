@@ -81,7 +81,8 @@ make_eval_pair <- function(comp_dose = 10, gold_dose = 10,
     person_id         = 1L,
     episode_start     = as.Date(start),
     episode_end       = as.Date(end),
-    median_daily_dose = comp_dose
+    median_daily_dose = comp_dose,
+    mean_daily_dose   = comp_dose
   )
   gold <- tibble::tibble(
     person_id         = 1L,
@@ -109,15 +110,15 @@ test_that("evaluate_against_gold: bias computed correctly", {
 
 test_that("evaluate_against_gold: no overlap => 0 matched, NA metrics", {
   computed <- tibble::tibble(
-    person_id = 1L,
-    episode_start = as.Date("2024-01-01"),
-    episode_end   = as.Date("2024-06-30"),
-    median_daily_dose = 10
+    person_id         = 1L,
+    episode_start     = as.Date("2024-01-01"),
+    episode_end       = as.Date("2024-06-30"),
+    mean_daily_dose   = 10
   )
   gold <- tibble::tibble(
-    patient_id = 1L,
-    episode_start = as.Date("2023-01-01"),
-    episode_end   = as.Date("2023-06-30"),
+    person_id         = 1L,
+    episode_start     = as.Date("2023-01-01"),
+    episode_end       = as.Date("2023-06-30"),
     median_daily_dose = 10
   )
   res <- evaluate_against_gold(computed, gold)

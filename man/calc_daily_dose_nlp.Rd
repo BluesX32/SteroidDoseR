@@ -9,6 +9,7 @@ calc_daily_dose_nlp(
   drug_name_col = "drug_concept_name",
   sig_col = "sig",
   filter_oral = TRUE,
+  prn_action = c("na", "keep"),
   baseline_fallback = FALSE,
   max_daily_dose_mg = 2000,
   equiv_table = NULL,
@@ -33,6 +34,11 @@ When \code{sig} is absent and \code{sig_source = "drug_source_value"}, the
 
 \item{filter_oral}{\code{logical(1)}. If \code{TRUE} (default), only oral-route
 records are kept. Set to \code{FALSE} if route filtering was done upstream.}
+
+\item{prn_action}{\code{character(1)}. How to handle PRN ("as needed") records.
+\code{"na"} (default): set \code{daily_dose_mg = NA} for PRN records and exclude
+them from the structural baseline fallback. \code{"keep"}: legacy behaviour,
+pass PRN through unchanged.}
 
 \item{baseline_fallback}{\code{logical(1)}. If \code{TRUE}, the function tries to
 carry through an existing \code{daily_dose_mg} column (e.g. from the Baseline

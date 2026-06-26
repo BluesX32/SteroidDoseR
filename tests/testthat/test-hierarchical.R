@@ -69,17 +69,32 @@ test_that("branch 1 nlp_override: large discrepancy → trust SIG", {
   expect_equal(result$daily_dose_mg, 40)
 })
 
-test_that("branch 1 blended: small discrepancy → average", {
+test_that("branch 1 nlp_preferred: small discrepancy, default action → NLP wins", {
   # SIG: 10 mg daily (explicit)
   # Baseline M4: 90 × 5 / 90 = 5 mg/day
-  # |diff| = 5, diff_threshold = 10, match_tol = 0.01 → blended
+  # |diff| = 5, diff_threshold = 10, match_tol = 1 → moderate disagreement
+  # default moderate_disagreement_action = "nlp" → nlp_preferred, dose = 10
   df <- make_hier_row(
     sig          = "Take 2 tablets (10 mg total) daily",
     quantity     = 90,
     days_supply  = 90,
     amount_value = 5
   )
-  result <- calc_daily_dose_hierarchical(df, diff_threshold = 10, match_tol = 0.01)
+  result <- calc_daily_dose_hierarchical(df, diff_threshold = 10)
+  expect_equal(result$hierarchical_method, "nlp_preferred")
+  expect_equal(result$daily_dose_mg, 10)
+})
+
+test_that("branch 1 blended: explicit blend action → average", {
+  # Same scenario but with moderate_disagreement_action = "blend"
+  df <- make_hier_row(
+    sig          = "Take 2 tablets (10 mg total) daily",
+    quantity     = 90,
+    days_supply  = 90,
+    amount_value = 5
+  )
+  result <- calc_daily_dose_hierarchical(df, diff_threshold = 10,
+                                          moderate_disagreement_action = "blend")
   expect_equal(result$hierarchical_method, "blended")
   expect_equal(result$daily_dose_mg, (10 + 5) / 2)
 })
@@ -118,13 +133,23 @@ test_that("branch 2 baseline_only: SIG exists but unparseable → use baseline",
   expect_equal(result$daily_dose_mg, 5)
 })
 
-test_that("branch 2 baseline_only: SIG PRN → use baseline (PRN is not steady dosing)", {
+test_that("branch 2 PRN + prn_action='na': dose nulled, method = prn_excluded", {
   df <- make_hier_row(
     sig      = "Take 1 tablet (5 mg) daily as needed",
     quantity = 90, days_supply = 90
   )
+  # Default prn_action = "na": baseline_only dose is overridden to NA
   result <- calc_daily_dose_hierarchical(df)
-  # prn sig_status → sig_complete = FALSE → falls to baseline_only
+  expect_equal(result$hierarchical_method, "prn_excluded")
+  expect_true(is.na(result$daily_dose_mg))
+})
+
+test_that("branch 2 PRN + prn_action='keep': falls to baseline_only", {
+  df <- make_hier_row(
+    sig      = "Take 1 tablet (5 mg) daily as needed",
+    quantity = 90, days_supply = 90
+  )
+  result <- calc_daily_dose_hierarchical(df, prn_action = "keep")
   expect_equal(result$hierarchical_method, "baseline_only")
 })
 
@@ -223,15 +248,17 @@ test_that("branch 4 missing: no baseline and no SIG → NA", {
 # diff_threshold parameter sensitivity
 # ---------------------------------------------------------------------------
 
-test_that("diff_threshold = Inf always produces cross_checked or blended, never nlp_override", {
+test_that("diff_threshold = Inf never produces nlp_override", {
   df <- make_hier_row(
     sig          = "Take 8 tablets (40 mg total) daily",
     quantity     = 90,
     days_supply  = 90,
     amount_value = 5
   )
-  result <- calc_daily_dose_hierarchical(df, diff_threshold = Inf, match_tol = 0.01)
-  expect_true(result$hierarchical_method %in% c("cross_checked", "blended"))
+  result <- calc_daily_dose_hierarchical(df, diff_threshold = Inf)
+  expect_false(result$hierarchical_method == "nlp_override")
+  expect_true(result$hierarchical_method %in%
+    c("cross_checked", "nlp_preferred", "baseline_preferred", "blended"))
 })
 
 test_that("diff_threshold = 0 always nlp_override when doses differ", {
@@ -330,7 +357,8 @@ test_that("multi-row data frame produces one row per input row", {
   result <- calc_daily_dose_hierarchical(df)
   expect_equal(nrow(result), 3L)
   # Each result method must be one of the valid hierarchy labels
-  valid_methods <- c("cross_checked", "blended", "nlp_override",
-                     "baseline_only", "nlp_fills_baseline", "nlp_taper", "missing")
+  valid_methods <- c("cross_checked", "nlp_preferred", "baseline_preferred",
+                     "blended", "nlp_override", "baseline_only",
+                     "nlp_fills_baseline", "nlp_taper", "prn_excluded", "missing")
   expect_true(all(result$hierarchical_method %in% valid_methods))
 })

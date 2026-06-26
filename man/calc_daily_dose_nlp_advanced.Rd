@@ -10,6 +10,7 @@ calc_daily_dose_nlp_advanced(
   sig_col = "sig",
   filter_oral = TRUE,
   expand_tapers = TRUE,
+  prn_action = c("na", "keep"),
   max_daily_dose_mg = 2000,
   baseline_fallback = FALSE,
   equiv_table = NULL,
@@ -31,6 +32,10 @@ Default: \code{"drug_concept_name"}.}
 
 \item{filter_oral}{\code{logical(1)}. If \code{TRUE} (default), only oral-route
 records are kept.}
+
+\item{prn_action}{\code{character(1)}. How to handle PRN ("as needed") records.
+\code{"na"} (default): set \code{daily_dose_mg = NA} and exclude from the structural
+baseline fallback. \code{"keep"}: legacy behaviour, pass PRN through.}
 
 \item{expand_tapers}{\code{logical(1)}. If \code{TRUE} (default), taper records with a
 parseable schedule are expanded into multiple rows -- one per dose step --

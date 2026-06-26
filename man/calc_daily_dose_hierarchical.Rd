@@ -10,7 +10,9 @@ calc_daily_dose_hierarchical(
   drug_name_col = "drug_concept_name",
   filter_oral = TRUE,
   diff_threshold = 5,
-  match_tol = 0.01,
+  match_tol = 1,
+  moderate_disagreement_action = c("nlp", "baseline", "blend"),
+  prn_action = c("na", "keep"),
   expand_tapers = FALSE,
   max_daily_dose_mg = 2000,
   equiv_table = NULL,
@@ -37,9 +39,20 @@ Default: \code{TRUE}.}
 When \code{|bl - nlp| / max(bl, nlp)} exceeds this value the NLP result
 overrides baseline. Default: \code{5}.}
 
-\item{match_tol}{\code{numeric(1)}. Relative-difference threshold at or below
-which the two estimates are considered to match. Records below this are
-labelled \code{"cross_checked"}. Default: \code{0.01}.}
+\item{match_tol}{\code{numeric(1)}. Absolute difference (mg/day) at or below
+which the two estimates are considered to match. Records at or below this
+threshold are labelled \code{"cross_checked"}. Default: \code{1} (1 mg = the
+smallest dispensable tablet strength).}
+
+\item{moderate_disagreement_action}{\code{character(1)}. What to do when
+\code{match_tol < |diff| <= diff_threshold}: \code{"nlp"} (default, use SIG text
+value), \code{"baseline"} (use structured-field value), or \code{"blend"}
+(arithmetic mean, legacy). Method label in output: \code{"nlp_preferred"},
+\code{"baseline_preferred"}, or \code{"blended"}.}
+
+\item{prn_action}{\code{character(1)}. How to handle PRN records. \code{"na"}
+(default): set \code{daily_dose_mg = NA} and label \code{"prn_excluded"}.
+\code{"keep"}: pass through to \code{baseline_only} / \code{missing} branches.}
 
 \item{expand_tapers}{\code{logical(1)}. When \code{TRUE}, taper SIGs handled by the
 NLP branch are expanded into per-step rows via
