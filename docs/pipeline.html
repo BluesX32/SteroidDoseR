@@ -70,6 +70,7 @@
   </ul>
   <div class="nav-section-label">Methods</div>
   <ul>
+    <li><a href="../METHODS.md">Detailed manuscript methods</a></li>
     <li><a href="methods.html#baseline">Baseline method</a></li>
     <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
     <li><a href="methods.html#nlp">NLP method</a></li>
@@ -105,6 +106,15 @@
 
 <!-- ── EQUIVALENCY ───────────────────────────────────────────────── -->
 <h2 id="equiv">Prednisone equivalency</h2>
+
+<div class="callout callout-warn">
+  <strong>Reference-script limitation <span class="badge badge-fix">v0.4.0</span></strong>
+  The reusable conversion function is described below, but the current
+  <code>CodeToRun.R</code> and <code>LLMtoRun.R</code> primary paths build episodes
+  from native-drug mg. Apply conversion at record level before episode building
+  when reporting prednisone-equivalent results. This is tracked as BUG-12 and
+  explained in <a href="../METHODS.md">Detailed Methods</a>.
+</div>
 
 <div class="fn-sig">convert_pred_equiv(
   drug_df,

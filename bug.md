@@ -151,3 +151,20 @@ silently skipped with a warning.
 
 Fixed: added `LEFT JOIN concept rc ON de.route_concept_id = rc.concept_id`
 and selected `rc.concept_name AS route_concept_name`.
+
+## analysis scripts
+
+### BUG-12 Primary comparison labels native-drug mg as prednisone-equivalent ⚠️ OPEN
+
+`CodeToRun.R` builds Baseline and NLP episodes directly from
+`daily_dose_mg_imputed` / `daily_dose_mg`, and `LLMtoRun.R` similarly builds
+episodes from extracted native-drug mg. `CompareToRun.R` then labels these
+values as mg prednisone-equivalent and compares them with the gold column
+`dose_daily_mg_equiv`. The explicit `convert_pred_equiv()` step is used only in
+the NLP equivalency sensitivity analysis.
+
+Until fixed, primary results are valid in a common unit only when all retained
+records are already prednisone/prednisolone or were converted upstream. The
+recommended correction is to call `convert_pred_equiv()` on every method's
+record-level output before `build_episodes()` and to verify that the gold
+standard is truly prednisone-equivalent rather than only normalized to mg/day.

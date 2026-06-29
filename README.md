@@ -4,6 +4,10 @@ Compute prednisone-equivalent daily doses from OMOP CDM corticosteroid records.
 
 Two complementary methods — **Baseline** (structured OMOP fields) and **NLP** (taper-aware Advanced NLP SIG parser) — produce episode-level dose trajectories that can be evaluated against a manually reviewed gold standard and explored in an interactive dashboard.
 
+For a manuscript-ready account of the complete methodology—including the local
+LLM progress-note workflow, exact equations, episode matching, uncommon edge
+cases, reporting checklist, figures, and Q&A—see [Detailed Methods](METHODS.md).
+
 ---
 
 ## Prerequisites
@@ -506,6 +510,7 @@ The following are documented design constraints.
 | **Error-category reporting** | Aggregate MAE/MBE hides which SIG categories drive errors | **Fixed v0.4.0**: `stratify_errors_by_parse()` produces per-category error table; `build_episodes(extra_cols = "parsed_status")` propagates parse status to episode level |
 | **Budesonide excluded** | `NA` equiv_factor drops budesonide from analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` to `convert_pred_equiv()` |
 | **No weight-based dosing** | mg/kg SIGs parsed to NA | Not applicable for most adult myositis patients |
+| **Reference scripts do not convert primary episodes to prednisone-equivalent units** | Baseline, NLP, and LLM episodes may be native-drug mg while plots label them pred-equiv | Run `convert_pred_equiv()` at record level before `build_episodes()`; see `METHODS.md` and BUG-12 |
 
 ---
 
@@ -516,6 +521,7 @@ The following are documented design constraints.
 | [Overview & Quick Start](docs/index.html) | Installation, quick start, pipeline stages |
 | [Connectors](docs/connectors.html) | Live OMOP database, env vars, capability detection, column contract |
 | [Methods](docs/methods.html) | Baseline (M1–M4), NLP, Advanced NLP, taper parser, SIG vocabulary |
+| [Detailed Methods](METHODS.md) | Manuscript-ready methodology, LLM workflow, equations, figures, edge-case Q&A, and reporting checklist |
 | [Pipeline](docs/pipeline.html) | Prednisone equivalency, episode building, run_pipeline(), evaluation, visualization |
 | [Reference](docs/reference.html) | Full function list, data quality issues, troubleshooting, changelog |
 

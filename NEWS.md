@@ -2,6 +2,16 @@
 
 ## New features
 
+* **Publication-ready detailed methodology** (`METHODS.md`, `references.bib`):
+  Added a source-verified, implementation-level Methods chapter covering OMOP
+  extraction, Baseline M1–M4, basic/Advanced NLP, taper and PRN handling,
+  medspaCy, hierarchical selection, the local Ollama LLM workflow, equivalency,
+  episode construction, gold-standard preparation, evaluation equations,
+  sensitivity analyses, figures, a reporting checklist, and uncommon-method
+  Q&A. The chapter explicitly distinguishes package functionality from the
+  current reference scripts and documents the unresolved native-mg versus
+  prednisone-equivalent mismatch (BUG-12).
+
 * **`evaluate_against_gold()` now restricts dose-accuracy metrics to common
   patients** (`R/eval.R`): Before the overlap join, gold episodes are filtered
   to patients who also appear in `computed_df`. Patients entirely absent from

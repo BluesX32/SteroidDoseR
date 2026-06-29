@@ -71,6 +71,7 @@
   </ul>
   <div class="nav-section-label">Methods</div>
   <ul>
+    <li><a href="../METHODS.md">Detailed manuscript methods</a></li>
     <li><a href="methods.html#baseline">Baseline method</a></li>
     <li><a href="methods.html#baseline-params">Baseline parameters</a></li>
     <li><a href="methods.html#nlp">NLP method</a></li>
@@ -219,6 +220,16 @@
   <li>The default <code>max_daily_dose_mg = 2000</code> cap will NA out obvious outliers with a warning that counts affected rows.</li>
 </ol>
 
+<h3>Primary comparison says prednisone-equivalent but values look drug-specific</h3>
+<div class="callout callout-warn">
+  <strong>Known issue BUG-12</strong>
+  <p>The current <code>CodeToRun.R</code> and <code>LLMtoRun.R</code> scripts
+  build primary episodes from native-drug mg. Convert each method's
+  record-level output with <code>convert_pred_equiv()</code> before calling
+  <code>build_episodes()</code>, and verify that the reviewed gold dose is also
+  prednisone-equivalent. See <a href="../METHODS.md">Detailed Methods</a>.</p>
+</div>
+
 <h3>No records after oral filter</h3>
 <div class="callout callout-warn">
   <strong>Warning: "No oral corticosteroid records found after filtering"</strong>
@@ -235,6 +246,12 @@
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.4.0 (continued) <span class="badge badge-new">Detailed methodology</span></h3>
+<ul>
+  <li><strong>docs: publication-ready <code>METHODS.md</code> and <code>references.bib</code></strong> — Added a source-verified, implementation-level Methods chapter covering OMOP extraction, Baseline M1–M4, rule-based and Advanced NLP, medspaCy, hierarchical selection, local Ollama LLM extraction, equivalency, episode construction, gold preparation, evaluation equations, figures, sensitivity analyses, reporting checklist, and uncommon-method Q&amp;A.</li>
+  <li><strong>docs/known issue: BUG-12</strong> — Documented that the current reference scripts build primary Baseline/NLP/LLM episodes from native-drug mg but label comparison outputs prednisone-equivalent. Until record-level conversion is added, primary results require a single prednisone/prednisolone source or upstream conversion.</li>
+</ul>
 
 <h3>v0.4.0 (continued) <span class="badge badge-new">Manuscript-readiness improvements</span></h3>
 <ul>
