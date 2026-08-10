@@ -2,7 +2,7 @@
 
 Compute prednisone-equivalent daily doses from OMOP CDM corticosteroid records.
 
-Two complementary methods — **Baseline** (structured OMOP fields) and **NLP** (taper-aware Advanced NLP SIG parser) — produce episode-level dose trajectories that can be evaluated against a manually reviewed gold standard and explored in an interactive dashboard.
+Two complementary methods — **Baseline** (structured OMOP fields) and **NLP** (taper-aware Advanced NLP SIG parser) — produce episode-level dose trajectories that can be evaluated against a manually reviewed gold standard, checked cross-sectionally at office-visit encounters, and explored in an interactive dashboard.
 
 For a manuscript-ready account of the complete methodology—including the local
 LLM progress-note workflow, exact equations, episode matching, uncommon edge
@@ -251,6 +251,43 @@ det$detail_negative  # per gold-negative patient:  classification = "FP" or "TN"
 For dose accuracy among true positives, filter `detail_positive` to TPs and
 pass them to `evaluate_against_gold()`.
 ```
+
+### 6c. Cross-sectional (point-in-time) comparison
+
+`evaluate_against_gold()` above is **episode-level**: it matches a gold
+episode (a chart-reviewed period that can span months) to the best-overlapping
+computed episode (which can span years if a patient refills continuously).
+For a different question — "on this specific office-visit date, what dose
+does each method say the patient was on" — use `dose_at_visits()` instead.
+Both comparisons are useful and answer different questions; see
+[docs/pipeline.html](docs/pipeline.html) for the full explanation.
+
+```r
+visits_df <- fetch_visit_occurrence(
+  omop_connector,
+  visit_concept_ids = c(9202L)  # OMOP "Outpatient Visit" -- confirm the
+                                 # definition of "office visit" with your PI
+)
+
+# no_coverage_value = 0: no active episode on that date == not on steroids.
+baseline_at_visits <- dose_at_visits(baseline_ep, visits_df,
+                                     visit_date_col = "visit_start_date")
+
+# no_coverage_value = NA: a gold coverage gap means "not chart-reviewed here,"
+# not "confirmed off steroids."
+gold_at_visits <- dose_at_visits(gold_std, visits_df,
+                                 visit_date_col    = "visit_start_date",
+                                 dose_col          = "dose_daily_mg_equiv",
+                                 no_coverage_value = NA_real_)
+
+# Same metric formulas as evaluate_against_gold(), applied to plain vectors --
+# e.g. restricted to visits where gold_at_visits$has_coverage is TRUE.
+dose_agreement_metrics(baseline_at_visits$dose_mg, gold_at_visits$dose_mg)
+```
+
+`CodeToRun.R` (STEP 2c) and `CompareToRun.R` (section 11b) run this
+automatically when `VISIT_CONCEPT_IDS` is set in `RunAll.R`, writing
+`cross_sectional_comparison.csv` and `cross_sectional_summary.csv`.
 
 ---
 
@@ -511,6 +548,7 @@ The following are documented design constraints.
 | **Budesonide excluded** | `NA` equiv_factor drops budesonide from analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` to `convert_pred_equiv()` |
 | **No weight-based dosing** | mg/kg SIGs parsed to NA | Not applicable for most adult myositis patients |
 | **Reference scripts do not convert primary episodes to prednisone-equivalent units** | Baseline, NLP, and LLM episodes may be native-drug mg while plots label them pred-equiv | Run `convert_pred_equiv()` at record level before `build_episodes()`; see `METHODS.md` and BUG-12 |
+| **No gold standard for cumulative/trajectory steroid exposure** | Dose-over-time and cumulative-exposure metrics cannot be validated | By design, not a bug — the gold standard covers discrete chart-reviewed intervals only. **Added v0.4.0**: cross-sectional (point-in-time) comparison at office-visit dates via `dose_at_visits()` validates individual timepoints; see `bug.md` DECISION-13/DECISION-14 |
 
 ---
 

@@ -11,11 +11,14 @@
 # --------
 # STEP 1 — Connection  : OMOP CDM database (skip when USE_SYNTHETIC = TRUE)
 # STEP 2 — Data load   : drug_exposure extraction + quality checks
+# STEP 2c — Visits     : office-visit encounters for cross-sectional comparison
+#                        (skipped when VISIT_CONCEPT_IDS is unset)
 # STEP 3 — Baseline    : M1-M4 cascading imputation
 # STEP 4 — NLP         : Advanced SIG parser + frequency audit
-# STEP 5 — Save        : records_*.csv + episodes_*.csv written to RUN_DIR
+# STEP 5 — Save        : records_*.csv + episodes_*.csv + visits.csv → RUN_DIR
 #
-# Comparison against the gold standard is handled in CompareToRun.R.
+# Comparison against the gold standard (episode-level and cross-sectional) is
+# handled in CompareToRun.R.
 
 # When sourced from RunAll.R these are already set; skip re-installation.
 if (!exists(".RUNALL_ACTIVE")) {
@@ -34,6 +37,11 @@ if (!exists("START_DATE"))        START_DATE        <- "2015-01-01"
 if (!exists("END_DATE"))          END_DATE          <- "2025-12-31"
 if (!exists("GAP_DAYS"))          GAP_DAYS          <- 30L
 if (!exists("COHORT_PERSON_IDS")) COHORT_PERSON_IDS <- NULL
+# "Office visit" concept_id(s) for the cross-sectional (point-in-time)
+# comparison -- e.g. c(9202L) for OMOP standard "Outpatient Visit". Left NULL
+# (extraction skipped) rather than guessed, because the definition is a
+# clinical/site decision that should be confirmed with the PI. See RunAll.R.
+if (!exists("VISIT_CONCEPT_IDS")) VISIT_CONCEPT_IDS <- NULL
 if (!exists("OUTPUT_DIR"))        OUTPUT_DIR        <- file.path(getwd(), "output")
 if (!exists("RUN_DIR")) {
   RUN_DIR <- file.path(OUTPUT_DIR, format(Sys.time(), "%Y-%m-%d_%H-%M-%S"))
@@ -167,6 +175,55 @@ if ("drug_concept_name" %in% names(drug_df)) {
 
 if (!"drug_exposure_id" %in% names(drug_df)) {
   drug_df <- drug_df |> dplyr::mutate(drug_exposure_id = dplyr::row_number())
+}
+
+# ===========================================================================
+# STEP 2c. Office-visit encounters (for cross-sectional dose comparison)
+# ===========================================================================
+# Powers dose_at_visits() / the cross-sectional comparison section in
+# CompareToRun.R -- "on this specific visit date, what dose does each method
+# say the patient was on," as distinct from the episode-level comparison
+# above (which can span months to years). Skipped entirely when
+# VISIT_CONCEPT_IDS is unset: "office visit" is a clinical/site-specific
+# concept_id definition that must be confirmed rather than silently guessed.
+if (is.null(VISIT_CONCEPT_IDS)) {
+  message(
+    "\nVISIT_CONCEPT_IDS not set -- skipping office-visit extraction. ",
+    "Set VISIT_CONCEPT_IDS (e.g. c(9202L)) to enable the cross-sectional ",
+    "comparison in CompareToRun.R."
+  )
+  visits_df <- NULL
+} else if (USE_SYNTHETIC) {
+  message("=== Using bundled synthetic visit data ===")
+  visits_df <- readr::read_csv(
+    system.file("extdata", "synthetic_visit_occurrence.csv", package = "SteroidDoseR"),
+    show_col_types = FALSE
+  ) |>
+    dplyr::filter(.data$visit_concept_id %in% VISIT_CONCEPT_IDS)
+} else {
+  message("=== Extracting office-visit encounters from live OMOP CDM ===")
+
+  visit_sql <- read_pkg_sql("extract_visit_occurrence.sql")
+
+  visits_df <- query_omop(
+    visit_sql,
+    cdm_schema     = cdm_schema,
+    start_date     = START_DATE,
+    end_date       = END_DATE,
+    concept_filter = paste(VISIT_CONCEPT_IDS, collapse = ","),
+    person_filter  = if (!is.null(COHORT_PERSON_IDS))
+                       paste(COHORT_PERSON_IDS, collapse = ",") else ""
+  )
+
+  names(visits_df) <- tolower(names(visits_df))
+  visits_df$visit_start_date <- as.Date(visits_df$visit_start_date)
+}
+
+if (!is.null(visits_df)) {
+  message(sprintf(
+    "Fetched %d office-visit encounter(s) | %d unique persons",
+    nrow(visits_df), length(unique(visits_df$person_id))
+  ))
 }
 
 # ===========================================================================
@@ -493,6 +550,9 @@ readr::write_csv(baseline_df,       file.path(RUN_DIR, "records_baseline.csv"))
 readr::write_csv(nlp_df,            file.path(RUN_DIR, "records_nlp.csv"))
 readr::write_csv(baseline_episodes, file.path(RUN_DIR, "episodes_baseline.csv"))
 readr::write_csv(nlp_episodes,      file.path(RUN_DIR, "episodes_nlp.csv"))
+if (!is.null(visits_df)) {
+  readr::write_csv(visits_df, file.path(RUN_DIR, "visits.csv"))
+}
 
 message(sprintf("Records and episodes saved → %s", RUN_DIR))
 message("Run CompareToRun.R (or source RunAll.R) to compare against the gold standard.")

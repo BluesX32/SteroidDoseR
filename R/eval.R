@@ -355,6 +355,65 @@ evaluate_against_gold <- function(computed_df,
 }
 
 
+#' Compute dose-accuracy metrics from two numeric dose vectors
+#'
+#' Standalone version of the metric block inside [evaluate_against_gold()]
+#' (MAE, MBE, RMSE, median AE, MAPE, mean relative bias, Pearson/Spearman
+#' correlation), taking plain numeric vectors instead of episode data frames.
+#' [evaluate_against_gold()] itself does not call this -- it keeps its
+#' original inlined computation unchanged. This helper exists so that other
+#' comparisons computed at a different granularity (e.g. per-visit dose from
+#' [dose_at_visits()]) can be scored with the exact same formulas as the
+#' episode-level numbers, without duplicating them by hand.
+#'
+#' @param computed Numeric vector of algorithm-computed doses.
+#' @param actual Numeric vector of reference (gold or other-method) doses,
+#'   same length and pairing as `computed`.
+#'
+#' @return A one-row tibble: `n` (non-missing pairs used), `MAE`, `MBE`,
+#'   `RMSE`, `median_AE`, `MAPE`, `mean_relative_bias_pct`, `pearson_corr`,
+#'   `spearman_corr`. Correlations are `NA` when fewer than 3 pairs are
+#'   available (matching the guard in [evaluate_against_gold()]).
+#'
+#' @seealso [evaluate_against_gold()], [dose_at_visits()]
+#'
+#' @export
+#'
+#' @examples
+#' dose_agreement_metrics(c(10, 20, 5), c(10, 15, 5))
+dose_agreement_metrics <- function(computed, actual) {
+  keep <- !is.na(computed) & !is.na(actual)
+  computed <- computed[keep]
+  actual   <- actual[keep]
+
+  absolute_error     <- abs(computed - actual)
+  bias_error          <- computed - actual
+  relative_error_pct  <- dplyr::if_else(
+    actual != 0, (computed - actual) / actual * 100, NA_real_
+  )
+
+  pcor <- if (length(computed) >= 3L)
+    stats::cor(computed, actual, use = "complete.obs", method = "pearson")
+  else NA_real_
+
+  scor <- if (length(computed) >= 3L)
+    stats::cor(computed, actual, use = "complete.obs", method = "spearman")
+  else NA_real_
+
+  tibble::tibble(
+    n                       = length(computed),
+    MAE                     = mean(absolute_error, na.rm = TRUE),
+    MBE                     = mean(bias_error, na.rm = TRUE),
+    RMSE                    = sqrt(mean(bias_error^2, na.rm = TRUE)),
+    median_AE               = stats::median(absolute_error, na.rm = TRUE),
+    MAPE                    = mean(abs(relative_error_pct), na.rm = TRUE),
+    mean_relative_bias_pct  = mean(relative_error_pct, na.rm = TRUE),
+    pearson_corr            = pcor,
+    spearman_corr           = scor
+  )
+}
+
+
 #' Evaluate binary steroid detection against two gold standards
 #'
 #' Computes TP / FP / TN / FN and Cohen's kappa from two gold-standard

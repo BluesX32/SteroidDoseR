@@ -562,6 +562,147 @@ fetch_drug_exposure <- function(connector,
   tibble::as_tibble(df)
 }
 
+#' Fetch office-visit encounters for cross-sectional dose comparison
+#'
+#' Retrieves `visit_occurrence` records -- the encounter dates used by
+#' [dose_at_visits()] to ask "what dose was active on this specific visit
+#' date" rather than over an entire gap-bridged episode. Accepts either a
+#' live `omop_connector` (runs `inst/sql/extract_visit_occurrence.sql`) or a
+#' plain data frame already containing visit rows (e.g. loaded from a
+#' synthetic/CSV fixture) -- in the latter case the same filters are applied
+#' directly to the data frame, no database required.
+#'
+#' `visit_concept_ids` has no default. "Office visit" is a clinical/site
+#' definition (e.g. OMOP standard concept `9202` "Outpatient Visit" is a
+#' common starting point, but sites vary) that should be confirmed rather
+#' than silently assumed.
+#'
+#' @param connector_or_df An `omop_connector` (from [create_omop_connector()])
+#'   **or** a data frame already containing `person_id`, `visit_start_date`,
+#'   and `visit_concept_id` columns.
+#' @param visit_concept_ids Integer vector of `visit_concept_id` values that
+#'   define "office visit" for this study, or `NULL` to include all visit
+#'   types.
+#' @param person_ids Integer vector of `person_id` values to restrict to, or
+#'   `NULL` for all patients.
+#' @param start_date,end_date Character/Date bounds on `visit_start_date`.
+#'   Default `NULL` (no bound on that side).
+#'
+#' @return A tibble with `person_id`, `visit_occurrence_id`,
+#'   `visit_start_date` (`Date`), and `visit_concept_id`.
+#'
+#' @seealso [dose_at_visits()], [fetch_drug_exposure()]
+#'
+#' @export
+fetch_visit_occurrence <- function(connector_or_df,
+                                   visit_concept_ids = NULL,
+                                   person_ids        = NULL,
+                                   start_date        = NULL,
+                                   end_date          = NULL) {
+  if (is.data.frame(connector_or_df)) {
+    return(.fetch_visit_occurrence_df(connector_or_df, visit_concept_ids,
+                                      person_ids, start_date, end_date))
+  }
+  if (inherits(connector_or_df, "omop_connector")) {
+    return(with_connector(connector_or_df, function(active) {
+      .fetch_visit_occurrence_omop(active, visit_concept_ids, person_ids,
+                                   start_date, end_date)
+    }))
+  }
+  rlang::abort(paste0(
+    "connector_or_df must be a data.frame or omop_connector. ",
+    "(df_connector wraps drug_exposure data only -- pass visit rows as a ",
+    "plain data.frame instead.) Got: ", class(connector_or_df)[[1L]]
+  ))
+}
+
+.fetch_visit_occurrence_df <- function(df,
+                                       visit_concept_ids = NULL,
+                                       person_ids        = NULL,
+                                       start_date        = NULL,
+                                       end_date          = NULL) {
+  assert_required_cols(df, c("person_id", "visit_start_date"), "connector_or_df")
+
+  df <- df |> dplyr::mutate(visit_start_date = safe_as_date(.data$visit_start_date))
+
+  if (!is.null(person_ids)) {
+    df <- df[df$person_id %in% person_ids, , drop = FALSE]
+  }
+  if (!is.null(visit_concept_ids) && "visit_concept_id" %in% names(df)) {
+    df <- df[df$visit_concept_id %in% visit_concept_ids, , drop = FALSE]
+  }
+  if (!is.null(start_date)) {
+    df <- df[df$visit_start_date >= as.Date(start_date), , drop = FALSE]
+  }
+  if (!is.null(end_date)) {
+    df <- df[df$visit_start_date <= as.Date(end_date), , drop = FALSE]
+  }
+
+  tibble::as_tibble(df)
+}
+
+.fetch_visit_occurrence_omop <- function(connector,
+                                         visit_concept_ids = NULL,
+                                         person_ids        = NULL,
+                                         start_date        = NULL,
+                                         end_date          = NULL) {
+  if (is.null(connector$conn)) {
+    rlang::abort(
+      "fetch_visit_occurrence() must be called inside with_connector()."
+    )
+  }
+
+  sd <- if (is.null(start_date)) "1900-01-01" else format(as.Date(start_date), "%Y-%m-%d")
+  ed <- if (is.null(end_date))   format(Sys.Date(), "%Y-%m-%d") else format(as.Date(end_date), "%Y-%m-%d")
+
+  concept_filter <- if (!is.null(visit_concept_ids))
+    paste(as.integer(visit_concept_ids), collapse = ",")
+  else ""
+
+  person_filter <- if (!is.null(person_ids))
+    paste(person_ids, collapse = ",")
+  else ""
+
+  sql_path <- system.file("sql", "extract_visit_occurrence.sql",
+                          package = "SteroidDoseR")
+  if (!nzchar(sql_path) || !file.exists(sql_path)) {
+    src_fallback <- file.path(getwd(), "inst", "sql", "extract_visit_occurrence.sql")
+    if (file.exists(src_fallback)) sql_path <- src_fallback
+  }
+  if (!nzchar(sql_path) || !file.exists(sql_path)) {
+    src_fallback2 <- file.path(getwd(), "SteroidDoseR", "inst", "sql",
+                               "extract_visit_occurrence.sql")
+    if (file.exists(src_fallback2)) sql_path <- src_fallback2
+  }
+  if (!nzchar(sql_path) || !file.exists(sql_path)) {
+    rlang::abort(paste0(
+      "SQL template not found. ",
+      "If running from source, set the working directory to the package root ",
+      "(the folder that contains DESCRIPTION). ",
+      "If using an installed package, reinstall with: ",
+      "devtools::install(\"path/to/SteroidDoseR\").\n",
+      "Searched:\n",
+      "  ", file.path(getwd(), "inst", "sql", "extract_visit_occurrence.sql"), "\n",
+      "  ", file.path(getwd(), "SteroidDoseR", "inst", "sql", "extract_visit_occurrence.sql")
+    ))
+  }
+
+  df <- query_omop(connector, sql_path, list(
+    cdm_schema     = connector$cdm_schema,
+    start_date     = sd,
+    end_date       = ed,
+    concept_filter = concept_filter,
+    person_filter  = person_filter
+  ))
+
+  names(df) <- tolower(names(df))
+  if ("visit_start_date" %in% names(df)) {
+    df[["visit_start_date"]] <- as.Date(df[["visit_start_date"]])
+  }
+
+  tibble::as_tibble(df)
+}
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

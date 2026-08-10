@@ -52,7 +52,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.5.0</p>
+    <p>Package Manual v0.6.0</p>
   </div>
   <div class="nav-section-label active-section">Getting started</div>
   <ul>
@@ -66,6 +66,7 @@
     <li><a href="connectors.html#live-db">Live OMOP database</a></li>
     <li><a href="connectors.html#capabilities">Capability detection</a></li>
     <li><a href="connectors.html#columns">Column contract</a></li>
+    <li><a href="connectors.html#visits">Office-visit encounters</a></li>
   </ul>
   <div class="nav-section-label">Methods</div>
   <ul>
@@ -89,6 +90,7 @@
     <li><a href="pipeline.html#episodes">Episode building</a></li>
     <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
     <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+    <li><a href="pipeline.html#cross-sectional">Cross-sectional evaluation</a></li>
     <li><a href="pipeline.html#viz">Visualization</a></li>
   </ul>
   <div class="nav-section-label">Reference</div>
@@ -119,7 +121,10 @@
   OMOP CDM <code>drug_exposure</code> data and aggregates individual prescription
   records into continuous treatment episodes. It was built to support rheumatologic
   cohort studies — particularly myositis — where accurate steroid burden
-  quantification is a primary outcome variable.
+  quantification is a primary outcome variable. Computed doses can be checked
+  against a manually reviewed gold standard both at the episode level and
+  cross-sectionally at office-visit encounters — see
+  <a href="pipeline.html#cross-sectional">Episode-level vs. cross-sectional evaluation</a>.
 </p>
 
 <div class="callout callout-note">

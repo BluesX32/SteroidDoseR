@@ -169,3 +169,46 @@ readr::write_csv(synthetic_gold_standard,
   file.path(out_dir, "synthetic_gold_standard.csv"))
 
 message("Written: synthetic_gold_standard.csv (", nrow(synthetic_gold_standard), " rows)")
+
+# ---------------------------------------------------------------------------
+# Synthetic office-visit encounters (15 rows, 5 patients, 3 visits each)
+# ---------------------------------------------------------------------------
+# One visit inside a gold-covered episode, one inside a computed-only episode,
+# and one inside a >30-day gap between episodes (no coverage) per patient --
+# exercises both branches of dose_at_visits() for the cross-sectional
+# comparison demo (CodeToRun.R / CompareToRun.R with USE_SYNTHETIC = TRUE).
+# visit_concept_id 9202 = OMOP standard "Outpatient Visit".
+
+synthetic_visit_occurrence <- tribble(
+  ~person_id, ~visit_occurrence_id, ~visit_start_date, ~visit_concept_id,
+
+  # --- Patient 101 ---------------------------------------------------------
+  101L, 1001L, "2023-02-15", 9202L,  # inside 10 mg course (gold-covered)
+  101L, 1002L, "2023-08-15", 9202L,  # inside taper (gold-covered)
+  101L, 1003L, "2023-12-01", 9202L,  # gap before 2024 records (no coverage)
+
+  # --- Patient 102 ---------------------------------------------------------
+  102L, 1004L, "2023-03-01", 9202L,  # inside 24 mg/day course (gold-covered)
+  102L, 1005L, "2023-09-15", 9202L,  # inside supply_based episode (computed only)
+  102L, 1006L, "2023-12-15", 9202L,  # gap before 2024 PRN record (no coverage)
+
+  # --- Patient 103 ---------------------------------------------------------
+  103L, 1007L, "2023-04-01", 9202L,  # inside 4 mg/day course (gold-covered)
+  103L, 1008L, "2023-10-15", 9202L,  # inside missing-SIG episode (computed only)
+  103L, 1009L, "2023-12-15", 9202L,  # gap before 2024 records (no coverage)
+
+  # --- Patient 104 ---------------------------------------------------------
+  104L, 1010L, "2023-02-15", 9202L,  # inside 60 mg/day course (gold-covered)
+  104L, 1011L, "2023-08-15", 9202L,  # inside "as directed" episode (computed only)
+  104L, 1012L, "2023-11-15", 9202L,  # gap before 2024 records (no coverage)
+
+  # --- Patient 105 ---------------------------------------------------------
+  105L, 1013L, "2023-03-01", 9202L,  # inside QOD course (gold-covered)
+  105L, 1014L, "2023-10-01", 9202L,  # inside gap-episode (gold-covered, 2nd gold period)
+  105L, 1015L, "2023-07-15", 9202L   # gap between overlapping-record & gap episodes
+)
+
+readr::write_csv(synthetic_visit_occurrence,
+  file.path(out_dir, "synthetic_visit_occurrence.csv"))
+
+message("Written: synthetic_visit_occurrence.csv (", nrow(synthetic_visit_occurrence), " rows)")

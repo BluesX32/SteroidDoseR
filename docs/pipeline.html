@@ -53,7 +53,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.5.0</p>
+    <p>Package Manual v0.6.0</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -67,6 +67,7 @@
     <li><a href="connectors.html#live-db">Live OMOP database</a></li>
     <li><a href="connectors.html#capabilities">Capability detection</a></li>
     <li><a href="connectors.html#columns">Column contract</a></li>
+    <li><a href="connectors.html#visits">Office-visit encounters</a></li>
   </ul>
   <div class="nav-section-label">Methods</div>
   <ul>
@@ -90,6 +91,7 @@
     <li><a href="pipeline.html#episodes">Episode building</a></li>
     <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
     <li><a href="pipeline.html#evaluation">Evaluation (dose accuracy)</a></li>
+    <li><a href="pipeline.html#cross-sectional">Cross-sectional evaluation</a></li>
     <li><a href="pipeline.html#detection">Evaluation (binary detection)</a></li>
     <li><a href="pipeline.html#viz">Visualization</a></li>
   </ul>
@@ -436,6 +438,98 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
 <span class="fn">sprintf</span>(<span class="st">"Coverage: %.1f%%  MAE: %.2f  MBE: %.2f  RMSE: %.2f"</span>,
         s<span class="op">$</span>coverage_pct, s<span class="op">$</span>MAE, s<span class="op">$</span>MBE, s<span class="op">$</span>RMSE)
 </code></pre>
+
+<!-- ── CROSS-SECTIONAL EVALUATION ────────────────────────────────── -->
+<h2 id="cross-sectional">Episode-level vs. cross-sectional (point-in-time) evaluation <span class="badge badge-new">v0.6.0</span></h2>
+
+<p>
+  <code>evaluate_against_gold()</code> above answers one specific question:
+  "does the algorithm's computed episode agree with the gold-reviewed
+  episode covering roughly the same period?" Both sides of that comparison
+  are <strong>variable-length intervals</strong> — a gold episode is whatever
+  span the chart reviewer recorded as one stable dose, and a computed episode
+  is whatever span <code>build_episodes()</code> gap-bridged together (see
+  <a href="#episodes">Episode building</a> above). If a patient refills
+  continuously with gaps under <code>gap_days</code> (default 30), one
+  computed episode can span the <strong>entire study window</strong> — years,
+  not months. That is expected, not a bug: episode-level evaluation was never
+  meant to answer "what was the dose on a specific day."
+</p>
+
+<p>
+  For that question — <strong>"on this specific office-visit encounter, what
+  dose does each method say the patient was on"</strong> — use the
+  cross-sectional (point-in-time) comparison instead:
+</p>
+
+<div class="fn-sig">dose_at_visits(
+  episodes_df,
+  visits_df,
+  person_col        = "person_id",
+  visit_date_col    = "visit_date",
+  episode_start_col = "episode_start",
+  episode_end_col   = "episode_end",
+  dose_col          = "mean_daily_dose",
+  no_coverage_value = 0
+)</div>
+
+<p>
+  For each visit date, <code>dose_at_visits()</code> looks up whichever
+  episode(s) for that patient cover the date and sums their dose (relevant
+  when a patient is mid cross-titration between two steroid drugs). Visit
+  dates come from <a href="connectors.html#visits"><code>fetch_visit_occurrence()</code></a>,
+  a new <code>VISIT_OCCURRENCE</code> query. Pair it with
+  <code>dose_agreement_metrics(computed, actual)</code> — the same
+  MAE/MBE/RMSE/MAPE/correlation formulas used inside
+  <code>evaluate_against_gold()</code>, exposed as a standalone function so
+  numbers stay comparable across both evaluation modes.
+</p>
+
+<h3>Coverage semantics: 0 vs. NA</h3>
+<p>
+  <code>no_coverage_value</code> controls what a visit with no covering
+  episode means, and the right answer differs by data source:
+</p>
+<ul>
+  <li><strong>Computed episodes (Baseline / NLP / LLM)</strong> — use the
+    default <code>no_coverage_value = 0</code>. No active episode is itself a
+    real, comparable answer: that method believes the patient was not on
+    steroids that day.</li>
+  <li><strong>Gold standard</strong> — pass <code>no_coverage_value = NA_real_</code>.
+    A gap in gold-reviewed intervals means the chart was not reviewed at that
+    date, not that the patient was confirmed off steroids. Scoring it as 0
+    would fabricate a gold answer that was never actually reviewed. Filter to
+    <code>has_coverage == TRUE</code> before computing gold accuracy.</li>
+</ul>
+
+<h3>What this does not answer</h3>
+<p>
+  Cross-sectional comparison validates individual timepoints. It does
+  <strong>not</strong> validate a full dose trajectory or cumulative steroid
+  exposure over time — the gold standard has no continuous dose curve to
+  compare against, only discrete chart-reviewed intervals. Trajectory is
+  clinically important but currently has no gold standard to validate it by
+  design, not by oversight; see <code>bug.md</code> DECISION-13 and
+  DECISION-14 for the full reasoning.
+</p>
+
+<h3>Example</h3>
+<pre><code>visits_df <span class="op">&lt;-</span> <span class="fn">fetch_visit_occurrence</span>(con, visit_concept_ids <span class="op">=</span> <span class="fn">c</span>(<span class="nm">9202L</span>))
+
+baseline_at_visits <span class="op">&lt;-</span> <span class="fn">dose_at_visits</span>(baseline_episodes, visits_df,
+                                     visit_date_col <span class="op">=</span> <span class="st">"visit_start_date"</span>)
+
+gold_at_visits <span class="op">&lt;-</span> <span class="fn">dose_at_visits</span>(gold_std, visits_df,
+                                visit_date_col    <span class="op">=</span> <span class="st">"visit_start_date"</span>,
+                                dose_col          <span class="op">=</span> <span class="st">"dose_daily_mg_equiv"</span>,
+                                no_coverage_value <span class="op">=</span> <span class="cn">NA_real_</span>)
+
+covered <span class="op">&lt;-</span> gold_at_visits<span class="op">$</span>has_coverage
+<span class="fn">dose_agreement_metrics</span>(baseline_at_visits<span class="op">$</span>dose_mg[covered],
+                      gold_at_visits<span class="op">$</span>dose_mg[covered])
+</code></pre>
+
+<a class="back-top" href="#evaluation">↑ Back to top</a>
 
 <!-- ── ERROR DECOMPOSITION ────────────────────────────────────────── -->
 <h2 id="error-decomposition">Error decomposition by parse category <span class="badge badge-new">v0.4.0</span></h2>

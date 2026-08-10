@@ -54,7 +54,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.5.0</p>
+    <p>Package Manual v0.6.0</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -68,6 +68,7 @@
     <li><a href="connectors.html#live-db">Live OMOP database</a></li>
     <li><a href="connectors.html#capabilities">Capability detection</a></li>
     <li><a href="connectors.html#columns">Column contract</a></li>
+    <li><a href="connectors.html#visits">Office-visit encounters</a></li>
   </ul>
   <div class="nav-section-label">Methods</div>
   <ul>
@@ -91,6 +92,7 @@
     <li><a href="pipeline.html#episodes">Episode building</a></li>
     <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
     <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+    <li><a href="pipeline.html#cross-sectional">Cross-sectional evaluation</a></li>
     <li><a href="pipeline.html#viz">Visualization</a></li>
   </ul>
   <div class="nav-section-label">Reference</div>
@@ -229,6 +231,42 @@ doses <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_baseline</s
 <span class="cm"># Restrict to specific OMOP drug concept IDs</span>
 doses <span class="op">&lt;-</span> <span class="fn">calc_daily_dose_nlp</span>(con, drug_concept_ids <span class="op">=</span> <span class="fn">c</span>(<span class="nm">1518254L</span>, <span class="nm">40224131L</span>))
 </code></pre>
+
+<h2 id="visits">Office-visit encounters <span class="badge badge-new">v0.6.0</span></h2>
+
+<p>
+  <code>fetch_visit_occurrence()</code> mirrors <code>fetch_drug_exposure()</code> to power
+  the cross-sectional (point-in-time) dose comparison — see
+  <a href="pipeline.html#cross-sectional">Episode-level vs. cross-sectional evaluation</a>.
+  It accepts either a live <code>omop_connector</code> (runs
+  <code>inst/sql/extract_visit_occurrence.sql</code>) or a plain data frame already
+  containing visit rows (e.g. a synthetic/CSV fixture) — no database required
+  in the latter case.
+</p>
+
+<pre><code>visits <span class="op">&lt;-</span> <span class="fn">fetch_visit_occurrence</span>(
+  con,
+  visit_concept_ids <span class="op">=</span> <span class="fn">c</span>(<span class="nm">9202L</span>) <span class="cm"># OMOP "Outpatient Visit" -- confirm with your PI</span>
+)
+</code></pre>
+
+<p>
+  <code>visit_concept_ids</code> has no default. "Office visit" is a
+  clinical/site-specific definition that should be confirmed rather than
+  silently guessed — passing <code>NULL</code> includes every visit type.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+  <tr><td><code>person_id</code></td><td>int/chr</td><td>Patient identifier</td></tr>
+  <tr><td><code>visit_occurrence_id</code></td><td>int</td><td>OMOP visit identifier</td></tr>
+  <tr><td><code>visit_start_date</code></td><td>Date</td><td>Encounter date — pass <code>visit_date_col = "visit_start_date"</code> to <code>dose_at_visits()</code></td></tr>
+  <tr><td><code>visit_concept_id</code></td><td>int</td><td>OMOP visit type concept</td></tr>
+</table>
+</div>
+
+<a class="back-top" href="#connectors">↑ Back to top</a>
 
 <h2 id="columns">Column contract</h2>
 

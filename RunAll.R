@@ -28,6 +28,14 @@ END_DATE          <- "2025-12-31"
 GAP_DAYS          <- 30L            # episode-bridging tolerance (days)
 COHORT_PERSON_IDS <- NULL           # integer vector of person_ids, or NULL = all
 
+# "Office visit" concept_id(s) for the cross-sectional (point-in-time) dose
+# comparison -- for each visit, what dose does each method say the patient
+# was on that day. NULL = skipped (CodeToRun.R won't extract visits and
+# CompareToRun.R won't run the cross-sectional section). This is a clinical/
+# site-specific definition -- confirm with the PI before setting it. OMOP
+# standard concept 9202 ("Outpatient Visit") is a common starting point.
+VISIT_CONCEPT_IDS <- NULL           # e.g. c(9202L) -- confirm with PI
+
 GOLD_STD_PATH  <- "/your/path/to/gold-standard.csv"
 GOLD_NEG_PATH  <- "/your/path/to/gold-negative.csv"
 

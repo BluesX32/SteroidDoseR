@@ -168,3 +168,80 @@ records are already prednisone/prednisolone or were converted upstream. The
 recommended correction is to call `convert_pred_equiv()` on every method's
 record-level output before `build_episodes()` and to verify that the gold
 standard is truly prednisone-equivalent rather than only normalized to mg/day.
+
+### DECISION-13 Episode-level and cross-sectional evaluation are intentionally separate ✅ FIXED
+
+The PI asked how time windows work across the three methods, having noticed
+episodes in `comparison_baseline.csv` spanning multiple years. That's expected:
+`build_episodes()` gap-bridges a patient's prescriptions for one drug into a
+continuous episode whenever consecutive records are ≤`gap_days` apart, so
+continuous refilling produces one long episode. `evaluate_against_gold()` then
+compares one dose value per *gold* episode (also variable-length), not per
+fixed calendar window. There was no shorter, encounter-level granularity
+anywhere in the codebase.
+
+**Fix**: added a second, independent evaluation path answering "on this
+specific office-visit date, what dose does each method say the patient was
+on" — `fetch_visit_occurrence()` (new `VISIT_OCCURRENCE` query),
+`dose_at_visits()` (point-in-time episode lookup, `R/episodes.R`), and
+`dose_agreement_metrics()` (episode-level metric formulas applied to plain
+dose vectors, `R/eval.R`), wired into `CodeToRun.R` (STEP 2c) and
+`CompareToRun.R` (section 11b). This does **not** replace the episode-level
+comparison — the two answer different questions and are both retained. See
+`docs/pipeline.html` for the user-facing explanation.
+
+### DECISION-14 Cumulative/trajectory steroid exposure has no gold standard ⚠️ OPEN (by design, not a bug)
+
+The PI also noted that steroid *trajectory* (dose over time, or cumulative
+exposure) is clinically important but "much harder to determine" and has no
+gold standard to validate against — the manually reviewed gold standard only
+covers discrete chart-reviewed intervals (`episode_start`/`episode_end` +
+one dose), not a continuous dose curve. Cross-sectional evaluation
+(DECISION-13) validates individual point-in-time doses, which is a necessary
+building block, but does not itself validate a trajectory or cumulative-dose
+metric. No gold standard currently exists to make that possible, and building
+one would require new chart-review effort outside this package's scope. Not
+tracked as a bug to fix — recorded so it stops resurfacing as ambiguity.
+
+## discovered during cross-sectional evaluation work (not fixed — out of scope)
+
+### BUG-13 `MakeSyntheticData.R` gold-standard tribble uses `patient_id`, checked-in CSV uses `person_id` ⚠️ OPEN
+
+`extras/MakeSyntheticData.R`'s `synthetic_gold_standard` tribble is defined
+with `~patient_id` as its first column, but the committed
+`inst/extdata/synthetic_gold_standard.csv` has `person_id` in that position.
+Re-running the generator script (e.g. `Rscript extras/MakeSyntheticData.R`)
+reproduces this drift and silently breaks any downstream code that expects
+`person_id`. Discovered while regenerating synthetic fixtures for
+`synthetic_visit_occurrence.csv` — not fixed here since it touches a shared
+gold-standard test fixture and the intended column name should be confirmed
+first.
+
+### BUG-14 `CompareToRun.R`'s gold-standard loader doesn't match the bundled synthetic gold CSV ⚠️ OPEN
+
+`CompareToRun.R` loads `GOLD_STD_PATH` and always calls
+`parse_steroid_gold(gold_std_raw)` with its default column names
+(`myositis_omop_person_id`, `dmardname`, `dmarddose`, ...) — the raw
+chart-review export schema. `inst/extdata/synthetic_gold_standard.csv` uses
+the already-parsed schema (`person_id`, `episode_start`, `episode_end`,
+`median_daily_dose`) instead, so `USE_SYNTHETIC = TRUE` cannot currently run
+`CompareToRun.R` end-to-end against the bundled synthetic gold standard
+without either overriding `parse_steroid_gold()`'s column arguments or
+skipping it for a direct read. Discovered while manually verifying the new
+cross-sectional comparison end-to-end (worked around locally by reading the
+CSV directly); not fixed here since it's pre-existing and orthogonal to this
+change.
+
+### BUG-15 NAMESPACE was missing exports for functions marked `@export` in source ⚠️ OPEN
+
+Regenerating documentation with `devtools::document()` revealed that
+`build_cohort_sql()`, `fetch_cohort_ids()` (`R/cohort.R`), and
+`make_validation_split()` (already present as a bullet in `docs/reference.html`
+but missing from the committed `NAMESPACE`) are tagged `@export` in source but
+were absent from the checked-in `NAMESPACE`, meaning `library(SteroidDoseR)`
+users cannot currently call them without `:::`. Also several `importFrom`
+entries (`dplyr::slice_max`, `stringr::str_remove`, `str_remove_all`,
+`str_trim`) are used in source but missing from `NAMESPACE`. Not fixed here to
+keep this change's diff scoped to the cross-sectional feature — a full
+`devtools::document()` pass touches ~15 unrelated files. Worth a dedicated
+`docs`/`chore` commit.

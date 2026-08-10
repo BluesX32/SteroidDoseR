@@ -2,6 +2,29 @@
 
 ## New features
 
+* **Cross-sectional (point-in-time) dose comparison** (`R/episodes.R`,
+  `R/eval.R`, `R/connector.R`): The PI asked how time windows work across the
+  three methods, having noticed episode-level comparisons spanning multiple
+  years, and separately wanted to know how the methods perform on a given
+  office-visit encounter — a shorter, fixed-point granularity nothing in the
+  package previously computed. Added `fetch_visit_occurrence()` (new
+  `VISIT_OCCURRENCE` query, mirrors `fetch_drug_exposure()`), `dose_at_visits()`
+  (looks up the dose active — summed across concurrently active episodes — at
+  a set of visit dates, with a `no_coverage_value` distinguishing "not on
+  steroids" from "not chart-reviewed here"), and `dose_agreement_metrics()`
+  (the same MAE/MBE/RMSE/MAPE/correlation formulas as
+  `evaluate_against_gold()`, applied to plain dose vectors). `CodeToRun.R`
+  (STEP 2c) and `CompareToRun.R` (section 11b) wire these into the standard
+  run, writing `cross_sectional_comparison.csv` and
+  `cross_sectional_summary.csv` alongside the existing episode-level outputs.
+  New `inst/sql/extract_visit_occurrence.sql` template and
+  `inst/extdata/synthetic_visit_occurrence.csv` fixture. This is additive —
+  it does not change or replace the existing episode-level comparison, which
+  answers a different question. See `docs/pipeline.html` and the new
+  `cross-sectional-workflow` vignette for the full explanation, and
+  `bug.md` (DECISION-13, DECISION-14) for why cumulative/trajectory exposure
+  remains out of scope (no gold standard exists for it).
+
 * **Publication-ready detailed methodology** (`METHODS.md`, `references.bib`):
   Added a source-verified, implementation-level Methods chapter covering OMOP
   extraction, Baseline M1–M4, basic/Advanced NLP, taper and PRN handling,

@@ -54,7 +54,7 @@
 <nav>
   <div class="nav-header">
     <h2>SteroidDoseR</h2>
-    <p>Package Manual v0.5.0</p>
+    <p>Package Manual v0.6.0</p>
   </div>
   <div class="nav-section-label">Getting started</div>
   <ul>
@@ -68,6 +68,7 @@
     <li><a href="connectors.html#live-db">Live OMOP database</a></li>
     <li><a href="connectors.html#capabilities">Capability detection</a></li>
     <li><a href="connectors.html#columns">Column contract</a></li>
+    <li><a href="connectors.html#visits">Office-visit encounters</a></li>
   </ul>
   <div class="nav-section-label">Methods</div>
   <ul>
@@ -91,6 +92,7 @@
     <li><a href="pipeline.html#episodes">Episode building</a></li>
     <li><a href="pipeline.html#run-pipeline">run_pipeline()</a></li>
     <li><a href="pipeline.html#evaluation">Evaluation</a></li>
+    <li><a href="pipeline.html#cross-sectional">Cross-sectional evaluation</a></li>
   </ul>
   <div class="nav-section-label active-section">Reference</div>
   <ul>
@@ -114,6 +116,7 @@
   <tr><td><code>disconnect_connector()</code></td><td>—</td><td>Close the database connection held by a connector.</td></tr>
   <tr><td><code>detect_capabilities()</code></td><td>—</td><td>Probe which <code>drug_exposure</code> fields are populated at this site.</td></tr>
   <tr><td><code>fetch_drug_exposure()</code></td><td>Yes</td><td>Fetch raw <code>drug_exposure</code> rows filtered by date / concept / person.</td></tr>
+  <tr><td><code>fetch_visit_occurrence()</code></td><td>Yes</td><td><span class="badge badge-new">v0.6.0</span> Fetch <code>visit_occurrence</code> rows (e.g. office visits) for the cross-sectional dose comparison. Accepts an <code>omop_connector</code> or a plain data frame.</td></tr>
   <tr><td><code>run_pipeline()</code></td><td>Yes</td><td>One-call fetch → impute → convert → episodes.</td></tr>
   <tr><td><code>calc_daily_dose_baseline()</code></td><td>Yes</td><td>M1–M4 cascading imputation. <span class="badge badge-fix">v0.1.1</span> Unit-safe <code>amount_value</code>; plausibility cap. <span class="badge badge-fix">v0.1.6</span> Accept <code>amount_unit_concept_id = 0</code> as unknown unit. <span class="badge badge-new">v0.1.6</span> <code>equiv_table</code>, <code>drug_name_map</code>.</td></tr>
   <tr><td><code>calc_daily_dose_nlp()</code></td><td>Yes</td><td>Rule-based SIG parsing. <span class="badge badge-fix">v0.1.1</span> <code>amount_value</code> strength fallback. <span class="badge badge-new">v0.1.6</span> <code>max_daily_dose_mg</code> cap, <code>equiv_table</code>, <code>drug_name_map</code>. <span class="badge badge-fix">v0.4.0</span> Structural fallback fixed; strength fallback unit-checks <code>amount_unit_concept_id</code>. <span class="badge badge-new">v0.4.0</span> <code>prn_action</code> parameter.</td></tr>
@@ -133,6 +136,8 @@
   <tr><td><code>build_episodes()</code></td><td>Yes</td><td>Gap-bridge prescriptions into continuous episodes. <span class="badge badge-new">v0.4.0</span> Same-day deduplication; <code>extra_cols</code> parameter propagates parse-status columns (e.g. <code>"parsed_status"</code>) into episode summary by statistical mode.</td></tr>
   <tr><td><code>gap_sensitivity()</code></td><td>No</td><td><span class="badge badge-new">v0.4.0</span> Evaluate episode structure across a <code>gap_days</code> grid for sensitivity analysis.</td></tr>
   <tr><td><code>evaluate_against_gold()</code></td><td>No</td><td>Coverage, MAE, MBE, RMSE, MAPE, correlation vs. manual gold standard. <span class="badge badge-new">v0.1.6</span> <code>dose_breaks</code> / <code>dose_labels</code>. <span class="badge badge-fix">v0.4.0</span> <code>computed_dose_col</code> default = <code>"mean_daily_dose"</code>; <code>$stratified$by_sig_status</code> now triggers on both <code>sig_status</code> and <code>parsed_status</code>.</td></tr>
+  <tr><td><code>dose_at_visits()</code></td><td>No</td><td><span class="badge badge-new">v0.6.0</span> Cross-sectional companion to <code>evaluate_against_gold()</code>: looks up the dose active (summed across covering episodes) at each of a set of point-in-time visit dates. <code>no_coverage_value</code> distinguishes "not on steroids" (<code>0</code>, methods) from "not chart-reviewed here" (<code>NA</code>, gold).</td></tr>
+  <tr><td><code>dose_agreement_metrics()</code></td><td>No</td><td><span class="badge badge-new">v0.6.0</span> Standalone MAE/MBE/RMSE/MAPE/correlation calculator, same formulas as <code>evaluate_against_gold()</code>, applied to two plain numeric vectors. Used by the cross-sectional comparison.</td></tr>
   <tr><td><code>stratify_errors_by_parse()</code></td><td>No</td><td><span class="badge badge-new">v0.4.0</span> Decompose <code>evaluate_against_gold()$comparison</code> by parse/method category (<code>parsed_status</code>, <code>sig_status</code>, <code>hierarchical_method</code>). Returns per-category MAE/MBE/MAPE/coverage table for manuscript error-decomposition.</td></tr>
   <tr><td><code>make_validation_split()</code></td><td>No</td><td><span class="badge badge-new">v0.4.0</span> Patient-level train/validate split for gold-standard data. Prevents gold-standard leakage when tuning hierarchical thresholds via <code>tune_hierarchical_thresholds()</code>.</td></tr>
   <tr><td><code>evaluate_detection()</code></td><td>No</td><td><span class="badge badge-new">v0.4.0</span> Binary steroid detection evaluation using confirmed-user and confirmed-naive gold cohorts. Returns a 2×2 confusion matrix and <code>$metrics</code> (sensitivity, specificity, PPV, NPV, F1, Cohen's kappa). Three observation-window modes for gold negatives: <code>"computed"</code> (default), <code>"explicit"</code>, <code>"study"</code>.</td></tr>
@@ -246,6 +251,15 @@
 
 <!-- ── CHANGELOG ─────────────────────────────────────────────────── -->
 <h2 id="changelog">Changelog</h2>
+
+<h3>v0.6.0 <span class="badge badge-new">Cross-sectional evaluation</span></h3>
+<ul>
+  <li><strong>feat(episodes): <code>dose_at_visits()</code> exported</strong> <span class="badge badge-new">v0.6.0</span> — Looks up the dose active at a set of point-in-time visit dates, summed across concurrently active episodes. <code>no_coverage_value</code> (default <code>0</code>) distinguishes "not on steroids" from "not chart-reviewed here" (pass <code>NA_real_</code> for gold-standard input).</li>
+  <li><strong>feat(eval): <code>dose_agreement_metrics()</code> exported</strong> <span class="badge badge-new">v0.6.0</span> — Standalone MAE/MBE/RMSE/median AE/MAPE/Pearson/Spearman calculator over two numeric vectors, using the same formulas as <code>evaluate_against_gold()</code>. <code>evaluate_against_gold()</code> itself is unchanged.</li>
+  <li><strong>feat(connector): <code>fetch_visit_occurrence()</code> exported</strong> <span class="badge badge-new">v0.6.0</span> — New <code>VISIT_OCCURRENCE</code> query (<code>inst/sql/extract_visit_occurrence.sql</code>), mirrors <code>fetch_drug_exposure()</code>. Accepts a live <code>omop_connector</code> or a plain data frame. <code>visit_concept_ids</code> has no default — "office visit" must be confirmed per site/study rather than guessed.</li>
+  <li><strong>feat(run_analysis): cross-sectional comparison in <code>CodeToRun.R</code> / <code>CompareToRun.R</code></strong> <span class="badge badge-new">v0.6.0</span> — New <code>VISIT_CONCEPT_IDS</code> shared parameter (<code>RunAll.R</code>); <code>CodeToRun.R</code> STEP 2c fetches visits and writes <code>visits.csv</code>; <code>CompareToRun.R</code> section 11b computes per-visit method agreement and method-vs-gold accuracy, writing <code>cross_sectional_comparison.csv</code> and <code>cross_sectional_summary.csv</code>. Complements, rather than replaces, the existing episode-level comparison — see <a href="pipeline.html#cross-sectional">Episode-level vs. cross-sectional evaluation</a>.</li>
+  <li><strong>docs/design decision: DECISION-13, DECISION-14</strong> — Documented in <code>bug.md</code> why episode-level and cross-sectional evaluation are intentionally separate, and why cumulative/trajectory steroid exposure has no gold standard and remains out of scope.</li>
+</ul>
 
 <h3>v0.4.0 (continued) <span class="badge badge-new">Detailed methodology</span></h3>
 <ul>

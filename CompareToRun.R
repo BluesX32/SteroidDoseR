@@ -414,6 +414,138 @@ p_ba <- ggplot2::ggplot(ba_df, ggplot2::aes(x = mean_dose, y = diff)) +
 print(p_ba)
 
 # ---------------------------------------------------------------------------
+# 11b. Cross-sectional (point-in-time) comparison
+# ---------------------------------------------------------------------------
+# Complements the episode-level comparison in section 6, which matches a gold
+# period against a computed episode that can span months to years. This
+# section instead asks, per office-visit encounter, "what dose does each
+# method say the patient was on at that specific date" -- see
+# docs/pipeline.html for why both comparisons exist and answer different
+# questions. Uses dose_at_visits() (episode-level dose lookup at a point in
+# time) and dose_agreement_metrics() (the same MAE/MBE/RMSE/MAPE/correlation
+# formulas as evaluate_against_gold(), applied to plain dose vectors).
+message("\n=== Cross-sectional (point-in-time) comparison ===")
+
+visits_df <- tryCatch(
+  .load_or_use("visits_df", "visits.csv"),
+  error = function(e) {
+    message(
+      "visits_df not available -- skipping cross-sectional comparison. ",
+      "Set VISIT_CONCEPT_IDS in RunAll.R/CodeToRun.R to enable it."
+    )
+    NULL
+  }
+)
+
+cross_sectional_df <- NULL
+
+if (!is.null(visits_df) && nrow(visits_df) > 0L) {
+
+  .method_dose_at_visits <- function(episodes_df, label) {
+    if (is.null(episodes_df) || nrow(episodes_df) == 0L) return(NULL)
+    dose_at_visits(
+      episodes_df, visits_df,
+      visit_date_col    = "visit_start_date",
+      no_coverage_value = 0
+    ) |>
+      dplyr::transmute(person_id, visit_date = visit_start_date,
+                       method = label, dose_mg, has_coverage)
+  }
+
+  cs_gold <- dose_at_visits(
+    gold_std_ok, visits_df,
+    visit_date_col    = "visit_start_date",
+    dose_col          = "dose_daily_mg_equiv",
+    no_coverage_value = NA_real_
+  ) |>
+    dplyr::transmute(person_id, visit_date = visit_start_date,
+                     gold_dose = dose_mg, has_gold_coverage = has_coverage)
+
+  cross_sectional_df <- dplyr::bind_rows(
+      .method_dose_at_visits(baseline_episodes, "Baseline"),
+      .method_dose_at_visits(nlp_episodes,      "NLP"),
+      .method_dose_at_visits(llm_episodes,      "LLM")
+    ) |>
+    dplyr::mutate(method = factor(method, levels = c("Baseline", "NLP", "LLM"))) |>
+    dplyr::left_join(cs_gold, by = c("person_id", "visit_date"))
+
+  cat(sprintf(
+    "\n%d visit x method row(s) | %d unique visits | %.1f%% have gold coverage\n",
+    nrow(cross_sectional_df),
+    dplyr::n_distinct(cross_sectional_df$person_id, cross_sectional_df$visit_date),
+    100 * mean(cross_sectional_df$has_gold_coverage, na.rm = TRUE)
+  ))
+
+  # --- method-vs-method agreement (all visits) --------------------------
+  .pairwise_agreement <- function(df, m1, m2) {
+    wide <- df |>
+      dplyr::filter(.data$method %in% c(m1, m2)) |>
+      dplyr::select("person_id", "visit_date", "method", "dose_mg") |>
+      tidyr::pivot_wider(names_from = "method", values_from = "dose_mg")
+    if (!all(c(m1, m2) %in% names(wide))) return(NULL)
+    dose_agreement_metrics(wide[[m1]], wide[[m2]]) |>
+      dplyr::mutate(comparison = paste(m1, "vs", m2), .before = 1)
+  }
+
+  method_pairs <- utils::combn(
+    intersect(c("Baseline", "NLP", "LLM"), unique(as.character(cross_sectional_df$method))),
+    2, simplify = FALSE
+  )
+  pairwise_tbl <- dplyr::bind_rows(lapply(
+    method_pairs, function(p) .pairwise_agreement(cross_sectional_df, p[[1]], p[[2]])
+  ))
+  cat("\nPairwise method agreement at visit dates (all visits, no coverage = 0 mg):\n")
+  print(as.data.frame(
+    pairwise_tbl |> dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 2)))
+  ), row.names = FALSE)
+
+  # --- method-vs-gold accuracy (gold-covered visits only) ----------------
+  gold_accuracy_tbl <- cross_sectional_df |>
+    dplyr::filter(.data$has_gold_coverage) |>
+    dplyr::group_by(.data$method) |>
+    dplyr::group_modify(~ dose_agreement_metrics(.x$dose_mg, .x$gold_dose)) |>
+    dplyr::ungroup()
+  cat("\nMethod vs gold accuracy at visit dates (gold-covered visits only):\n")
+  print(as.data.frame(
+    gold_accuracy_tbl |> dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 2)))
+  ), row.names = FALSE)
+
+  # --- plot: dose at visit vs gold, by method -----------------------------
+  p_cross_sectional <- cross_sectional_df |>
+    dplyr::filter(.data$has_gold_coverage) |>
+    ggplot2::ggplot(ggplot2::aes(x = gold_dose, y = dose_mg)) +
+    ggplot2::geom_abline(slope = 1, intercept = 0,
+                         linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_point(ggplot2::aes(colour = method), alpha = 0.6, size = 2) +
+    ggplot2::scale_colour_manual(values = METHOD_COLORS) +
+    ggplot2::facet_wrap(~ method) +
+    ggplot2::labs(
+      title    = "Cross-sectional: dose at office-visit date vs gold standard",
+      subtitle = "One point per visit; restricted to visits inside a chart-reviewed gold interval",
+      x = "Gold dose at visit date (mg pred-equiv)",
+      y = "Method dose at visit date (mg pred-equiv)"
+    ) +
+    ggplot2::theme_bw() + ggplot2::theme(legend.position = "none")
+  print(p_cross_sectional)
+
+  readr::write_csv(cross_sectional_df, file.path(RUN_DIR, "cross_sectional_comparison.csv"))
+  readr::write_csv(
+    dplyr::bind_rows(
+      pairwise_tbl    |> dplyr::mutate(comparison_type = "method_vs_method"),
+      gold_accuracy_tbl |>
+        dplyr::rename(comparison = "method") |>
+        dplyr::mutate(comparison_type = "method_vs_gold")
+    ),
+    file.path(RUN_DIR, "cross_sectional_summary.csv")
+  )
+  ggplot2::ggsave(file.path(RUN_DIR, "plot_cross_sectional.png"), p_cross_sectional,
+                  width = 12, height = 5, dpi = 150)
+
+} else {
+  message("No visits available -- cross-sectional comparison skipped.")
+}
+
+# ---------------------------------------------------------------------------
 # 12. Report
 # ---------------------------------------------------------------------------
 message("\n\n")

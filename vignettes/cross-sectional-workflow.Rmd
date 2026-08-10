@@ -1,0 +1,159 @@
+---
+title: "Cross-Sectional (Point-in-Time) Comparison"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Cross-Sectional (Point-in-Time) Comparison}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Why this vignette exists
+
+`evaluate_against_gold()` (see the `evaluation-workflow` vignette) is
+**episode-level**: it matches a gold-standard episode -- a chart-reviewed
+period that can span months -- against the best-overlapping *computed*
+episode, which `build_episodes()` builds by gap-bridging prescriptions. If a
+patient refills continuously with gaps under `gap_days` (default 30 days),
+one computed episode can span the **entire study window**, years rather than
+months. That is expected, not a bug -- episode-level evaluation was never
+designed to answer "what dose was the patient on on a specific day."
+
+That is a different, narrower question: **on a given office-visit encounter,
+how do the methods compare for determining how much prednisone the patient
+was on at that particular time?** This vignette walks through the tools that
+answer it: `fetch_visit_occurrence()`, `dose_at_visits()`, and
+`dose_agreement_metrics()`.
+
+It is worth being explicit about what this does *not* do. Steroid
+**trajectory** -- dose over time, or cumulative exposure -- is clinically
+important and much harder to validate, because the gold standard only covers
+discrete chart-reviewed intervals, not a continuous dose curve. Cross-sectional
+comparison validates individual timepoints, which is a necessary building
+block, but it does not itself validate a trajectory or cumulative-dose metric.
+No gold standard currently exists to make that possible. See `bug.md`
+(DECISION-13, DECISION-14) for the full reasoning.
+
+---
+
+## Prepare computed episodes (Baseline and NLP)
+
+```{r setup-computed}
+library(SteroidDoseR)
+library(dplyr)
+
+extdata  <- system.file("extdata", package = "SteroidDoseR")
+drug_exp <- readr::read_csv(file.path(extdata, "synthetic_drug_exposure.csv"),
+                            show_col_types = FALSE)
+gold_std <- readr::read_csv(file.path(extdata, "synthetic_gold_standard.csv"),
+                            show_col_types = FALSE)
+
+baseline_episodes <- drug_exp |>
+  calc_daily_dose_baseline() |>
+  build_episodes(dose_col = "daily_dose_mg_imputed",
+                 end_col  = "drug_exposure_end_date", gap_days = 30L)
+
+nlp_episodes <- drug_exp |>
+  calc_daily_dose_nlp() |>
+  build_episodes(dose_col = "daily_dose_mg",
+                 end_col  = "drug_exposure_end_date", gap_days = 30L)
+```
+
+Confirm episodes really do span long windows for at least one patient --
+this is the behaviour that motivates a separate, shorter-window comparison:
+
+```{r episode-spans}
+baseline_episodes |>
+  dplyr::mutate(n_days = as.integer(episode_end - episode_start) + 1L) |>
+  dplyr::arrange(dplyr::desc(n_days)) |>
+  dplyr::select(person_id, episode_start, episode_end, n_days) |>
+  head(3)
+```
+
+---
+
+## Fetch office-visit encounters
+
+`fetch_visit_occurrence()` accepts either a live `omop_connector` or a plain
+data frame already containing visit rows -- the synthetic fixture used here
+takes the data-frame path, so no database is required:
+
+```{r fetch-visits}
+visits_raw <- readr::read_csv(file.path(extdata, "synthetic_visit_occurrence.csv"),
+                              show_col_types = FALSE)
+
+# visit_concept_id 9202 = OMOP standard "Outpatient Visit". This definition
+# has no default in fetch_visit_occurrence() -- it must be confirmed per
+# study, not silently guessed.
+visits_df <- fetch_visit_occurrence(visits_raw, visit_concept_ids = c(9202L))
+visits_df
+```
+
+---
+
+## Look up the dose active at each visit
+
+`dose_at_visits()` finds whichever episode(s) cover each visit date and sums
+their dose (relevant when a patient is mid cross-titration between two
+steroid drugs). Coverage semantics differ between computed methods and the
+gold standard:
+
+```{r dose-at-visits}
+# Computed methods: no active episode == "not on steroids" (a real answer).
+baseline_at_visits <- dose_at_visits(baseline_episodes, visits_df,
+                                     visit_date_col = "visit_start_date")
+nlp_at_visits <- dose_at_visits(nlp_episodes, visits_df,
+                                visit_date_col = "visit_start_date")
+
+# Gold standard: no coverage == "not chart-reviewed here," not "confirmed
+# off steroids" -- use NA, not 0, and track has_coverage separately.
+gold_at_visits <- dose_at_visits(gold_std, visits_df,
+                                 visit_date_col    = "visit_start_date",
+                                 dose_col          = "median_daily_dose",
+                                 no_coverage_value = NA_real_)
+
+cross_sectional_df <- tibble::tibble(
+  person_id         = visits_df$person_id,
+  visit_date        = visits_df$visit_start_date,
+  baseline_dose_mg  = baseline_at_visits$dose_mg,
+  nlp_dose_mg       = nlp_at_visits$dose_mg,
+  gold_dose_mg      = gold_at_visits$dose_mg,
+  has_gold_coverage = gold_at_visits$has_coverage
+)
+cross_sectional_df
+```
+
+---
+
+## Agreement metrics
+
+`dose_agreement_metrics()` computes the same MAE / MBE / RMSE / MAPE /
+correlation formulas used inside `evaluate_against_gold()`, applied to plain
+dose vectors -- so cross-sectional numbers stay comparable to episode-level
+numbers.
+
+```{r method-vs-method}
+# Method vs. method, all visits (no_coverage_value = 0 makes "not on
+# steroids" a comparable answer between methods).
+dose_agreement_metrics(cross_sectional_df$baseline_dose_mg,
+                       cross_sectional_df$nlp_dose_mg)
+```
+
+```{r method-vs-gold}
+# Method vs. gold, restricted to visits that were actually chart-reviewed.
+covered <- cross_sectional_df |> dplyr::filter(has_gold_coverage)
+
+dose_agreement_metrics(covered$baseline_dose_mg, covered$gold_dose_mg)
+```
+
+---
+
+## Running this automatically
+
+`CodeToRun.R` (STEP 2c) and `CompareToRun.R` (section 11b) run this same
+sequence automatically once `VISIT_CONCEPT_IDS` is set in `RunAll.R`,
+writing `cross_sectional_comparison.csv` and `cross_sectional_summary.csv`
+alongside the existing episode-level outputs.

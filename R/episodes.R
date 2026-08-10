@@ -341,6 +341,119 @@ gap_sensitivity <- function(drug_df,
   dplyr::bind_rows(results)
 }
 
+#' Look up the active dose at a set of point-in-time visit dates
+#'
+#' Cross-sectional companion to [evaluate_against_gold()]'s episode-level
+#' comparison. For each row in `visits_df`, finds every row in `episodes_df`
+#' for the same patient whose `[episode_start_col, episode_end_col]` window
+#' contains `visit_date_col`, and sums `dose_col` across all covering episodes
+#' -- this matters when a patient is mid cross-titration between two different
+#' steroid drugs, since both episodes contribute to total steroid burden on
+#' that date. Visits with no covering episode get `no_coverage_value`.
+#'
+#' @param episodes_df A data frame of episodes -- typically the output of
+#'   [build_episodes()], or a gold-standard data frame from
+#'   [parse_steroid_gold()]. Must contain `person_col`, `episode_start_col`,
+#'   `episode_end_col`, and `dose_col`.
+#' @param visits_df A data frame of point-in-time encounters (e.g. office
+#'   visits from [fetch_visit_occurrence()]). Must contain `person_col` and
+#'   `visit_date_col`.
+#' @param person_col `character(1)`. Patient identifier column, shared by
+#'   both data frames. Default `"person_id"`.
+#' @param visit_date_col `character(1)`. Encounter date column in
+#'   `visits_df`. Default `"visit_date"`.
+#' @param episode_start_col,episode_end_col `character(1)`. Episode window
+#'   columns in `episodes_df`. Defaults `"episode_start"`, `"episode_end"`.
+#' @param dose_col `character(1)`. Dose column in `episodes_df`. Default
+#'   `"mean_daily_dose"`.
+#' @param no_coverage_value `numeric(1)`. Value assigned to `dose_mg` when no
+#'   episode covers the visit date. Default `0` -- no active episode means
+#'   "not on steroids" per that method, a real and comparable clinical state.
+#'   Pass `NA_real_` when `episodes_df` is a gold standard: a coverage gap
+#'   there means "not chart-reviewed at this date," not "confirmed off
+#'   steroids," and should not be scored as a 0 mg agreement.
+#'
+#' @return `visits_df` with two columns appended: `dose_mg` (numeric; summed
+#'   across covering episodes, `NA` if all covering episodes have unknown
+#'   dose, `no_coverage_value` if none cover the date) and `has_coverage`
+#'   (logical, `TRUE` when at least one episode covered the visit date).
+#'
+#' @seealso [build_episodes()], [evaluate_against_gold()],
+#'   [dose_agreement_metrics()], [fetch_visit_occurrence()]
+#'
+#' @export
+#'
+#' @examples
+#' episodes <- tibble::tibble(
+#'   person_id       = 1L,
+#'   episode_start   = as.Date("2023-01-01"),
+#'   episode_end     = as.Date("2023-03-31"),
+#'   mean_daily_dose = 10
+#' )
+#' visits <- tibble::tibble(
+#'   person_id  = c(1L, 1L),
+#'   visit_date = as.Date(c("2023-02-01", "2023-06-01"))
+#' )
+#' dose_at_visits(episodes, visits)
+dose_at_visits <- function(episodes_df,
+                           visits_df,
+                           person_col        = "person_id",
+                           visit_date_col    = "visit_date",
+                           episode_start_col = "episode_start",
+                           episode_end_col   = "episode_end",
+                           dose_col          = "mean_daily_dose",
+                           no_coverage_value = 0) {
+
+  assert_required_cols(
+    episodes_df,
+    c(person_col, episode_start_col, episode_end_col, dose_col),
+    "episodes_df"
+  )
+  assert_required_cols(visits_df, c(person_col, visit_date_col), "visits_df")
+
+  ep <- episodes_df |>
+    dplyr::transmute(
+      .person  = .data[[person_col]],
+      .e_start = safe_as_date(.data[[episode_start_col]]),
+      .e_end   = safe_as_date(.data[[episode_end_col]]),
+      .dose    = safe_as_numeric(.data[[dose_col]])
+    )
+
+  vs <- visits_df |>
+    dplyr::mutate(
+      .__row_id = dplyr::row_number(),
+      .person   = .data[[person_col]],
+      .v_date   = safe_as_date(.data[[visit_date_col]])
+    )
+
+  covering <- vs |>
+    dplyr::select(".__row_id", ".person", ".v_date") |>
+    dplyr::left_join(ep, by = ".person", relationship = "many-to-many") |>
+    dplyr::filter(
+      !is.na(.data$.e_start), !is.na(.data$.e_end),
+      .data$.v_date >= .data$.e_start,
+      .data$.v_date <= .data$.e_end
+    ) |>
+    dplyr::group_by(.data$.__row_id) |>
+    dplyr::summarise(
+      dose_mg      = dplyr::if_else(
+        all(is.na(.data$.dose)), NA_real_, sum(.data$.dose, na.rm = TRUE)
+      ),
+      has_coverage = TRUE,
+      .groups = "drop"
+    )
+
+  vs |>
+    dplyr::left_join(covering, by = ".__row_id") |>
+    dplyr::mutate(
+      has_coverage = dplyr::coalesce(.data$has_coverage, FALSE),
+      dose_mg      = dplyr::if_else(
+        .data$has_coverage, .data$dose_mg, no_coverage_value
+      )
+    ) |>
+    dplyr::select(-".__row_id", -".person", -".v_date")
+}
+
 .empty_episodes <- function() {
   tibble::tibble(
     person_id         = character(0),
