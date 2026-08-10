@@ -151,9 +151,56 @@ dose_agreement_metrics(covered$baseline_dose_mg, covered$gold_dose_mg)
 
 ---
 
+## Approximating trajectory truth: carry-forward assumption
+
+Gold coverage is sparse -- only `r sum(gold_at_visits$has_coverage)` of
+`r nrow(visits_df)` visits above were actually chart-reviewed. The PI
+proposed a pragmatic mitigation for the still-open trajectory gold-standard
+gap (see `bug.md` DECISION-14): assume a patient's dose stays constant from
+one office visit to the next, and carry the last *actually reviewed* gold
+dose forward (last-observation-carried-forward, never backward) to fill
+unreviewed visits.
+
+**This is an assumption, not a fact.** A patient's dose can genuinely change
+between visits without being caught by chart review -- most acutely during
+tapers, which is exactly when the dose is *expected* to change. For that
+reason `carry_forward_dose()` always tags provenance with a `dose_source`
+column, and accuracy must always be reported twice: once for `"reviewed"`
+visits only (identical to the numbers above), once including
+`"carried_forward"` visits (larger n, but resting on the assumption). Never
+blend the two into a single number.
+
+```{r carry-forward}
+gold_at_visits_cf <- gold_at_visits |>
+  carry_forward_dose(visit_date_col = "visit_start_date",
+                     dose_col       = "dose_mg",
+                     coverage_col   = "has_coverage")
+
+table(gold_at_visits_cf$dose_source)
+```
+
+```{r carry-forward-accuracy}
+# reviewed_only -- byte-identical to the method-vs-gold result above
+reviewed <- gold_at_visits_cf$dose_source == "reviewed"
+dose_agreement_metrics(baseline_at_visits$dose_mg[reviewed],
+                       gold_at_visits_cf$dose_mg[reviewed])
+
+# reviewed_plus_carried_forward -- larger n, rests on the assumption
+covered_cf <- gold_at_visits_cf$dose_source %in% c("reviewed", "carried_forward")
+dose_agreement_metrics(baseline_at_visits$dose_mg[covered_cf],
+                       gold_at_visits_cf$dose_mg[covered_cf])
+```
+
+Note the second call typically shows *worse* accuracy than the first -- that
+is the expected, honest effect of exposing the assumption to more data
+points, not a bug.
+
+---
+
 ## Running this automatically
 
 `CodeToRun.R` (STEP 2c) and `CompareToRun.R` (section 11b) run this same
 sequence automatically once `VISIT_CONCEPT_IDS` is set in `RunAll.R`,
-writing `cross_sectional_comparison.csv` and `cross_sectional_summary.csv`
-alongside the existing episode-level outputs.
+including the carry-forward step, writing `cross_sectional_comparison.csv`
+(with a `dose_source` column) and `cross_sectional_summary.csv` (with a
+`truth_scope` column) alongside the existing episode-level outputs.

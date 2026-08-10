@@ -25,6 +25,22 @@
   `bug.md` (DECISION-13, DECISION-14) for why cumulative/trajectory exposure
   remains out of scope (no gold standard exists for it).
 
+* **`carry_forward_dose()`: approximate trajectory truth via a "same dose
+  until next visit" assumption** (`R/episodes.R`): Following up on the
+  cross-sectional comparison above, the PI proposed a pragmatic mitigation
+  for the still-open trajectory gold-standard gap (DECISION-14): assume a
+  patient's dose stays constant from one office visit to the next, and carry
+  the last *actually reviewed* gold dose forward (last-observation-carried-
+  forward, never backward) to fill unreviewed visits. This is an assumption,
+  not a fact, and can understate real dose variability — especially during
+  tapers, when the dose is expected to change between visits. The output
+  always carries a `dose_source` column (`"reviewed"` / `"carried_forward"` /
+  `"unknown"`), and `CompareToRun.R` section 11b now reports method-vs-gold
+  accuracy **twice**, grouped by `truth_scope` (`"reviewed_only"` — identical
+  to the pre-existing numbers — vs `"reviewed_plus_carried_forward"`), so an
+  assumption-based accuracy figure is never blended with, or mistaken for, a
+  chart-reviewed one. See `bug.md` DECISION-15.
+
 * **Publication-ready detailed methodology** (`METHODS.md`, `references.bib`):
   Added a source-verified, implementation-level Methods chapter covering OMOP
   extraction, Baseline M1–M4, basic/Advanced NLP, taper and PRN handling,

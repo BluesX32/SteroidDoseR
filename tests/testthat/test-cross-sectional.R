@@ -97,6 +97,68 @@ test_that("dose_at_visits: preserves extra visits_df columns and row order", {
   expect_equal(out$dose_mg, c(0, 10))
 })
 
+# ---- carry_forward_dose() tests -------------------------------------
+
+test_that("carry_forward_dose: unreviewed visit after a reviewed one is filled", {
+  gv <- tibble::tibble(
+    person_id    = 1L,
+    visit_date   = as.Date(c("2023-01-01", "2023-02-01")),
+    dose_mg      = c(10, NA),
+    has_coverage = c(TRUE, FALSE)
+  )
+  out <- carry_forward_dose(gv)
+  expect_equal(out$dose_mg, c(10, 10))
+  expect_equal(out$dose_source, c("reviewed", "carried_forward"))
+})
+
+test_that("carry_forward_dose: a later reviewed value is not overwritten", {
+  gv <- tibble::tibble(
+    person_id    = 1L,
+    visit_date   = as.Date(c("2023-01-01", "2023-02-01", "2023-03-01")),
+    dose_mg      = c(10, NA, 5),
+    has_coverage = c(TRUE, FALSE, TRUE)
+  )
+  out <- carry_forward_dose(gv)
+  expect_equal(out$dose_mg, c(10, 10, 5))
+  expect_equal(out$dose_source, c("reviewed", "carried_forward", "reviewed"))
+})
+
+test_that("carry_forward_dose: visit before any reviewed visit stays unknown (no backward-fill)", {
+  gv <- tibble::tibble(
+    person_id    = 1L,
+    visit_date   = as.Date(c("2023-01-01", "2023-02-01")),
+    dose_mg      = c(NA, 10),
+    has_coverage = c(FALSE, TRUE)
+  )
+  out <- carry_forward_dose(gv)
+  expect_true(is.na(out$dose_mg[1]))
+  expect_equal(out$dose_source, c("unknown", "reviewed"))
+})
+
+test_that("carry_forward_dose: different patients do not leak into each other's fill", {
+  gv <- tibble::tibble(
+    person_id    = c(1L, 2L),
+    visit_date   = as.Date(c("2023-01-01", "2023-02-01")),
+    dose_mg      = c(10, NA),
+    has_coverage = c(TRUE, FALSE)
+  )
+  out <- carry_forward_dose(gv)
+  expect_true(is.na(out$dose_mg[out$person_id == 2L]))
+  expect_equal(out$dose_source[out$person_id == 2L], "unknown")
+})
+
+test_that("carry_forward_dose: input row order is preserved in the output", {
+  gv <- tibble::tibble(
+    person_id    = 1L,
+    visit_date   = as.Date(c("2023-03-01", "2023-01-01", "2023-02-01")),
+    dose_mg      = c(NA, 10, NA),
+    has_coverage = c(FALSE, TRUE, FALSE)
+  )
+  out <- carry_forward_dose(gv)
+  expect_equal(out$visit_date, gv$visit_date)
+  expect_equal(out$dose_mg, c(10, 10, 10))
+})
+
 # ---- fetch_visit_occurrence() tests --------------------------------
 
 visit_fixture <- tibble::tibble(

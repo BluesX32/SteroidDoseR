@@ -508,10 +508,47 @@ s <span class="op">&lt;-</span> eval_result<span class="op">$</span>summary
   <strong>not</strong> validate a full dose trajectory or cumulative steroid
   exposure over time — the gold standard has no continuous dose curve to
   compare against, only discrete chart-reviewed intervals. Trajectory is
-  clinically important but currently has no gold standard to validate it by
-  design, not by oversight; see <code>bug.md</code> DECISION-13 and
-  DECISION-14 for the full reasoning.
+  clinically important but currently has no <em>validated</em> gold standard
+  to check it against by design, not by oversight; see <code>bug.md</code>
+  DECISION-13 and DECISION-14 for the full reasoning.
 </p>
+
+<h3>Approximating trajectory truth: carry-forward assumption <span class="badge badge-new">v0.6.0</span></h3>
+<p>
+  <code>carry_forward_dose()</code> implements a specific, PI-proposed
+  assumption for approximating denser trajectory truth from the sparse gold
+  standard: a patient stays on the <strong>same dose from one office visit to
+  the next</strong>. For each patient, it carries the last <em>actually
+  reviewed</em> gold dose forward across subsequent visits
+  (last-observation-carried-forward) until a newer reviewed value appears —
+  never backward. In the synthetic demo this raised gold coverage from 7/15
+  visits to 15/15.
+</p>
+<p>
+  This is an assumption, not a fact — a patient's dose can genuinely change
+  between visits without being caught by chart review, most acutely during
+  tapers, which is exactly when the dose is <em>expected</em> to change.
+  <strong>Never blend carried-forward "truth" into the same number as real
+  reviewed accuracy.</strong> The output always carries a <code>dose_source</code>
+  column (<code>"reviewed"</code> / <code>"carried_forward"</code> /
+  <code>"unknown"</code>), and downstream reporting (<code>CompareToRun.R</code>
+  section 11b) always computes method-vs-gold accuracy <strong>twice</strong>,
+  labelled by <code>truth_scope</code>: <code>"reviewed_only"</code> (identical
+  to the numbers above) and <code>"reviewed_plus_carried_forward"</code>
+  (larger n, but resting on the assumption). See <code>bug.md</code>
+  DECISION-15 for the full reasoning, including a synthetic-data example where
+  the carried-forward accuracy number is visibly worse than the reviewed-only
+  number — the expected, honest effect of exposing the assumption to more
+  data, not a bug.
+</p>
+
+<div class="fn-sig">carry_forward_dose(
+  visits_df,
+  person_col     = "person_id",
+  visit_date_col = "visit_date",
+  dose_col       = "dose_mg",
+  coverage_col   = "has_coverage"
+)</div>
 
 <h3>Example</h3>
 <pre><code>visits_df <span class="op">&lt;-</span> <span class="fn">fetch_visit_occurrence</span>(con, visit_concept_ids <span class="op">=</span> <span class="fn">c</span>(<span class="nm">9202L</span>))
@@ -522,9 +559,16 @@ baseline_at_visits <span class="op">&lt;-</span> <span class="fn">dose_at_visits
 gold_at_visits <span class="op">&lt;-</span> <span class="fn">dose_at_visits</span>(gold_std, visits_df,
                                 visit_date_col    <span class="op">=</span> <span class="st">"visit_start_date"</span>,
                                 dose_col          <span class="op">=</span> <span class="st">"dose_daily_mg_equiv"</span>,
-                                no_coverage_value <span class="op">=</span> <span class="cn">NA_real_</span>)
+                                no_coverage_value <span class="op">=</span> <span class="cn">NA_real_</span>) <span class="op">|&gt;</span>
+  <span class="fn">carry_forward_dose</span>(dose_col <span class="op">=</span> <span class="st">"dose_mg"</span>, coverage_col <span class="op">=</span> <span class="st">"has_coverage"</span>)
 
-covered <span class="op">&lt;-</span> gold_at_visits<span class="op">$</span>has_coverage
+<span class="cm"># reviewed_only: identical to accuracy computed without carry_forward_dose()</span>
+reviewed <span class="op">&lt;-</span> gold_at_visits<span class="op">$</span>dose_source <span class="op">==</span> <span class="st">"reviewed"</span>
+<span class="fn">dose_agreement_metrics</span>(baseline_at_visits<span class="op">$</span>dose_mg[reviewed],
+                      gold_at_visits<span class="op">$</span>dose_mg[reviewed])
+
+<span class="cm"># reviewed_plus_carried_forward: larger n, but rests on the assumption -- report separately</span>
+covered <span class="op">&lt;-</span> gold_at_visits<span class="op">$</span>dose_source <span class="op">%in%</span> <span class="fn">c</span>(<span class="st">"reviewed"</span>, <span class="st">"carried_forward"</span>)
 <span class="fn">dose_agreement_metrics</span>(baseline_at_visits<span class="op">$</span>dose_mg[covered],
                       gold_at_visits<span class="op">$</span>dose_mg[covered])
 </code></pre>

@@ -190,7 +190,7 @@ dose vectors, `R/eval.R`), wired into `CodeToRun.R` (STEP 2c) and
 comparison — the two answer different questions and are both retained. See
 `docs/pipeline.html` for the user-facing explanation.
 
-### DECISION-14 Cumulative/trajectory steroid exposure has no gold standard ⚠️ OPEN (by design, not a bug)
+### DECISION-14 Cumulative/trajectory steroid exposure has no *validated* gold standard ⚠️ OPEN (by design, not a bug)
 
 The PI also noted that steroid *trajectory* (dose over time, or cumulative
 exposure) is clinically important but "much harder to determine" and has no
@@ -199,9 +199,46 @@ covers discrete chart-reviewed intervals (`episode_start`/`episode_end` +
 one dose), not a continuous dose curve. Cross-sectional evaluation
 (DECISION-13) validates individual point-in-time doses, which is a necessary
 building block, but does not itself validate a trajectory or cumulative-dose
-metric. No gold standard currently exists to make that possible, and building
-one would require new chart-review effort outside this package's scope. Not
-tracked as a bug to fix — recorded so it stops resurfacing as ambiguity.
+metric. No *validated* gold standard currently exists to make that possible,
+and building one would require new chart-review effort outside this
+package's scope.
+
+**Partial mitigation (DECISION-15, below)**: the PI proposed an *assumption*
+-- not new chart-review data -- to approximate a denser trajectory truth from
+the existing sparse gold standard. This does not resolve DECISION-14 (it is
+still not a validated gold standard), so this entry stays open; DECISION-15
+documents the assumption-based workaround and its limits.
+
+### DECISION-15 `carry_forward_dose()`: approximating trajectory truth via a "same dose until next visit" assumption ✅ FIXED
+
+The PI proposed a pragmatic approximation for DECISION-14: assume a patient
+stays on the same prednisone dose from one office visit to the next, and use
+that assumption to carry the last *actually reviewed* gold dose forward
+across subsequent visits (last-observation-carried-forward, LOCF) until a
+newer reviewed value appears. In the synthetic demo this took gold coverage
+from 7/15 visits (`reviewed` only) to 15/15 (`reviewed` + `carried_forward`)
+— every visit now has *some* truth value.
+
+This is an assumption, not a fact: a patient's dose could genuinely change
+between visits without being caught by chart review, and `carry_forward_dose()`
+has no way to detect that. It will systematically understate real dose
+variability, most acutely during tapers — exactly when the dose is *expected*
+to change between visits, which is also when accurate cumulative-exposure
+estimates matter most clinically. In the synthetic verification, accuracy
+measured against `reviewed + carried_forward` (MAE 11.2, n=15) was
+noticeably worse than against `reviewed`-only (MAE 5.33, n=7) — this is the
+*expected*, honest result of the assumption being imperfect, not a bug in
+`carry_forward_dose()`.
+
+**Fix**: added `carry_forward_dose()` (`R/episodes.R`), wired into
+`CompareToRun.R` section 11b. Its output always includes a `dose_source`
+column (`"reviewed"` / `"carried_forward"` / `"unknown"` -- the last for
+visits before any reviewed visit exists for that patient; never
+backward-filled). `CompareToRun.R` always reports method-vs-gold accuracy
+**twice**, grouped by `truth_scope` (`"reviewed_only"` vs
+`"reviewed_plus_carried_forward"`), and the two are never blended into one
+number -- so a `reviewed_plus_carried_forward` accuracy figure can never be
+mistaken for, or cited as, a chart-reviewed accuracy figure.
 
 ## discovered during cross-sectional evaluation work (not fixed — out of scope)
 

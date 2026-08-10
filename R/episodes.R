@@ -454,6 +454,94 @@ dose_at_visits <- function(episodes_df,
     dplyr::select(-".__row_id", -".person", -".v_date")
 }
 
+#' Approximate trajectory truth by carrying the last reviewed gold dose forward
+#'
+#' Implements the "same dose from one visit to the next" assumption: for each
+#' patient, sorts visits chronologically and fills unreviewed visits with the
+#' most recent *actually reviewed* dose (last-observation-carried-forward,
+#' never backward). This turns the sparse, visit-level gold coverage from
+#' [dose_at_visits()] into a denser series usable for validating dose
+#' *trajectories* -- something the manually reviewed gold standard alone
+#' cannot support, since it only covers discrete chart-reviewed intervals.
+#'
+#' This is an assumption, not a fact: a patient's dose could genuinely change
+#' between visits without being caught by chart review, and this function has
+#' no way to detect that -- it will systematically understate real dose
+#' variability (most acutely during tapers, when the dose is *expected* to
+#' change between visits). The output's `dose_source` column exists so
+#' callers can always report accuracy separately for `"reviewed"` visits
+#' (real chart review) versus `"reviewed"` + `"carried_forward"` visits
+#' (includes the assumption) -- never blend the two into one number without
+#' saying so.
+#'
+#' Intended for gold-standard series specifically: run this on the output of
+#' `dose_at_visits(gold_std, visits_df, ..., no_coverage_value = NA_real_)`.
+#' It should not be run on a computed method's series, where `dose_mg = 0`
+#' at an uncovered visit is already a real answer ("not on steroids"), not a
+#' gap to fill.
+#'
+#' @param visits_df Output of [dose_at_visits()] (or any data frame with the
+#'   same shape): one row per visit, with `person_col`, `visit_date_col`,
+#'   `dose_col` (`NA` where unreviewed), and `coverage_col` (`TRUE` where
+#'   `dose_col` reflects an actual chart review).
+#' @param person_col `character(1)`. Patient identifier column. Default
+#'   `"person_id"`.
+#' @param visit_date_col `character(1)`. Encounter date column. Default
+#'   `"visit_date"`.
+#' @param dose_col `character(1)`. Dose column to fill. Default `"dose_mg"`.
+#' @param coverage_col `character(1)`. Logical column marking actually
+#'   reviewed visits. Default `"has_coverage"`.
+#'
+#' @return `visits_df`, row order preserved, with `dose_col` forward-filled
+#'   per patient and one column added, `dose_source`:
+#' \describe{
+#'   \item{`"reviewed"`}{`coverage_col` was `TRUE` -- untouched, real review.}
+#'   \item{`"carried_forward"`}{`dose_col` is now non-`NA` only because of
+#'     the forward-fill.}
+#'   \item{`"unknown"`}{Still `NA` -- no reviewed visit yet exists for this
+#'     patient at or before this date.}
+#' }
+#'
+#' @seealso [dose_at_visits()], [dose_agreement_metrics()]
+#'
+#' @export
+#'
+#' @examples
+#' gold_at_visits <- tibble::tibble(
+#'   person_id    = c(1L, 1L, 1L),
+#'   visit_date   = as.Date(c("2023-01-01", "2023-02-01", "2023-03-01")),
+#'   dose_mg      = c(10, NA, NA),
+#'   has_coverage = c(TRUE, FALSE, FALSE)
+#' )
+#' carry_forward_dose(gold_at_visits)
+carry_forward_dose <- function(visits_df,
+                               person_col     = "person_id",
+                               visit_date_col = "visit_date",
+                               dose_col       = "dose_mg",
+                               coverage_col   = "has_coverage") {
+
+  assert_required_cols(
+    visits_df, c(person_col, visit_date_col, dose_col, coverage_col),
+    "visits_df"
+  )
+
+  visits_df |>
+    dplyr::mutate(.__orig_order = dplyr::row_number()) |>
+    dplyr::arrange(.data[[person_col]], safe_as_date(.data[[visit_date_col]])) |>
+    dplyr::group_by(.data[[person_col]]) |>
+    tidyr::fill(dplyr::all_of(dose_col), .direction = "down") |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      dose_source = dplyr::case_when(
+        .data[[coverage_col]]     ~ "reviewed",
+        !is.na(.data[[dose_col]]) ~ "carried_forward",
+        TRUE                      ~ "unknown"
+      )
+    ) |>
+    dplyr::arrange(.data$.__orig_order) |>
+    dplyr::select(-".__orig_order")
+}
+
 .empty_episodes <- function() {
   tibble::tibble(
     person_id         = character(0),

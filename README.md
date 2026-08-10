@@ -289,6 +289,34 @@ dose_agreement_metrics(baseline_at_visits$dose_mg, gold_at_visits$dose_mg)
 automatically when `VISIT_CONCEPT_IDS` is set in `RunAll.R`, writing
 `cross_sectional_comparison.csv` and `cross_sectional_summary.csv`.
 
+#### Approximating trajectory truth: `carry_forward_dose()`
+
+Gold coverage at visit dates is sparse (only 7/15 visits in the synthetic
+demo). `carry_forward_dose()` implements the PI-proposed assumption "same
+dose from one visit to the next" — it carries the last *reviewed* gold dose
+forward to unreviewed visits (never backward) to approximate a denser
+trajectory truth. This is an assumption, not a fact, so it must **never be
+blended** into the same accuracy number as real reviewed truth:
+
+```r
+gold_at_visits <- gold_at_visits |>
+  carry_forward_dose(dose_col = "dose_mg", coverage_col = "has_coverage")
+
+# reviewed_only -- identical to accuracy without carry_forward_dose()
+reviewed <- gold_at_visits$dose_source == "reviewed"
+dose_agreement_metrics(baseline_at_visits$dose_mg[reviewed],
+                       gold_at_visits$dose_mg[reviewed])
+
+# reviewed_plus_carried_forward -- larger n, but rests on the assumption
+covered <- gold_at_visits$dose_source %in% c("reviewed", "carried_forward")
+dose_agreement_metrics(baseline_at_visits$dose_mg[covered],
+                       gold_at_visits$dose_mg[covered])
+```
+
+`CompareToRun.R` (section 11b) reports both numbers automatically, labelled
+by a `truth_scope` column, so a carried-forward accuracy figure can never be
+mistaken for a chart-reviewed one. See `bug.md` DECISION-14/DECISION-15.
+
 ---
 
 ## Visualization
@@ -548,7 +576,7 @@ The following are documented design constraints.
 | **Budesonide excluded** | `NA` equiv_factor drops budesonide from analyses | Oral budesonide requires route-specific factor (9×); pass custom `equiv_table` to `convert_pred_equiv()` |
 | **No weight-based dosing** | mg/kg SIGs parsed to NA | Not applicable for most adult myositis patients |
 | **Reference scripts do not convert primary episodes to prednisone-equivalent units** | Baseline, NLP, and LLM episodes may be native-drug mg while plots label them pred-equiv | Run `convert_pred_equiv()` at record level before `build_episodes()`; see `METHODS.md` and BUG-12 |
-| **No gold standard for cumulative/trajectory steroid exposure** | Dose-over-time and cumulative-exposure metrics cannot be validated | By design, not a bug — the gold standard covers discrete chart-reviewed intervals only. **Added v0.4.0**: cross-sectional (point-in-time) comparison at office-visit dates via `dose_at_visits()` validates individual timepoints; see `bug.md` DECISION-13/DECISION-14 |
+| **No *validated* gold standard for cumulative/trajectory steroid exposure** | Dose-over-time and cumulative-exposure metrics cannot be validated | By design, not a bug — the gold standard covers discrete chart-reviewed intervals only. **Added v0.4.0**: cross-sectional (point-in-time) comparison at office-visit dates via `dose_at_visits()` validates individual timepoints. **Added v0.6.0**: `carry_forward_dose()` approximates denser trajectory truth via a "same dose until next visit" assumption — always reported separately from real reviewed accuracy (`dose_source` / `truth_scope` columns), never blended. See `bug.md` DECISION-13/14/15 |
 
 ---
 

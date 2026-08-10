@@ -452,6 +452,12 @@ if (!is.null(visits_df) && nrow(visits_df) > 0L) {
                        method = label, dose_mg, has_coverage)
   }
 
+  # cs_gold is deliberately sparse (has_gold_coverage TRUE only where a real
+  # chart review covers the visit date). carry_forward_dose() approximates a
+  # denser trajectory truth under the PI's "same dose until next visit"
+  # assumption -- see docs/pipeline.html#cross-sectional and bug.md
+  # DECISION-15 for why this is reported separately from real reviewed
+  # accuracy, never blended into one number.
   cs_gold <- dose_at_visits(
     gold_std_ok, visits_df,
     visit_date_col    = "visit_start_date",
@@ -459,7 +465,8 @@ if (!is.null(visits_df) && nrow(visits_df) > 0L) {
     no_coverage_value = NA_real_
   ) |>
     dplyr::transmute(person_id, visit_date = visit_start_date,
-                     gold_dose = dose_mg, has_gold_coverage = has_coverage)
+                     gold_dose = dose_mg, has_gold_coverage = has_coverage) |>
+    carry_forward_dose(dose_col = "gold_dose", coverage_col = "has_gold_coverage")
 
   cross_sectional_df <- dplyr::bind_rows(
       .method_dose_at_visits(baseline_episodes, "Baseline"),
@@ -470,10 +477,11 @@ if (!is.null(visits_df) && nrow(visits_df) > 0L) {
     dplyr::left_join(cs_gold, by = c("person_id", "visit_date"))
 
   cat(sprintf(
-    "\n%d visit x method row(s) | %d unique visits | %.1f%% have gold coverage\n",
+    "\n%d visit x method row(s) | %d unique visits | %.1f%% reviewed | %.1f%% reviewed+carried-forward\n",
     nrow(cross_sectional_df),
     dplyr::n_distinct(cross_sectional_df$person_id, cross_sectional_df$visit_date),
-    100 * mean(cross_sectional_df$has_gold_coverage, na.rm = TRUE)
+    100 * mean(cross_sectional_df$dose_source == "reviewed", na.rm = TRUE),
+    100 * mean(cross_sectional_df$dose_source %in% c("reviewed", "carried_forward"), na.rm = TRUE)
   ))
 
   # --- method-vs-method agreement (all visits) --------------------------
@@ -499,13 +507,27 @@ if (!is.null(visits_df) && nrow(visits_df) > 0L) {
     pairwise_tbl |> dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 2)))
   ), row.names = FALSE)
 
-  # --- method-vs-gold accuracy (gold-covered visits only) ----------------
-  gold_accuracy_tbl <- cross_sectional_df |>
-    dplyr::filter(.data$has_gold_coverage) |>
-    dplyr::group_by(.data$method) |>
-    dplyr::group_modify(~ dose_agreement_metrics(.x$dose_mg, .x$gold_dose)) |>
-    dplyr::ungroup()
-  cat("\nMethod vs gold accuracy at visit dates (gold-covered visits only):\n")
+  # --- method-vs-gold accuracy: reported twice, never blended -------------
+  # "reviewed_only" = real chart review (identical to pre-carry-forward
+  # numbers). "reviewed_plus_carried_forward" additionally includes visits
+  # whose truth value rests on the "same dose until next visit" assumption
+  # (dose_source == "carried_forward") -- larger n, but not a fact. See
+  # bug.md DECISION-15.
+  .gold_accuracy_for <- function(df, sources, scope_label) {
+    df |>
+      dplyr::filter(.data$dose_source %in% sources) |>
+      dplyr::group_by(.data$method) |>
+      dplyr::group_modify(~ dose_agreement_metrics(.x$dose_mg, .x$gold_dose)) |>
+      dplyr::ungroup() |>
+      dplyr::mutate(truth_scope = scope_label, .after = "method")
+  }
+
+  gold_accuracy_tbl <- dplyr::bind_rows(
+    .gold_accuracy_for(cross_sectional_df, "reviewed", "reviewed_only"),
+    .gold_accuracy_for(cross_sectional_df, c("reviewed", "carried_forward"),
+                       "reviewed_plus_carried_forward")
+  )
+  cat("\nMethod vs gold accuracy at visit dates (reported separately -- carried-forward truth is an assumption):\n")
   print(as.data.frame(
     gold_accuracy_tbl |> dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 2)))
   ), row.names = FALSE)
